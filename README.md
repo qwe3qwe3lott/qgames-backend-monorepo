@@ -1,23 +1,29 @@
-# qgames-backend-monorepo
+# qgames-backend
 
-This project uses [Gradle](https://gradle.org/).
-To build and run the application, use the *Gradle* tool window by clicking the Gradle icon in the right-hand toolbar,
-or run it directly from the terminal:
+Бэкенд игрового портала qgames: микросервисы на Kotlin и Spring Boot 4.
 
-* Run `./gradlew run` to build and run the application.
-* Run `./gradlew build` to only build the application.
-* Run `./gradlew check` to run all checks, including tests.
-* Run `./gradlew clean` to clean all build outputs.
+| Сервис | Порт | Назначение |
+|---|---|---|
+| user-gateway | 8080 | публичный API, куки и JWT, проксирование |
+| user-auth | 8081 | аккаунты, вход по email+паролю и через Google, JWT |
+| game | 8082 | игровые комнаты и партии всех игр (правила игр — модули `games/*`) |
 
-Note the usage of the Gradle Wrapper (`./gradlew`).
-This is the suggested way to use Gradle in production projects.
+## Быстрый старт
 
-[Learn more about the Gradle Wrapper](https://docs.gradle.org/current/userguide/gradle_wrapper.html).
+Нужны Docker и JDK 25.
 
-[Learn more about Gradle tasks](https://docs.gradle.org/current/userguide/command_line_interface.html#common_tasks).
+```bash
+cp .env.example .env                  # по желанию: GOOGLE_CLIENT_IDS для входа через Google
+docker compose up --build -d --wait
+```
 
-This project follows the suggested multi-module setup and consists of the `app` and `utils` subprojects.
-The shared build logic was extracted to a convention plugin located in `buildSrc`.
+- Swagger gateway: http://localhost:8080/swagger-ui.html (сервисы — порты 8081–8082)
+- Письма с кодами подтверждения: http://localhost:8025 (Mailpit)
 
-This project uses a version catalog (see `gradle/libs.versions.toml`) to declare and version dependencies
-and both a build cache and a configuration cache (see `gradle.properties`).
+Сборка и тесты (интеграционные, используют Testcontainers — нужен запущенный Docker):
+
+```bash
+./gradlew build
+```
+
+Правила разработки и архитектурные решения — в [CLAUDE.md](CLAUDE.md).

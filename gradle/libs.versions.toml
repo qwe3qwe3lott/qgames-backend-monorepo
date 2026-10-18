@@ -1,22 +1,23 @@
-# Version catalog is a central place for you to declare and version dependencies
-# https://docs.gradle.org/current/userguide/platforms.html#sub:version-catalog
-# https://docs.gradle.org/current/userguide/platforms.html#sub::toml-dependencies-format
+# Единый каталог версий. Версии библиотек, которыми управляет Spring Boot BOM, здесь не указываются.
+# https://docs.gradle.org/current/userguide/platforms.html
 
 [versions]
 kotlin = "2.4.20"
-kotlinxDatetime = "0.8.0"
-kotlinxSerializationJSON = "1.11.0"
-kotlinxCoroutines = "1.10.2"
+springBoot = "4.1.1"
+springdoc = "3.1.1"
+# Должна совпадать с версией, которую тянет springdoc.
+swaggerAnnotations = "2.2.55"
+bouncycastle = "1.86"
+springmockk = "5.0.1"
+wiremock = "3.13.2"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
-kotlinxDatetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinxDatetime" }
-kotlinxSerialization = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinxSerializationJSON" }
-kotlinxCoroutines = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
+kotlinAllopenPlugin = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
+springBootGradlePlugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "springBoot" }
 
-# Libraries can be bundled together for easier import
-[bundles]
-kotlinxEcosystem = ["kotlinxDatetime", "kotlinxSerialization", "kotlinxCoroutines"]
-
-[plugins]
-kotlinPluginSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+springdocWebmvcUi = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
+swaggerAnnotations = { module = "io.swagger.core.v3:swagger-annotations-jakarta", version.ref = "swaggerAnnotations" }
+bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
+springmockk = { module = "com.ninja-squad:springmockk", version.ref = "springmockk" }
+wiremock = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }

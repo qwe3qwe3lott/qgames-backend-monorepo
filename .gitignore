@@ -43,3 +43,8 @@ bin/
 
 ### Mac OS ###
 .DS_Store
+### Local env ###
+.env
+
+### IntelliJ IDEA (локальные настройки, не версионируем) ###
+.idea/

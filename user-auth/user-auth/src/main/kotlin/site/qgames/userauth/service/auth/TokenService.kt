@@ -1,0 +1,98 @@
+package site.qgames.userauth.service.auth
+
+import com.nimbusds.jose.jwk.ECKey
+import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm
+import org.springframework.security.oauth2.jwt.JwsHeader
+import org.springframework.security.oauth2.jwt.JwtClaimsSet
+import org.springframework.security.oauth2.jwt.JwtEncoder
+import org.springframework.security.oauth2.jwt.JwtEncoderParameters
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+import site.qgames.common.web.exception.ApiException
+import site.qgames.userauth.config.AuthProperties
+import site.qgames.userauth.entity.auth.RefreshTokenEntity
+import site.qgames.userauth.exception.auth.AuthErrors
+import site.qgames.userauth.gatewayapi.dto.auth.TokenPair
+import site.qgames.userauth.repository.auth.RefreshTokenRepository
+import site.qgames.userauth.util.Hashing
+import java.time.Clock
+import java.util.UUID
+
+/**
+ * Access-токен — короткоживущий JWT (ES256), проверяется gateway локально по JWKS.
+ * Refresh-токен — случайная строка, в БД лежит только её SHA-256. При каждом обновлении токен ротируется,
+ * а повторное предъявление уже использованного токена (после окна терпимости) отзывает всю цепочку (family).
+ */
+@Service
+class TokenService(
+    private val jwtEncoder: JwtEncoder,
+    private val jwtSigningKey: ECKey,
+    private val properties: AuthProperties,
+    private val refreshTokenRepository: RefreshTokenRepository,
+    private val clock: Clock,
+) {
+
+    @Transactional
+    fun issue(userId: UUID, familyId: UUID = UUID.randomUUID()): TokenPair {
+        val now = clock.instant()
+        val accessTokenExpiresAt = now.plus(properties.jwt.accessTokenTtl)
+        val claims = JwtClaimsSet.builder()
+            .issuer(properties.jwt.issuer)
+            .subject(userId.toString())
+            .issuedAt(now)
+            .expiresAt(accessTokenExpiresAt)
+            .id(UUID.randomUUID().toString())
+            .build()
+        val header = JwsHeader.with(SignatureAlgorithm.ES256).keyId(jwtSigningKey.keyID).build()
+        val accessToken = jwtEncoder.encode(JwtEncoderParameters.from(header, claims)).tokenValue
+
+        val refreshToken = Hashing.randomUrlSafeToken()
+        val refreshTokenExpiresAt = now.plus(properties.refreshTokenTtl)
+        refreshTokenRepository.save(
+            RefreshTokenEntity(
+                userId = userId,
+                familyId = familyId,
+                tokenHash = Hashing.sha256Hex(refreshToken),
+                expiresAt = refreshTokenExpiresAt,
+                createdAt = now,
+            ),
+        )
+        return TokenPair(accessToken, accessTokenExpiresAt, refreshToken, refreshTokenExpiresAt)
+    }
+
+    /**
+     * Возвращает владельца токена и новую пару. noRollbackFor нужен, чтобы отзыв цепочки при reuse
+     * сохранился, несмотря на выброшенную ошибку.
+     *
+     * Повтор уже ротированного токена в течение [AuthProperties.refreshReuseGrace] не считается кражей:
+     * так ведут себя параллельные вкладки, обновляющие сессию одной кукой. Им выдаётся ещё одна пара той же
+     * цепочки. Повтор позже окна, после выхода или после обнаружения кражи отзывает всю цепочку.
+     */
+    @Transactional(noRollbackFor = [ApiException::class])
+    fun rotate(refreshToken: String): Pair<UUID, TokenPair> {
+        val now = clock.instant()
+        val tokenHash = Hashing.sha256Hex(refreshToken)
+        val existing = refreshTokenRepository.findByTokenHash(tokenHash) ?: throw AuthErrors.invalidRefreshToken()
+        if (!existing.expiresAt.isAfter(now)) {
+            throw AuthErrors.invalidRefreshToken()
+        }
+        if (existing.revokedAt == null && refreshTokenRepository.rotate(existing.id!!, now) == 1) {
+            return existing.userId to issue(existing.userId, existing.familyId)
+        }
+        // Токен уже отозван — возможно, только что параллельным запросом, поэтому перечитываем.
+        val revoked = refreshTokenRepository.findByTokenHash(tokenHash)!!
+        val rotatedAt = revoked.rotatedAt
+        val withinGrace = rotatedAt != null && !rotatedAt.plus(properties.refreshReuseGrace).isBefore(now)
+        if (withinGrace && refreshTokenRepository.existsActiveInFamily(revoked.familyId)) {
+            return revoked.userId to issue(revoked.userId, revoked.familyId)
+        }
+        refreshTokenRepository.revokeFamily(revoked.familyId, now)
+        throw AuthErrors.refreshTokenReused()
+    }
+
+    @Transactional
+    fun revokeSession(refreshToken: String) {
+        val existing = refreshTokenRepository.findByTokenHash(Hashing.sha256Hex(refreshToken)) ?: return
+        refreshTokenRepository.revokeFamily(existing.familyId, clock.instant())
+    }
+}

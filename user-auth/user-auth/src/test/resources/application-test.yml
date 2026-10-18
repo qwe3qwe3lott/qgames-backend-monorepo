@@ -1,0 +1,9 @@
+qgames:
+  auth:
+    jwt:
+      key-id: test-key
+      private-key: classpath:keys/jwt-private.pem
+      public-key: classpath:keys/jwt-public.pem
+    google:
+      client-ids: test-google-client-id
+      # jwk-set-uri указывает на WireMock, см. BaseIntegrationTest

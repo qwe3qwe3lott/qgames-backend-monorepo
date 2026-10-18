@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-17-CREATE-user
+      author: A Kozlov
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: SQL/2026-10-17-CREATE-user.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            path: SQL/2026-10-17-CREATE-user-rollback.sql
+            relativeToChangelogFile: true

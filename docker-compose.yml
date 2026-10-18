@@ -1,0 +1,127 @@
+# Локальный запуск всего проекта: docker compose up --build
+# Наружу публикуются gateway (8080), Swagger сервисов (8081–8082, только для локальной разработки),
+# Mailpit UI (8025) и PostgreSQL (5432).
+
+x-service-build: &service-build
+  context: .
+  dockerfile: docker/service.Dockerfile
+
+x-service-healthcheck: &service-healthcheck
+  interval: 10s
+  timeout: 5s
+  retries: 12
+  start_period: 40s
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql
+      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Один Redis на весь стенд (и на одном VPS): кеш сервисов и шина pub/sub для SSE fan-out.
+  # В коде это два независимых подключения (cache и bus), права разведены ACL — разнести по инстансам можно конфигом.
+  # Без персистентности: кеш восстановим, события шины не хранятся.
+  redis:
+    image: redis:8.2-alpine
+    command:
+      - redis-server
+      - --aclfile
+      - /usr/local/etc/redis/users.acl
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - allkeys-lru
+      - --save
+      - ""
+      - --appendonly
+      - "no"
+    volumes:
+      - ./docker/redis/users.acl:/usr/local/etc/redis/users.acl:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "--user", "healthcheck", "--pass", "healthcheck", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # Брокер сообщений (Kafka или Redpanda) появится вместе с первым асинхронным событием — см. CLAUDE.md.
+
+  mailpit:
+    image: axllent/mailpit:v1.27
+    ports:
+      - "8025:8025"
+
+  user-auth:
+    build:
+      <<: *service-build
+      args:
+        SERVICE: user-auth
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/user_auth
+      DB_USERNAME: user_auth
+      DB_PASSWORD: user_auth
+      MAIL_HOST: mailpit
+      MAIL_PORT: 1025
+      JWT_KEY_ID: dev-key-1
+      JWT_PRIVATE_KEY_LOCATION: file:/keys/jwt-private.pem
+      JWT_PUBLIC_KEY_LOCATION: file:/keys/jwt-public.pem
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
+    volumes:
+      - ./docker/dev-keys:/keys:ro
+    ports:
+      - "8081:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    healthcheck:
+      <<: *service-healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8081/actuator/health/readiness"]
+
+  user-gateway:
+    build:
+      <<: *service-build
+      args:
+        SERVICE: user-gateway
+    environment:
+      USER_AUTH_URL: http://user-auth:8081
+    ports:
+      - "8080:8080"
+    depends_on:
+      user-auth:
+        condition: service_healthy
+    healthcheck:
+      <<: *service-healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health/readiness"]
+
+  game:
+    build:
+      <<: *service-build
+      args:
+        SERVICE: game
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/game
+      DB_USERNAME: game
+      DB_PASSWORD: game
+    ports:
+      - "8082:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      <<: *service-healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8082/actuator/health/readiness"]
+
+volumes:
+  postgres-data:
