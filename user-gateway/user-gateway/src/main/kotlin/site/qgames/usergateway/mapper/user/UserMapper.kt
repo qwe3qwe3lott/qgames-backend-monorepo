@@ -1,11 +1,13 @@
 package site.qgames.usergateway.mapper.user
 
 import site.qgames.usergateway.publicapi.dto.user.Avatar
+import site.qgames.usergateway.publicapi.dto.user.ChangePasswordRequest
 import site.qgames.usergateway.publicapi.dto.user.LoginMethod
 import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
 import site.qgames.usergateway.publicapi.dto.user.UpdateProfileRequest
 import site.qgames.usergateway.publicapi.dto.user.UserResponse
 import site.qgames.userauth.gatewayapi.dto.user.Avatar as UserAuthAvatar
+import site.qgames.userauth.gatewayapi.dto.user.ChangePasswordRequest as UserAuthChangePasswordRequest
 import site.qgames.userauth.gatewayapi.dto.user.LoginMethod as UserAuthLoginMethod
 import site.qgames.userauth.gatewayapi.dto.user.SetPasswordRequest as UserAuthSetPasswordRequest
 import site.qgames.userauth.gatewayapi.dto.user.UpdateProfileRequest as UserAuthUpdateProfileRequest
@@ -39,5 +41,7 @@ fun Avatar.toUserAuth(): UserAuthAvatar = when (this) {
 }
 
 fun SetPasswordRequest.toUserAuth() = UserAuthSetPasswordRequest(password)
+
+fun ChangePasswordRequest.toUserAuth() = UserAuthChangePasswordRequest(currentPassword = currentPassword, newPassword = newPassword)
 
 fun UpdateProfileRequest.toUserAuth() = UserAuthUpdateProfileRequest(nickname = nickname, avatar = avatar?.toUserAuth())

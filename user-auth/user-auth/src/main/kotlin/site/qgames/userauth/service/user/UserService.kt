@@ -4,6 +4,7 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import site.qgames.userauth.exception.auth.AuthErrors
+import site.qgames.userauth.model.auth.AuthResultModel
 import site.qgames.userauth.model.user.IdentityProvider
 import site.qgames.userauth.model.user.UserAvatar
 import site.qgames.userauth.model.user.UserDetailsModel
@@ -12,6 +13,7 @@ import site.qgames.userauth.publisher.user.UserProfilePublisher
 import site.qgames.userauth.repository.user.UserIdentityRepository
 import site.qgames.userauth.repository.user.UserRepository
 import site.qgames.userauth.service.auth.GoogleIdTokenVerifier
+import site.qgames.userauth.service.auth.TokenService
 import java.time.Clock
 import java.util.UUID
 
@@ -22,6 +24,7 @@ class UserService(
     private val passwordEncoder: PasswordEncoder,
     private val googleIdTokenVerifier: GoogleIdTokenVerifier,
     private val userProfilePublisher: UserProfilePublisher,
+    private val tokenService: TokenService,
     private val clock: Clock,
 ) {
 
@@ -36,6 +39,26 @@ class UserService(
         }
         userIdentityRepository.insert(userId, IdentityProvider.PASSWORD, user.email, passwordEncoder.encode(password), clock.instant())
         return describe(user)
+    }
+
+    /**
+     * Меняет пароль, если текущий верен, и завершает все сессии пользователя: при утечке старого пароля чужие
+     * сессии теряют доступ. Клиенту, сменившему пароль, выдаётся новая сессия. Строка "user" не меняется.
+     */
+    @Transactional
+    fun changePassword(userId: UUID, currentPassword: String, newPassword: String): AuthResultModel {
+        val user = findUser(userId)
+        val identity = userIdentityRepository.findByUserIdAndProvider(userId, IdentityProvider.PASSWORD)
+        val currentHash = identity?.passwordHash ?: throw AuthErrors.passwordNotSet()
+        if (!passwordEncoder.matches(currentPassword, currentHash)) {
+            throw AuthErrors.invalidCurrentPassword()
+        }
+        // 0 строк — пароль уже сменил параллельный запрос, и текущий пароль проверен по устаревшему хешу.
+        if (userIdentityRepository.updatePasswordHash(identity.id, currentHash, passwordEncoder.encode(newPassword)!!) == 0) {
+            throw AuthErrors.invalidCurrentPassword()
+        }
+        tokenService.revokeAllSessions(userId)
+        return AuthResultModel(describe(user), tokenService.issue(userId))
     }
 
     @Transactional

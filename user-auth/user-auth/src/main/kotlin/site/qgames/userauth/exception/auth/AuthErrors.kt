@@ -55,6 +55,12 @@ object AuthErrors {
     fun loginMethodAlreadyLinked() =
         ConflictException("LOGIN_METHOD_ALREADY_LINKED", "This login method is already linked to the account")
 
+    fun passwordNotSet() =
+        ConflictException("PASSWORD_NOT_SET", "Password login is not set up for the account")
+
+    fun invalidCurrentPassword() =
+        ClientException("INVALID_CURRENT_PASSWORD", "Current password is invalid")
+
     fun googleAccountLinkedToAnotherUser() =
         ConflictException("GOOGLE_ACCOUNT_ALREADY_LINKED", "This Google account is linked to another user")
 

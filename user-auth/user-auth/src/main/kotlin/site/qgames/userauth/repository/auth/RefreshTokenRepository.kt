@@ -28,5 +28,7 @@ class RefreshTokenRepository(
 
     fun revokeFamily(familyId: UUID, now: Instant): Int = refreshTokenPostgresqlRepository.revokeFamily(familyId, now)
 
+    fun revokeAllByUserId(userId: UUID, now: Instant): Int = refreshTokenPostgresqlRepository.revokeAllByUserId(userId, now)
+
     fun existsActiveInFamily(familyId: UUID): Boolean = refreshTokenPostgresqlRepository.existsActiveInFamily(familyId)
 }

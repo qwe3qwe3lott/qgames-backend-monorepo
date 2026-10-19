@@ -31,6 +31,13 @@ data class SetPasswordRequest(
     val password: String,
 )
 
+data class ChangePasswordRequest(
+    @field:NotBlank
+    val currentPassword: String,
+    @field:NotBlank @field:Size(min = 8, max = 128)
+    val newPassword: String,
+)
+
 /** Меняется только переданное; хотя бы одно поле обязательно. */
 data class UpdateProfileRequest(
     @field:Size(min = NicknameRules.MIN_LENGTH, max = NicknameRules.MAX_LENGTH)

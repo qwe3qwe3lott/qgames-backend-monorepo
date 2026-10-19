@@ -10,7 +10,9 @@ import org.springframework.web.service.annotation.GetExchange
 import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PatchExchange
 import org.springframework.web.service.annotation.PostExchange
+import org.springframework.web.service.annotation.PutExchange
 import site.qgames.usergateway.publicapi.dto.auth.GoogleIdTokenRequest
+import site.qgames.usergateway.publicapi.dto.user.ChangePasswordRequest
 import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
 import site.qgames.usergateway.publicapi.dto.user.UpdateProfileRequest
 import site.qgames.usergateway.publicapi.dto.user.UserResponse
@@ -62,7 +64,7 @@ interface PublicUserApi {
 
     @Operation(
         summary = "Добавить вход по паролю",
-        description = "Для аккаунта без пароля (например, созданного через Google). Логином становится email аккаунта.",
+        description = "Для аккаунта без пароля (например, созданного через Google).",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Пароль добавлен, возвращены обновлённые данные пользователя"),
@@ -73,6 +75,26 @@ interface PublicUserApi {
     )
     @PostExchange("/login-methods/password")
     fun addPasswordLogin(@Valid @RequestBody request: SetPasswordRequest): UserResponse
+
+    @Operation(
+        summary = "Сменить пароль",
+        description = "Проверяет текущий пароль и задаёт новый. Все сессии пользователя завершаются: другие устройства " +
+            "и вкладки потеряют доступ не позже чем через 15 минут (срок access-токена). Текущий клиент сразу получает " +
+            "новую сессию в куках и остаётся в системе.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Пароль изменён, куки сессии обновлены, возвращены данные пользователя"),
+        ApiResponse(
+            responseCode = "400",
+            description = "Новый пароль не проходит требования (VALIDATION_ERROR) или текущий пароль неверен " +
+                "(INVALID_CURRENT_PASSWORD)",
+        ),
+        ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
+        ApiResponse(responseCode = "409", description = "У аккаунта нет пароля (PASSWORD_NOT_SET)"),
+        ApiResponse(responseCode = "503", description = "Сервис аутентификации недоступен (SERVICE_UNAVAILABLE)"),
+    )
+    @PutExchange("/login-methods/password")
+    fun changePassword(@Valid @RequestBody request: ChangePasswordRequest): UserResponse
 
     @Operation(
         summary = "Привязать Google-аккаунт",

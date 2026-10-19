@@ -21,6 +21,10 @@ interface RefreshTokenPostgresqlRepository : CrudRepository<RefreshTokenEntity, 
     @Query("UPDATE refresh_token SET revoked_at = :now WHERE family_id = :familyId AND revoked_at IS NULL")
     fun revokeFamily(familyId: UUID, now: Instant): Int
 
+    @Modifying
+    @Query("UPDATE refresh_token SET revoked_at = :now WHERE user_id = :userId AND revoked_at IS NULL")
+    fun revokeAllByUserId(userId: UUID, now: Instant): Int
+
     @Query("SELECT EXISTS (SELECT 1 FROM refresh_token WHERE family_id = :familyId AND revoked_at IS NULL)")
     fun existsActiveInFamily(familyId: UUID): Boolean
 }

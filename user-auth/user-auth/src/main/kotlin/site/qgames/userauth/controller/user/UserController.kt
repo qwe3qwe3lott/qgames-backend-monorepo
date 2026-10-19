@@ -3,10 +3,13 @@ package site.qgames.userauth.controller.user
 import org.springframework.web.bind.annotation.RestController
 import site.qgames.common.web.context.RequestUserContext
 import site.qgames.userauth.gatewayapi.api.UserApi
+import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
 import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.gatewayapi.dto.user.ChangePasswordRequest
 import site.qgames.userauth.gatewayapi.dto.user.SetPasswordRequest
 import site.qgames.userauth.gatewayapi.dto.user.UpdateProfileRequest
 import site.qgames.userauth.gatewayapi.dto.user.UserResponse
+import site.qgames.userauth.mapper.auth.AuthResponseMapper
 import site.qgames.userauth.mapper.user.UserResponseMapper
 import site.qgames.userauth.service.user.UserService
 
@@ -14,6 +17,7 @@ import site.qgames.userauth.service.user.UserService
 class UserController(
     private val userService: UserService,
     private val userResponseMapper: UserResponseMapper,
+    private val authResponseMapper: AuthResponseMapper,
     private val requestUserContext: RequestUserContext,
 ) : UserApi {
 
@@ -27,6 +31,11 @@ class UserController(
 
     override fun addPasswordLogin(request: SetPasswordRequest): UserResponse =
         userResponseMapper.toResponse(userService.addPasswordLogin(requestUserContext.userId(), request.password))
+
+    override fun changePassword(request: ChangePasswordRequest): AuthResponse =
+        authResponseMapper.toResponse(
+            userService.changePassword(requestUserContext.userId(), request.currentPassword, request.newPassword),
+        )
 
     override fun addGoogleLogin(request: GoogleIdTokenRequest): UserResponse =
         userResponseMapper.toResponse(userService.addGoogleLogin(requestUserContext.userId(), request.idToken))
