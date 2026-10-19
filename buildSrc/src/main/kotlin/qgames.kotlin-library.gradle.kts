@@ -1,5 +1,6 @@
 // Базовая конвенция для любого Kotlin-модуля: библиотеки, API-модули и сервисы.
 import org.gradle.api.tasks.testing.logging.TestLogEvent
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.springframework.boot.gradle.plugin.SpringBootPlugin
 
 plugins {
@@ -10,10 +11,25 @@ plugins {
 
 group = "site.qgames"
 
+// JDK 25 или новее: компилируем тем JDK, на котором запущен Gradle, а байткод фиксируем на 25
+// (в Docker-образе рантайм — JRE 25). Toolchain не используем, чтобы не требовать ровно JDK 25.
+require(JavaVersion.current() >= JavaVersion.VERSION_25) { "Нужен JDK 25+, сейчас ${JavaVersion.current()}" }
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_25
+    targetCompatibility = JavaVersion.VERSION_25
+}
+
+tasks.withType<JavaCompile>().configureEach {
+    options.release = 25
+}
+
 kotlin {
-    jvmToolchain(25)
     compilerOptions {
+        jvmTarget = JvmTarget.JVM_25
         freeCompilerArgs.add("-Xjsr305=strict")
+        // Компилируем против API JDK 25, а не JDK хоста: как options.release у javac.
+        freeCompilerArgs.add("-Xjdk-release=25")
     }
 }
 
