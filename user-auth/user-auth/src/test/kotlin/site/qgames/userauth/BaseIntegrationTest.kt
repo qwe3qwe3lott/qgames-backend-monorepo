@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import site.qgames.common.test.container.MailpitTestContainer
 import site.qgames.common.test.container.PostgresTestContainer
 import site.qgames.common.test.mail.MailpitClient
@@ -78,6 +79,13 @@ abstract class BaseIntegrationTest {
 
     protected fun postJson(path: String, body: Any, userId: UUID? = null): ResultActionsDsl =
         mockMvc.post(path) {
+            contentType = MediaType.APPLICATION_JSON
+            content = jsonMapper.writeValueAsString(body)
+            userId?.let { header(QgamesHeaders.USER_ID, it.toString()) }
+        }
+
+    protected fun putJson(path: String, body: Any, userId: UUID? = null): ResultActionsDsl =
+        mockMvc.put(path) {
             contentType = MediaType.APPLICATION_JSON
             content = jsonMapper.writeValueAsString(body)
             userId?.let { header(QgamesHeaders.USER_ID, it.toString()) }

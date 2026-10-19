@@ -1,9 +1,11 @@
 package site.qgames.usergateway.controller.auth
 
 import com.github.tomakehurst.wiremock.client.WireMock.aResponse
+import com.github.tomakehurst.wiremock.client.WireMock.equalTo
 import com.github.tomakehurst.wiremock.client.WireMock.equalToJson
 import com.github.tomakehurst.wiremock.client.WireMock.post
 import com.github.tomakehurst.wiremock.client.WireMock.postRequestedFor
+import com.github.tomakehurst.wiremock.client.WireMock.putRequestedFor
 import com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo
 import com.github.tomakehurst.wiremock.http.Fault
 import jakarta.servlet.http.Cookie
@@ -15,12 +17,14 @@ import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.post
+import org.springframework.test.web.servlet.put
 import site.qgames.common.web.header.QgamesHeaders
 import site.qgames.userauth.gatewayapi.dto.auth.RefreshTokenRequest
 import site.qgames.usergateway.BaseIntegrationTest
 import site.qgames.usergateway.publicapi.dto.auth.GoogleIdTokenRequest
 import site.qgames.usergateway.publicapi.dto.auth.LoginRequest
 import site.qgames.usergateway.publicapi.dto.auth.VerifyEmailRequest
+import site.qgames.usergateway.publicapi.dto.user.ChangePasswordRequest
 import java.time.Instant
 import java.util.stream.Stream
 
@@ -57,6 +61,49 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
                 .withRequestBody(equalToJson(json(request)))
                 .withoutHeader(QgamesHeaders.USER_ID),
         )
+    }
+
+    @Test
+    fun `password change forwards user id and renews session cookies`() {
+        val auth = authResponse(refreshToken = "refresh-after-password-change")
+        stubUserAuthPut(PASSWORD_PATH, 200, auth)
+        val request = ChangePasswordRequest("correct-horse-1", "brand-new-password")
+
+        val result = mockMvc.put(PASSWORD_PATH) {
+            contentType = MediaType.APPLICATION_JSON
+            content = json(request)
+            cookie(Cookie("access_token", accessToken()))
+        }.andExpect {
+            status { isOk() }
+            jsonPath("$.id") { value(USER_ID.toString()) }
+            jsonPath("$.tokens") { doesNotExist() }
+        }
+
+        assertThat(result.setCookie("access_token")).startsWith("access_token=${auth.tokens.accessToken};").contains("Path=/;")
+        assertThat(result.setCookie("refresh_token"))
+            .startsWith("refresh_token=refresh-after-password-change;")
+            .contains("Path=/api/auth;", "HttpOnly")
+        userAuth.verify(
+            putRequestedFor(urlEqualTo(PASSWORD_PATH))
+                .withHeader(QgamesHeaders.USER_ID, equalTo(USER_ID.toString()))
+                .withRequestBody(equalToJson(json(request))),
+        )
+    }
+
+    @Test
+    fun `rejected password change keeps the session cookies`() {
+        stubUserAuthPut(PASSWORD_PATH, 400, problem(400, "INVALID_CURRENT_PASSWORD"))
+
+        val result = mockMvc.put(PASSWORD_PATH) {
+            contentType = MediaType.APPLICATION_JSON
+            content = json(ChangePasswordRequest("wrong-password", "brand-new-password"))
+            cookie(Cookie("access_token", accessToken()))
+        }.andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("INVALID_CURRENT_PASSWORD") }
+        }
+
+        assertThat(result.andReturn().response.getHeaders("Set-Cookie")).isEmpty()
     }
 
     @ParameterizedTest(name = "{0} {1}")
@@ -165,6 +212,8 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
     }
 
     companion object {
+        private const val PASSWORD_PATH = "/api/users/me/login-methods/password"
+
         @JvmStatic
         fun sessionEndpoints(): Stream<Arguments> = Stream.of(
             arguments("password login", "/api/auth/login", LoginRequest("player@example.com", "correct-horse-1")),

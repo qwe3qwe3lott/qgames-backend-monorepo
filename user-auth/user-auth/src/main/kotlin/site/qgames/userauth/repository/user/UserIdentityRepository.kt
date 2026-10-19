@@ -29,4 +29,11 @@ class UserIdentityRepository(
 
     fun existsByUserIdAndProvider(userId: UUID, provider: IdentityProvider): Boolean =
         userIdentityPostgresqlRepository.existsByUserIdAndProvider(userId, provider.name)
+
+    fun findByUserIdAndProvider(userId: UUID, provider: IdentityProvider): UserIdentityModel? =
+        userIdentityPostgresqlRepository.findByUserIdAndProvider(userId, provider.name)?.let(userEntityMapper::toModel)
+
+    /** Возвращает 0, если хеш уже сменил параллельный запрос. */
+    fun updatePasswordHash(id: UUID, expectedHash: String, newHash: String): Int =
+        userIdentityPostgresqlRepository.updatePasswordHash(id, expectedHash, newHash)
 }

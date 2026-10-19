@@ -86,4 +86,10 @@ class TokenService(
         val existing = refreshTokenRepository.findByTokenHash(Hashing.sha256Hex(refreshToken)) ?: return
         refreshTokenRepository.revokeFamily(existing.familyId, clock.instant())
     }
+
+    /** Отзывает все сессии пользователя. Уже выданные access-токены действуют до истечения срока. */
+    @Transactional
+    fun revokeAllSessions(userId: UUID) {
+        refreshTokenRepository.revokeAllByUserId(userId, clock.instant())
+    }
 }

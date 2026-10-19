@@ -5,6 +5,7 @@ import com.github.tomakehurst.wiremock.client.WireMock.aResponse
 import com.github.tomakehurst.wiremock.client.WireMock.get
 import com.github.tomakehurst.wiremock.client.WireMock.okJson
 import com.github.tomakehurst.wiremock.client.WireMock.post
+import com.github.tomakehurst.wiremock.client.WireMock.put
 import com.github.tomakehurst.wiremock.client.WireMock.urlEqualTo
 import com.nimbusds.jose.JWSAlgorithm
 import com.nimbusds.jose.JWSHeader
@@ -62,6 +63,10 @@ abstract class BaseIntegrationTest {
 
     protected fun stubUserAuthPost(path: String, status: Int, body: Any) {
         userAuth.stubFor(post(urlEqualTo(path)).willReturn(jsonResponse(status, body)))
+    }
+
+    protected fun stubUserAuthPut(path: String, status: Int, body: Any) {
+        userAuth.stubFor(put(urlEqualTo(path)).willReturn(jsonResponse(status, body)))
     }
 
     protected fun stubUserAuthGet(path: String, body: Any) {

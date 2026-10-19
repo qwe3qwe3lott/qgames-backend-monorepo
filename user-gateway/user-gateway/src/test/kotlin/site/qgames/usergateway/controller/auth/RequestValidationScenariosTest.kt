@@ -18,6 +18,7 @@ import site.qgames.usergateway.publicapi.dto.auth.RegisterRequest
 import site.qgames.usergateway.publicapi.dto.auth.ResendCodeRequest
 import site.qgames.usergateway.publicapi.dto.auth.VerifyEmailRequest
 import site.qgames.usergateway.publicapi.dto.user.Avatar
+import site.qgames.usergateway.publicapi.dto.user.ChangePasswordRequest
 import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
 import site.qgames.usergateway.publicapi.dto.user.UpdateProfileRequest
 import java.util.stream.Stream
@@ -35,7 +36,11 @@ class RequestValidationScenariosTest : BaseIntegrationTest() {
         body: Any,
         invalidField: String,
     ) {
-        val method = if (path.endsWith("/profile")) HttpMethod.PATCH else HttpMethod.POST
+        val method = when {
+            path.endsWith("/profile") -> HttpMethod.PATCH
+            body is ChangePasswordRequest -> HttpMethod.PUT
+            else -> HttpMethod.POST
+        }
         mockMvc.request(method, path) {
             contentType = MediaType.APPLICATION_JSON
             content = json(body)
@@ -99,6 +104,14 @@ class RequestValidationScenariosTest : BaseIntegrationTest() {
             arguments("login with blank password", "/api/auth/login", LoginRequest("player@example.com", ""), "password"),
             arguments("google login with blank token", "/api/auth/google", GoogleIdTokenRequest(""), "idToken"),
             arguments("new password too short", "/api/users/me/login-methods/password", SetPasswordRequest("short"), "password"),
+            arguments(
+                "changed password too short", "/api/users/me/login-methods/password",
+                ChangePasswordRequest("correct-horse-1", "short"), "newPassword",
+            ),
+            arguments(
+                "password change with blank current password", "/api/users/me/login-methods/password",
+                ChangePasswordRequest("", "brand-new-password"), "currentPassword",
+            ),
             arguments("google link with blank token", "/api/users/me/login-methods/google", GoogleIdTokenRequest(""), "idToken"),
         )
     }
