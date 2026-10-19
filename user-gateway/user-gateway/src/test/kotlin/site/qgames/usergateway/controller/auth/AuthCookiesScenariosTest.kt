@@ -136,13 +136,18 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
 
         val result = mockMvc.post("/api/auth/register") {
             contentType = MediaType.APPLICATION_JSON
-            content = """{"email":"player@example.com","password":"correct-horse-1"}"""
+            content = """{"email":"player@example.com","password":"correct-horse-1","nickname":"Player","avatar":"CAT"}"""
         }.andExpect {
             status { isOk() }
             jsonPath("$.userId") { value(USER_ID.toString()) }
         }
 
         assertThat(result.andReturn().response.getHeaders("Set-Cookie")).isEmpty()
+        userAuth.verify(
+            postRequestedFor(urlEqualTo("/api/auth/register")).withRequestBody(
+                equalToJson("""{"email":"player@example.com","password":"correct-horse-1","nickname":"Player","avatar":"CAT"}"""),
+            ),
+        )
     }
 
     @Test

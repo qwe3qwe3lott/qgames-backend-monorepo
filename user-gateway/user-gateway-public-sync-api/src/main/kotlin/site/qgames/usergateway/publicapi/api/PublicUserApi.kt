@@ -8,9 +8,11 @@ import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.service.annotation.GetExchange
 import org.springframework.web.service.annotation.HttpExchange
+import org.springframework.web.service.annotation.PatchExchange
 import org.springframework.web.service.annotation.PostExchange
 import site.qgames.usergateway.publicapi.dto.auth.GoogleIdTokenRequest
 import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
+import site.qgames.usergateway.publicapi.dto.user.UpdateProfileRequest
 import site.qgames.usergateway.publicapi.dto.user.UserResponse
 
 /**
@@ -40,6 +42,23 @@ interface PublicUserApi {
     )
     @GetExchange
     fun getCurrentUser(): UserResponse
+
+    @Operation(
+        summary = "Изменить профиль",
+        description = "Меняет ник и/или аватар: изменяется только переданное. Ник не уникален. В игровых комнатах " +
+            "новый ник появляется через несколько секунд.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Профиль изменён, возвращены обновлённые данные пользователя"),
+        ApiResponse(
+            responseCode = "400",
+            description = "Ничего не передано или ник не проходит требования: 3–32 символа без пробелов по краям (VALIDATION_ERROR)",
+        ),
+        ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
+        ApiResponse(responseCode = "503", description = "Сервис аутентификации недоступен (SERVICE_UNAVAILABLE)"),
+    )
+    @PatchExchange("/profile")
+    fun updateProfile(@Valid @RequestBody request: UpdateProfileRequest): UserResponse
 
     @Operation(
         summary = "Добавить вход по паролю",

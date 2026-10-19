@@ -1,3 +1,24 @@
-# Явный список миграций в хронологическом порядке (DDL/ и DML/ создаются вместе с первой миграцией).
+# Явный список миграций в хронологическом порядке, DDL и DML вперемешку. includeAll не используем.
 # Правила: CLAUDE.md, раздел «Миграции».
-databaseChangeLog: []
+databaseChangeLog:
+  - include:
+      file: DDL/2026-10-18-CREATE-user_auth#user.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-18-CREATE-room.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-18-CREATE-room_member.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-18-CREATE-room_session.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-18-CREATE-room_session_player.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-18-CREATE-room_session_move.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-18-CREATE-shedlock.yaml
+      relativeToChangelogFile: true

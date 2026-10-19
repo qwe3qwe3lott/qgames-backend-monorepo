@@ -5,7 +5,7 @@ import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.client.RestClientResponseException
-import site.qgames.common.web.exception.ApiException
+import site.qgames.common.exception.exception.UnauthorizedException
 import site.qgames.userauth.gatewayapi.api.AuthApi
 import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
 import site.qgames.userauth.gatewayapi.dto.auth.RefreshTokenRequest
@@ -53,7 +53,7 @@ class AuthGatewayController(
     override fun refresh(): UserResponse {
         val refreshToken = authCookies.refreshToken(httpRequest) ?: run {
             authCookies.clear(httpResponse)
-            throw ApiException(HttpStatus.UNAUTHORIZED, "INVALID_REFRESH_TOKEN", "Refresh token is missing")
+            throw UnauthorizedException("INVALID_REFRESH_TOKEN", "Refresh token is missing")
         }
         val auth = try {
             authApi.refresh(RefreshTokenRequest(refreshToken))

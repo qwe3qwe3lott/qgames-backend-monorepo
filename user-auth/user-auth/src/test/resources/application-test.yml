@@ -1,4 +1,8 @@
 qgames:
+  cdc:
+    outbox:
+      # В тестах события остаются в outbox_event, чтобы проверить, что именно опубликовано.
+      delete-after-insert: false
   auth:
     jwt:
       key-id: test-key

@@ -1,10 +1,14 @@
 package site.qgames.usergateway.mapper.user
 
+import site.qgames.usergateway.publicapi.dto.user.Avatar
 import site.qgames.usergateway.publicapi.dto.user.LoginMethod
 import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
+import site.qgames.usergateway.publicapi.dto.user.UpdateProfileRequest
 import site.qgames.usergateway.publicapi.dto.user.UserResponse
+import site.qgames.userauth.gatewayapi.dto.user.Avatar as UserAuthAvatar
 import site.qgames.userauth.gatewayapi.dto.user.LoginMethod as UserAuthLoginMethod
 import site.qgames.userauth.gatewayapi.dto.user.SetPasswordRequest as UserAuthSetPasswordRequest
+import site.qgames.userauth.gatewayapi.dto.user.UpdateProfileRequest as UserAuthUpdateProfileRequest
 import site.qgames.userauth.gatewayapi.dto.user.UserResponse as UserAuthUserResponse
 
 /**
@@ -14,6 +18,8 @@ fun UserAuthUserResponse.toPublic() = UserResponse(
     id = id,
     email = email,
     emailVerified = emailVerified,
+    nickname = nickname,
+    avatar = avatar.toPublic(),
     loginMethods = loginMethods.map { it.toPublic() },
 )
 
@@ -22,4 +28,16 @@ fun UserAuthLoginMethod.toPublic(): LoginMethod = when (this) {
     UserAuthLoginMethod.GOOGLE -> LoginMethod.GOOGLE
 }
 
+fun UserAuthAvatar.toPublic(): Avatar = when (this) {
+    UserAuthAvatar.CAT -> Avatar.CAT
+    UserAuthAvatar.DOG -> Avatar.DOG
+}
+
+fun Avatar.toUserAuth(): UserAuthAvatar = when (this) {
+    Avatar.CAT -> UserAuthAvatar.CAT
+    Avatar.DOG -> UserAuthAvatar.DOG
+}
+
 fun SetPasswordRequest.toUserAuth() = UserAuthSetPasswordRequest(password)
+
+fun UpdateProfileRequest.toUserAuth() = UserAuthUpdateProfileRequest(nickname = nickname, avatar = avatar?.toUserAuth())

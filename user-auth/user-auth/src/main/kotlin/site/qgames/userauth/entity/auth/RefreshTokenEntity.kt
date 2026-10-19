@@ -5,10 +5,7 @@ import org.springframework.data.relational.core.mapping.Table
 import java.time.Instant
 import java.util.UUID
 
-/**
- * Хранится только SHA-256 токена. Все токены одной цепочки ротаций имеют общий [familyId].
- * [rotatedAt] заполнен, если токен отозван из-за замены новым, а не при выходе или обнаружении кражи.
- */
+/** Строка таблицы refresh_token. */
 @Table("refresh_token")
 data class RefreshTokenEntity(
     @Id

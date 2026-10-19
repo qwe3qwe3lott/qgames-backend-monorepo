@@ -1,6 +1,6 @@
 # Локальный запуск всего проекта: docker compose up --build
 # Наружу публикуются gateway (8080), Swagger сервисов (8081–8082, только для локальной разработки),
-# Mailpit UI (8025) и PostgreSQL (5432).
+# Mailpit UI (8025), PostgreSQL (5432) и Redpanda для IDE (19092).
 
 x-service-build: &service-build
   context: .
@@ -15,6 +15,8 @@ x-service-healthcheck: &service-healthcheck
 services:
   postgres:
     image: postgres:18-alpine
+    # logical WAL — для Debezium (CDC). max_slot_wal_keep_size не даёт WAL бесконечно расти, если Debezium лежит.
+    command: ["postgres", "-c", "wal_level=logical", "-c", "max_slot_wal_keep_size=1GB"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -54,7 +56,67 @@ services:
       timeout: 3s
       retries: 10
 
-  # Брокер сообщений (Kafka или Redpanda) появится вместе с первым асинхронным событием — см. CLAUDE.md.
+  # Брокер с протоколом Kafka. Топики создаёт redpanda-init (автосоздание выключено, чтобы настройки топиков были явными).
+  redpanda:
+    image: redpandadata/redpanda:v26.2.5
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - "1"
+      - --memory
+      - 512M
+      - --kafka-addr
+      - internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092,external://localhost:19092
+      - --set
+      - redpanda.auto_create_topics_enabled=false
+    ports:
+      - "19092:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Одноразовая инициализация топиков. CDC-топики компактируемые: по ключу хранится последний снапшот,
+  # поэтому новый потребитель может собрать реплику с нуля.
+  redpanda-init:
+    image: redpandadata/redpanda:v26.2.5
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - >-
+        rpk topic create outbox.event.user-auth.user-profile -p 3 -c cleanup.policy=compact -X brokers=redpanda:9092
+        || rpk topic describe outbox.event.user-auth.user-profile -X brokers=redpanda:9092 > /dev/null
+    depends_on:
+      redpanda:
+        condition: service_healthy
+
+  # CDC: читает outbox_event из WAL user_auth и публикует события в Redpanda (один Debezium Server на БД-источник).
+  debezium-user-auth:
+    image: quay.io/debezium/server:3.6.3.Final
+    environment:
+      JAVA_OPTS: -Xmx256m
+    volumes:
+      - ./docker/debezium/user-auth.properties:/debezium/config/application.properties:ro
+      - debezium-data:/debezium/data
+    depends_on:
+      # Публикацию qgames_outbox создаёт миграция user-auth.
+      user-auth:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/q/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
 
   mailpit:
     image: axllent/mailpit:v1.27
@@ -96,10 +158,13 @@ services:
         SERVICE: user-gateway
     environment:
       USER_AUTH_URL: http://user-auth:8081
+      GAME_URL: http://game:8082
     ports:
       - "8080:8080"
     depends_on:
       user-auth:
+        condition: service_healthy
+      game:
         condition: service_healthy
     healthcheck:
       <<: *service-healthcheck
@@ -114,14 +179,19 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/game
       DB_USERNAME: game
       DB_PASSWORD: game
+      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
     ports:
       - "8082:8082"
     depends_on:
       postgres:
         condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *service-healthcheck
       test: ["CMD", "curl", "-fs", "http://localhost:8082/actuator/health/readiness"]
 
 volumes:
   postgres-data:
+  redpanda-data:
+  debezium-data:

@@ -3,14 +3,16 @@ package site.qgames.userauth.service.auth
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import site.qgames.userauth.entity.user.IdentityProvider
-import site.qgames.userauth.entity.user.UserEntity
-import site.qgames.userauth.entity.user.UserIdentityEntity
+import site.qgames.userauth.model.user.IdentityProvider
+import site.qgames.userauth.model.user.UserModel
 import site.qgames.userauth.exception.auth.AuthErrors
-import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
+import site.qgames.userauth.model.auth.AuthResultModel
 import site.qgames.userauth.repository.user.UserIdentityRepository
 import site.qgames.userauth.repository.user.UserRepository
 import site.qgames.userauth.service.user.UserService
+import site.qgames.userauth.model.user.UserAvatar
+import site.qgames.userauth.publisher.user.UserProfilePublisher
+import site.qgames.userauth.util.Nicknames
 import java.time.Clock
 
 @Service
@@ -21,6 +23,7 @@ class LoginService(
     private val googleIdTokenVerifier: GoogleIdTokenVerifier,
     private val tokenService: TokenService,
     private val userService: UserService,
+    private val userProfilePublisher: UserProfilePublisher,
     private val clock: Clock,
 ) {
 
@@ -28,7 +31,7 @@ class LoginService(
     private val dummyPasswordHash: String by lazy { passwordEncoder.encode("dummy-password")!! }
 
     @Transactional
-    fun loginWithPassword(rawEmail: String, password: String): AuthResponse {
+    fun loginWithPassword(rawEmail: String, password: String): AuthResultModel {
         val identity = userIdentityRepository.findByProviderAndSubject(IdentityProvider.PASSWORD, rawEmail.trim().lowercase())
         if (identity?.passwordHash == null) {
             passwordEncoder.matches(password, dummyPasswordHash)
@@ -37,7 +40,7 @@ class LoginService(
         if (!passwordEncoder.matches(password, identity.passwordHash)) {
             throw AuthErrors.invalidCredentials()
         }
-        val user = userRepository.findById(identity.userId).orElseThrow { AuthErrors.invalidCredentials() }
+        val user = userRepository.findById(identity.userId) ?: throw AuthErrors.invalidCredentials()
         if (!user.emailVerified) {
             throw AuthErrors.emailNotVerified()
         }
@@ -49,11 +52,11 @@ class LoginService(
      * только когда email подтверждён и у нас, и в Google — иначе возможен захват чужого аккаунта.
      */
     @Transactional
-    fun loginWithGoogle(idToken: String): AuthResponse {
+    fun loginWithGoogle(idToken: String): AuthResultModel {
         val google = googleIdTokenVerifier.verify(idToken)
         val linked = userIdentityRepository.findByProviderAndSubject(IdentityProvider.GOOGLE, google.subject)
         if (linked != null) {
-            return startSession(userRepository.findById(linked.userId).orElseThrow { AuthErrors.userNotFound() })
+            return startSession(userRepository.findById(linked.userId) ?: throw AuthErrors.userNotFound())
         }
         if (!google.emailVerified) {
             throw AuthErrors.googleEmailNotVerified()
@@ -61,16 +64,16 @@ class LoginService(
         val now = clock.instant()
         val existing = userRepository.findByEmail(google.email)
         val user = if (existing != null) {
-            if (!existing.emailVerified || userIdentityRepository.existsByUserIdAndProvider(existing.id!!, IdentityProvider.GOOGLE)) {
+            if (!existing.emailVerified || userIdentityRepository.existsByUserIdAndProvider(existing.id, IdentityProvider.GOOGLE)) {
                 throw AuthErrors.accountLinkRequired()
             }
             existing
         } else {
-            userRepository.save(UserEntity(email = google.email, emailVerified = true, createdAt = now))
+            // Формы регистрации нет: ник генерируется, пользователь сменит его в профиле.
+            userRepository.insert(google.email, emailVerified = true, nickname = Nicknames.generate(), avatar = UserAvatar.CAT, now = now)
+                .also(userProfilePublisher::publish)
         }
-        userIdentityRepository.save(
-            UserIdentityEntity(userId = user.id!!, provider = IdentityProvider.GOOGLE, subject = google.subject, createdAt = now),
-        )
+        userIdentityRepository.insert(user.id, IdentityProvider.GOOGLE, google.subject, passwordHash = null, now = now)
         return startSession(user)
     }
 
@@ -78,12 +81,12 @@ class LoginService(
      * Намеренно без внешней транзакции: при reuse [TokenService.rotate] должен закоммитить отзыв цепочки,
      * а внешняя транзакция откатила бы его вместе с ошибкой.
      */
-    fun refresh(refreshToken: String): AuthResponse {
+    fun refresh(refreshToken: String): AuthResultModel {
         val (userId, tokens) = tokenService.rotate(refreshToken)
-        val user = userRepository.findById(userId).orElseThrow { AuthErrors.invalidRefreshToken() }
-        return AuthResponse(userService.describe(user), tokens)
+        val user = userRepository.findById(userId) ?: throw AuthErrors.invalidRefreshToken()
+        return AuthResultModel(userService.describe(user), tokens)
     }
 
-    private fun startSession(user: UserEntity) =
-        AuthResponse(userService.describe(user), tokenService.issue(user.id!!))
+    private fun startSession(user: UserModel) =
+        AuthResultModel(userService.describe(user), tokenService.issue(user.id))
 }

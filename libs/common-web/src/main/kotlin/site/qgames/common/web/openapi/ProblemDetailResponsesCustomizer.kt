@@ -19,7 +19,18 @@ class ProblemDetailResponsesCustomizer : OpenApiCustomizer {
         val components = openApi.components ?: Components().also { openApi.components = it }
         ModelConverters.getInstance().readAll(ProblemDetail::class.java).forEach(components::addSchemas)
         val problemSchema = components.schemas?.get(PROBLEM_DETAIL) ?: return
-        problemSchema.addProperty("code", Schema<String>().type("string").description("Машиночитаемый код ошибки"))
+        // OpenAPI 3.1: тип задаётся через types, type(...) в итоговый JSON не попадает.
+        problemSchema.addProperty("code", Schema<String>().types(setOf("string")).description("Машиночитаемый код ошибки"))
+        problemSchema.addProperty(
+            "errors",
+            Schema<Any>().types(setOf("object"))
+                .additionalProperties(Schema<String>().types(setOf("string")))
+                .description("Ошибки по полям запроса (у VALIDATION_ERROR): имя поля → сообщение"),
+        )
+        problemSchema.addProperty(
+            "reason",
+            Schema<String>().types(setOf("string")).description("Причина отказа правил игры (у MOVE_REJECTED), например NOT_YOUR_TURN"),
+        )
 
         val problemContent = Content().addMediaType(
             PROBLEM_JSON,

@@ -1,9 +1,8 @@
 package site.qgames.common.web.context
 
-import org.springframework.http.HttpStatus
 import org.springframework.web.context.request.RequestContextHolder
 import org.springframework.web.context.request.ServletRequestAttributes
-import site.qgames.common.web.exception.ApiException
+import site.qgames.common.exception.exception.UnauthorizedException
 import site.qgames.common.web.header.QgamesHeaders
 import java.util.UUID
 
@@ -20,5 +19,5 @@ class RequestUserContext {
     }
 
     private fun unauthenticated() =
-        ApiException(HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", "Request is not authenticated")
+        UnauthorizedException("UNAUTHENTICATED", "Request is not authenticated")
 }

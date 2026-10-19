@@ -11,9 +11,11 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.mail.MailSendException
 import site.qgames.userauth.BaseIntegrationTest
 import site.qgames.userauth.gatewayapi.dto.auth.RegistrationResponse
+import site.qgames.userauth.gatewayapi.dto.user.Avatar
 import site.qgames.userauth.support.TestData
 import site.qgames.userauth.support.TestData.NEW_EMAIL
 import site.qgames.userauth.support.TestData.PASSWORD
+import site.qgames.userauth.asyncapi.event.Avatar as AvatarProto
 import java.util.stream.Stream
 
 class RegistrationScenariosTest : BaseIntegrationTest() {
@@ -24,9 +26,10 @@ class RegistrationScenariosTest : BaseIntegrationTest() {
         case: String,
         email: String,
         password: String,
+        nickname: String,
         invalidField: String,
     ) {
-        register(email, password).andExpect {
+        register(email, password, nickname).andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("VALIDATION_ERROR") }
             jsonPath("$.errors.$invalidField") { exists() }
@@ -34,6 +37,65 @@ class RegistrationScenariosTest : BaseIntegrationTest() {
 
         assertThat(countRows("\"user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT)
         assertThat(countRows("email_verification")).isZero()
+        assertThat(publishedProfileEvents()).isEmpty()
+    }
+
+    @ParameterizedTest(name = "avatar {0}")
+    @ValueSource(strings = ["HORSE", ""])
+    fun `unknown or missing avatar is rejected`(avatar: String) {
+        val body = mutableMapOf<String, Any?>("email" to NEW_EMAIL, "password" to PASSWORD, "nickname" to "Newcomer")
+        if (avatar.isNotEmpty()) body["avatar"] = avatar
+
+        postJson("/api/auth/register", body).andExpect {
+            status { isBadRequest() }
+        }
+        assertThat(countRows("\"user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT)
+    }
+
+    @ParameterizedTest(name = "nickname \"{0}\"")
+    @ValueSource(strings = ["nick", "Вася", "player two"])
+    fun `nickname with letters of any alphabet and inner spaces is accepted`(nickname: String) {
+        register(NEW_EMAIL, nickname = nickname).andExpect { status { isOk() } }
+
+        val stored = jdbcClient.sql("""SELECT nickname FROM "user" WHERE email = :email""")
+            .param("email", NEW_EMAIL)
+            .query(String::class.java)
+            .single()
+        assertThat(stored).isEqualTo(nickname)
+    }
+
+    @ParameterizedTest(name = "without {0}")
+    @ValueSource(strings = ["email", "password", "nickname", "avatar"])
+    fun `registration without a required field is rejected`(field: String) {
+        val body = mutableMapOf<String, Any?>("email" to NEW_EMAIL, "password" to PASSWORD, "nickname" to "Newcomer", "avatar" to "CAT")
+        body.remove(field)
+
+        postJson("/api/auth/register", body).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("VALIDATION_ERROR") }
+        }
+        assertThat(countRows("\"user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT)
+    }
+
+    @Test
+    fun `email verification without a code is rejected`() {
+        postJson("/api/auth/verify-email", mapOf("email" to TestData.Unverified.EMAIL)).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("VALIDATION_ERROR") }
+        }
+    }
+
+    @Test
+    fun `registration publishes the profile snapshot for other services`() {
+        val response = register(NEW_EMAIL, nickname = "Lucky Dog", avatar = Avatar.DOG)
+            .andExpect { status { isOk() } }
+            .body<RegistrationResponse>()
+
+        val event = publishedProfileEvents().single()
+        assertThat(event.userId).isEqualTo(response.userId.toString())
+        assertThat(event.nickname).isEqualTo("Lucky Dog")
+        assertThat(event.avatar).isEqualTo(AvatarProto.AVATAR_DOG)
+        assertThat(event.version).isZero()
     }
 
     @ParameterizedTest(name = "raw email \"{0}\"")
@@ -117,11 +179,18 @@ class RegistrationScenariosTest : BaseIntegrationTest() {
     companion object {
         @JvmStatic
         fun invalidRegistrations(): Stream<Arguments> = Stream.of(
-            arguments("malformed email", "not-an-email", PASSWORD, "email"),
-            arguments("blank email", "", PASSWORD, "email"),
-            arguments("too long email", "a".repeat(310) + "@example.com", PASSWORD, "email"),
-            arguments("too short password", NEW_EMAIL, "short", "password"),
-            arguments("too long password", NEW_EMAIL, "p".repeat(129), "password"),
+            arguments("malformed email", "not-an-email", PASSWORD, "Newcomer", "email"),
+            arguments("blank email", "", PASSWORD, "Newcomer", "email"),
+            arguments("too long email", "a".repeat(310) + "@example.com", PASSWORD, "Newcomer", "email"),
+            arguments("too short password", NEW_EMAIL, "short", "Newcomer", "password"),
+            arguments("too long password", NEW_EMAIL, "p".repeat(129), "Newcomer", "password"),
+            arguments("too short nickname", NEW_EMAIL, PASSWORD, "ab", "nickname"),
+            arguments("too long nickname", NEW_EMAIL, PASSWORD, "n".repeat(33), "nickname"),
+            arguments("nickname with leading space", NEW_EMAIL, PASSWORD, " Bob", "nickname"),
+            arguments("blank nickname", NEW_EMAIL, PASSWORD, "   ", "nickname"),
+            arguments("nickname of one letter after a space", NEW_EMAIL, PASSWORD, " a", "nickname"),
+            arguments("nickname with trailing space", NEW_EMAIL, PASSWORD, "a ", "nickname"),
+            arguments("nickname with a control character", NEW_EMAIL, PASSWORD, "a\u0007b", "nickname"),
         )
     }
 }

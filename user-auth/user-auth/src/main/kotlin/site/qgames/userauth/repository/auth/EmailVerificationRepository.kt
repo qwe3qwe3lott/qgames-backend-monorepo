@@ -1,37 +1,36 @@
 package site.qgames.userauth.repository.auth
 
-import org.springframework.data.jdbc.repository.query.Modifying
-import org.springframework.data.jdbc.repository.query.Query
-import org.springframework.data.repository.CrudRepository
+import org.springframework.stereotype.Repository
 import site.qgames.userauth.entity.auth.EmailVerificationEntity
+import site.qgames.userauth.mapper.auth.AuthEntityMapper
+import site.qgames.userauth.model.auth.EmailVerificationModel
 import java.time.Instant
 import java.util.UUID
 
-interface EmailVerificationRepository : CrudRepository<EmailVerificationEntity, UUID> {
+@Repository
+class EmailVerificationRepository(
+    private val emailVerificationPostgresqlRepository: EmailVerificationPostgresqlRepository,
+    private val authEntityMapper: AuthEntityMapper,
+) {
 
-    @Query(
-        """
-        SELECT * FROM email_verification
-        WHERE user_id = :userId AND consumed_at IS NULL
-        ORDER BY created_at DESC
-        LIMIT 1
-        """,
-    )
-    fun findActive(userId: UUID): EmailVerificationEntity?
+    fun insert(userId: UUID, codeHash: String, expiresAt: Instant, now: Instant): EmailVerificationModel =
+        authEntityMapper.toModel(
+            emailVerificationPostgresqlRepository.save(
+                EmailVerificationEntity(userId = userId, codeHash = codeHash, expiresAt = expiresAt, createdAt = now),
+            ),
+        )
+
+    /** Последний неиспользованный код пользователя. */
+    fun findActive(userId: UUID): EmailVerificationModel? =
+        emailVerificationPostgresqlRepository.findActive(userId)?.let(authEntityMapper::toModel)
 
     /**
      * Атомарно засчитывает попытку ввода кода. Возвращает 0, если лимит исчерпан —
      * так лимит соблюдается даже при параллельных запросах в разные инстансы.
      */
-    @Modifying
-    @Query("UPDATE email_verification SET attempts = attempts + 1 WHERE id = :id AND attempts < :maxAttempts")
-    fun registerAttempt(id: UUID, maxAttempts: Int): Int
+    fun registerAttempt(id: UUID, maxAttempts: Int): Int = emailVerificationPostgresqlRepository.registerAttempt(id, maxAttempts)
 
-    @Modifying
-    @Query("UPDATE email_verification SET consumed_at = :now WHERE id = :id AND consumed_at IS NULL")
-    fun consume(id: UUID, now: Instant): Int
+    fun consume(id: UUID, now: Instant): Int = emailVerificationPostgresqlRepository.consume(id, now)
 
-    @Modifying
-    @Query("UPDATE email_verification SET consumed_at = :now WHERE user_id = :userId AND consumed_at IS NULL")
-    fun consumeAllActive(userId: UUID, now: Instant): Int
+    fun consumeAllActive(userId: UUID, now: Instant): Int = emailVerificationPostgresqlRepository.consumeAllActive(userId, now)
 }

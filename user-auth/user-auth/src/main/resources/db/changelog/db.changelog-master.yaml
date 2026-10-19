@@ -13,3 +13,6 @@ databaseChangeLog:
   - include:
       file: DDL/2026-10-17-CREATE-refresh_token.yaml
       relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-18-CREATE-outbox_event.yaml
+      relativeToChangelogFile: true

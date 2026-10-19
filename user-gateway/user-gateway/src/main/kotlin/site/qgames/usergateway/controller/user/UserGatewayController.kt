@@ -8,6 +8,7 @@ import site.qgames.usergateway.mapper.user.toUserAuth
 import site.qgames.usergateway.publicapi.api.PublicUserApi
 import site.qgames.usergateway.publicapi.dto.auth.GoogleIdTokenRequest
 import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
+import site.qgames.usergateway.publicapi.dto.user.UpdateProfileRequest
 import site.qgames.usergateway.publicapi.dto.user.UserResponse
 
 /**
@@ -19,6 +20,9 @@ class UserGatewayController(
 ) : PublicUserApi {
 
     override fun getCurrentUser(): UserResponse = userApi.getCurrentUser().toPublic()
+
+    override fun updateProfile(request: UpdateProfileRequest): UserResponse =
+        userApi.updateProfile(request.toUserAuth()).toPublic()
 
     override fun addPasswordLogin(request: SetPasswordRequest): UserResponse =
         userApi.addPasswordLogin(request.toUserAuth()).toPublic()

@@ -18,12 +18,13 @@ import site.qgames.usergateway.BaseIntegrationTest
 import site.qgames.usergateway.publicapi.dto.auth.LoginRequest
 
 /**
- * Разрешённые origin берутся из application.yml по умолчанию: http://localhost:5173 и http://localhost:3000.
+ * Разрешённый origin берётся из application.yml по умолчанию: только портал, http://localhost:3000.
+ * Админка (3001) ходит в admin-gateway, а не сюда.
  */
 class CorsScenariosTest : BaseIntegrationTest() {
 
     @ParameterizedTest(name = "preflight from {0}")
-    @ValueSource(strings = ["http://localhost:5173", "http://localhost:3000"])
+    @ValueSource(strings = ["http://localhost:3000"])
     fun `preflight from an allowed origin permits credentialed requests`(origin: String) {
         mockMvc.options("/api/auth/login") {
             header(HttpHeaders.ORIGIN, origin)
@@ -38,7 +39,9 @@ class CorsScenariosTest : BaseIntegrationTest() {
     }
 
     @ParameterizedTest(name = "preflight from {0}")
-    @ValueSource(strings = ["https://evil.example.com", "http://localhost:8081", "https://qgames.site.evil.com"])
+    @ValueSource(
+        strings = ["https://evil.example.com", "http://localhost:8081", "https://qgames.site.evil.com", "http://localhost:3001", "http://localhost:5173"],
+    )
     fun `preflight from a foreign origin is rejected`(origin: String) {
         mockMvc.options("/api/auth/login") {
             header(HttpHeaders.ORIGIN, origin)
@@ -51,7 +54,7 @@ class CorsScenariosTest : BaseIntegrationTest() {
 
     @ParameterizedTest(name = "login from {0}, allowed: {1}")
     @CsvSource(
-        "http://localhost:5173, true",
+        "http://localhost:3000, true",
         "https://evil.example.com, false",
     )
     fun `actual request is served only for an allowed origin`(origin: String, allowed: Boolean) {
@@ -84,11 +87,11 @@ class CorsScenariosTest : BaseIntegrationTest() {
         stubUserAuthGet("/api/users/me", user())
 
         mockMvc.get("/api/users/me") {
-            header(HttpHeaders.ORIGIN, "http://localhost:5173")
+            header(HttpHeaders.ORIGIN, "http://localhost:3000")
             cookie(Cookie("access_token", accessToken()))
         }.andExpect {
             status { isOk() }
-            header { string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:5173") }
+            header { string(HttpHeaders.ACCESS_CONTROL_ALLOW_ORIGIN, "http://localhost:3000") }
             header { string(HttpHeaders.ACCESS_CONTROL_ALLOW_CREDENTIALS, "true") }
         }
     }

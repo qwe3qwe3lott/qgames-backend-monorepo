@@ -28,7 +28,10 @@ import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
 import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
 import site.qgames.userauth.gatewayapi.dto.auth.LoginRequest
 import site.qgames.userauth.gatewayapi.dto.auth.RefreshTokenRequest
+import site.qgames.userauth.asyncapi.event.UserProfileChanged
+import site.qgames.userauth.asyncapi.topic.UserAuthTopics
 import site.qgames.userauth.gatewayapi.dto.auth.RegisterRequest
+import site.qgames.userauth.gatewayapi.dto.user.Avatar
 import site.qgames.userauth.gatewayapi.dto.auth.ResendCodeRequest
 import site.qgames.userauth.gatewayapi.dto.auth.VerifyEmailRequest
 import site.qgames.userauth.mail.VerificationMailSender
@@ -95,8 +98,22 @@ abstract class BaseIntegrationTest {
         return jwt.jwtClaimsSet
     }
 
-    protected fun register(email: String, password: String = TestData.PASSWORD) =
-        postJson("/api/auth/register", RegisterRequest(email, password))
+    protected fun register(
+        email: String,
+        password: String = TestData.PASSWORD,
+        nickname: String = TestData.NEW_NICKNAME,
+        avatar: Avatar = Avatar.DOG,
+    ) = postJson("/api/auth/register", RegisterRequest(email, password, nickname, avatar))
+
+    /** События профиля, записанные в outbox (в тестах строки не удаляются), от старых к новым. */
+    protected fun publishedProfileEvents(): List<UserProfileChanged> =
+        jdbcClient.sql(
+            "SELECT aggregate_type, aggregate_id, event_type, payload FROM outbox_event ORDER BY created_at, id",
+        ).query { rs, _ ->
+            check(rs.getString("aggregate_type") == UserAuthTopics.USER_PROFILE_AGGREGATE)
+            check(rs.getString("event_type") == UserAuthTopics.USER_PROFILE_CHANGED_EVENT)
+            UserProfileChanged.parseFrom(rs.getBytes("payload")).also { check(it.userId == rs.getString("aggregate_id")) }
+        }.list()
 
     protected fun verifyEmail(email: String, code: String) =
         postJson("/api/auth/verify-email", VerifyEmailRequest(email, code))

@@ -1,6 +1,7 @@
 package site.qgames.userauth.entity.user
 
 import org.springframework.data.annotation.Id
+import org.springframework.data.annotation.Version
 import org.springframework.data.relational.core.mapping.Table
 import java.time.Instant
 import java.util.UUID
@@ -11,5 +12,13 @@ data class UserEntity(
     val id: UUID? = null,
     val email: String,
     val emailVerified: Boolean,
+    val nickname: String,
+    val avatar: String,
     val createdAt: Instant,
+    /**
+     * Оптимистичная блокировка и порядок CDC-событий: растёт при каждом изменении строки
+     * (в собственных UPDATE-запросах увеличивается вручную).
+     */
+    @Version
+    val version: Long? = null,
 )

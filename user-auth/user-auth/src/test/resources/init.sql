@@ -1,13 +1,13 @@
 -- Выполняется перед каждым тестом (@Sql на BaseIntegrationTest): чистит БД и загружает базовые фикстуры.
 -- Значения должны совпадать с константами в site.qgames.userauth.support.TestData.
 
-TRUNCATE "user", user_identity, email_verification, refresh_token CASCADE;
+TRUNCATE "user", user_identity, email_verification, refresh_token, outbox_event CASCADE;
 
-INSERT INTO "user" (id, email, email_verified)
-VALUES ('01990000-0000-7000-8000-000000000001', 'player@example.com', true),
-       ('01990000-0000-7000-8000-000000000002', 'unverified@example.com', false),
-       ('01990000-0000-7000-8000-000000000003', 'owner@gmail.com', true),
-       ('01990000-0000-7000-8000-000000000004', 'both@example.com', true);
+INSERT INTO "user" (id, email, email_verified, nickname, avatar)
+VALUES ('01990000-0000-7000-8000-000000000001', 'player@example.com', true, 'Player', 'CAT'),
+       ('01990000-0000-7000-8000-000000000002', 'unverified@example.com', false, 'Unverified', 'DOG'),
+       ('01990000-0000-7000-8000-000000000003', 'owner@gmail.com', true, 'Google Owner', 'CAT'),
+       ('01990000-0000-7000-8000-000000000004', 'both@example.com', true, 'Both', 'DOG');
 
 -- password_hash — Argon2id от TestData.PASSWORD ("correct-horse-1")
 INSERT INTO user_identity (user_id, provider, subject, password_hash)

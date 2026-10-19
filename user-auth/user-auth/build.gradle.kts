@@ -3,7 +3,10 @@ plugins {
 }
 
 dependencies {
+    implementation(project(":libs:common-exception"))
     implementation(project(":libs:common-web"))
+    implementation(project(":libs:common-cdc-source"))
+    implementation(project(":user-auth:user-auth-internal-async-api"))
     implementation(project(":user-auth:user-auth-user-gateway-sync-api"))
 
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")

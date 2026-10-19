@@ -6,6 +6,8 @@ import org.springframework.web.client.RestClient
 import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer
 import org.springframework.web.service.registry.HttpServiceGroupConfigurer
 import org.springframework.web.service.registry.ImportHttpServices
+import site.qgames.game.gatewayapi.api.GameMoveApi
+import site.qgames.game.gatewayapi.api.RoomApi
 import site.qgames.userauth.gatewayapi.api.AuthApi
 import site.qgames.userauth.gatewayapi.api.UserApi
 import site.qgames.usergateway.interceptor.UserIdPropagationInterceptor
@@ -16,6 +18,7 @@ import site.qgames.usergateway.interceptor.UserIdPropagationInterceptor
  */
 @Configuration
 @ImportHttpServices(group = "user-auth", types = [AuthApi::class, UserApi::class])
+@ImportHttpServices(group = "game", types = [RoomApi::class, GameMoveApi::class])
 class HttpClientsConfig {
 
     @Bean

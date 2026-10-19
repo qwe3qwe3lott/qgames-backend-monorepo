@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package qgames.userauth;
+
+option java_package = "site.qgames.userauth.asyncapi.event";
+option java_multiple_files = true;
+
+// Снапшот публичного профиля пользователя (колонки user_auth."user"). Публикуется через outbox при создании аккаунта
+// и при каждой смене профиля. Топик: UserAuthTopics.USER_PROFILE (компактируемый), ключ сообщения — user_id.
+// Потребитель применяет событие, только если version больше уже сохранённой: повторы и перестановки безопасны.
+message UserProfileChanged {
+  string user_id = 1;
+  string nickname = 2;
+  Avatar avatar = 3;
+  // Версия строки "user" в user-auth (растёт при каждом изменении).
+  int64 version = 4;
+}
+
+enum Avatar {
+  AVATAR_UNSPECIFIED = 0;
+  AVATAR_CAT = 1;
+  AVATAR_DOG = 2;
+}

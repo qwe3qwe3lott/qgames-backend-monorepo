@@ -14,6 +14,7 @@ object TestData {
 
     /** Email, которого нет в фикстурах: для сценариев регистрации. */
     const val NEW_EMAIL = "newcomer@example.com"
+    const val NEW_NICKNAME = "Newcomer"
 
     /** Подтверждённый email, вход по паролю. */
     object Verified {

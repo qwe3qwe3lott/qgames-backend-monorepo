@@ -28,6 +28,7 @@ import org.springframework.test.web.servlet.ResultActionsDsl
 import site.qgames.common.test.wiremock.WireMockTestServer
 import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
 import site.qgames.userauth.gatewayapi.dto.auth.TokenPair
+import site.qgames.userauth.gatewayapi.dto.user.Avatar
 import site.qgames.userauth.gatewayapi.dto.user.LoginMethod
 import site.qgames.userauth.gatewayapi.dto.user.UserResponse
 import tools.jackson.databind.json.JsonMapper
@@ -107,7 +108,14 @@ abstract class BaseIntegrationTest {
         }
 
         fun user(id: UUID = USER_ID) =
-            UserResponse(id, "player@example.com", emailVerified = true, loginMethods = listOf(LoginMethod.PASSWORD))
+            UserResponse(
+                id = id,
+                email = "player@example.com",
+                emailVerified = true,
+                nickname = "Player",
+                avatar = Avatar.CAT,
+                loginMethods = listOf(LoginMethod.PASSWORD),
+            )
 
         fun authResponse(refreshToken: String = "refresh-token-1") = AuthResponse(
             user = user(),
@@ -125,7 +133,9 @@ abstract class BaseIntegrationTest {
         @JvmStatic
         @DynamicPropertySource
         fun registerProperties(registry: DynamicPropertyRegistry) {
+            // user-auth и game эмулирует один WireMock: пути у сервисов не пересекаются.
             registry.add("spring.http.serviceclient.user-auth.base-url") { WireMockTestServer.baseUrl }
+            registry.add("spring.http.serviceclient.game.base-url") { WireMockTestServer.baseUrl }
             registry.add("qgames.gateway.jwt.jwk-set-uri") { WireMockTestServer.baseUrl + JWKS_PATH }
         }
     }

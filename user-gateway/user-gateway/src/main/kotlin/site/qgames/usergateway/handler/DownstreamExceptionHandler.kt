@@ -1,6 +1,8 @@
 package site.qgames.usergateway.handler
 
 import org.slf4j.LoggerFactory
+import org.springframework.core.Ordered
+import org.springframework.core.annotation.Order
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
 import org.springframework.http.ProblemDetail
@@ -9,12 +11,14 @@ import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import org.springframework.web.client.ResourceAccessException
 import org.springframework.web.client.RestClientResponseException
-import site.qgames.common.web.handler.ApiExceptionHandler
+import site.qgames.common.exception.exception.ErrorCodes
 
 /**
  * Ошибки целевых сервисов (ProblemDetail) отдаются фронту как есть: статус, тело и тип контента.
+ * Приоритет выше, чем у ловушки Exception из libs/common-exception.
  */
 @RestControllerAdvice
+@Order(Ordered.HIGHEST_PRECEDENCE)
 class DownstreamExceptionHandler {
 
     @ExceptionHandler(RestClientResponseException::class)
@@ -28,7 +32,7 @@ class DownstreamExceptionHandler {
     fun handleUnavailable(ex: ResourceAccessException): ResponseEntity<ProblemDetail> {
         log.warn("Downstream service is unavailable", ex)
         val problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, "Service is temporarily unavailable")
-        problem.setProperty(ApiExceptionHandler.CODE_PROPERTY, "SERVICE_UNAVAILABLE")
+        problem.setProperty(ErrorCodes.CODE_PROPERTY, "SERVICE_UNAVAILABLE")
         return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(problem)
     }
 

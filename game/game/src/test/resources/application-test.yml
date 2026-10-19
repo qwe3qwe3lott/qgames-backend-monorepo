@@ -1,0 +1,5 @@
+qgames:
+  game:
+    room:
+      # Шедулер в тестах выключен: EmptyRoomCleanupJob вызывается напрямую.
+      cleanup-enabled: false

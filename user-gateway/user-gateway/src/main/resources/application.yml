@@ -11,6 +11,8 @@ spring:
     serviceclient:
       user-auth:
         base-url: ${USER_AUTH_URL:http://localhost:8081}
+      game:
+        base-url: ${GAME_URL:http://localhost:8082}
 
 management:
   endpoints:
@@ -29,7 +31,7 @@ qgames:
       issuer: qgames-user-auth
     cors:
       # Точные origin фронта через запятую, без wildcard. В проде — https://qgames.site.
-      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:3000}
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
     cookies:
       # Браузеры считают localhost безопасным контекстом, поэтому Secure-куки работают и по http://localhost.
       secure: ${COOKIES_SECURE:true}

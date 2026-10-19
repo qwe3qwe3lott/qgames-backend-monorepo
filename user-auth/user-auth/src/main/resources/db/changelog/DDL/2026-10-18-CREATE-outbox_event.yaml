@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-18-CREATE-outbox_event
+      author: A Kozlov
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: SQL/2026-10-18-CREATE-outbox_event.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            path: SQL/2026-10-18-CREATE-outbox_event-rollback.sql
+            relativeToChangelogFile: true

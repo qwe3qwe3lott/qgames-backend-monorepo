@@ -8,11 +8,10 @@ import org.springframework.security.oauth2.jwt.JwtEncoder
 import org.springframework.security.oauth2.jwt.JwtEncoderParameters
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import site.qgames.common.web.exception.ApiException
+import site.qgames.common.exception.exception.QgamesException
 import site.qgames.userauth.config.AuthProperties
-import site.qgames.userauth.entity.auth.RefreshTokenEntity
 import site.qgames.userauth.exception.auth.AuthErrors
-import site.qgames.userauth.gatewayapi.dto.auth.TokenPair
+import site.qgames.userauth.model.auth.TokenPairModel
 import site.qgames.userauth.repository.auth.RefreshTokenRepository
 import site.qgames.userauth.util.Hashing
 import java.time.Clock
@@ -33,7 +32,7 @@ class TokenService(
 ) {
 
     @Transactional
-    fun issue(userId: UUID, familyId: UUID = UUID.randomUUID()): TokenPair {
+    fun issue(userId: UUID, familyId: UUID = UUID.randomUUID()): TokenPairModel {
         val now = clock.instant()
         val accessTokenExpiresAt = now.plus(properties.jwt.accessTokenTtl)
         val claims = JwtClaimsSet.builder()
@@ -48,16 +47,8 @@ class TokenService(
 
         val refreshToken = Hashing.randomUrlSafeToken()
         val refreshTokenExpiresAt = now.plus(properties.refreshTokenTtl)
-        refreshTokenRepository.save(
-            RefreshTokenEntity(
-                userId = userId,
-                familyId = familyId,
-                tokenHash = Hashing.sha256Hex(refreshToken),
-                expiresAt = refreshTokenExpiresAt,
-                createdAt = now,
-            ),
-        )
-        return TokenPair(accessToken, accessTokenExpiresAt, refreshToken, refreshTokenExpiresAt)
+        refreshTokenRepository.insert(userId, familyId, Hashing.sha256Hex(refreshToken), refreshTokenExpiresAt, now)
+        return TokenPairModel(accessToken, accessTokenExpiresAt, refreshToken, refreshTokenExpiresAt)
     }
 
     /**
@@ -68,15 +59,15 @@ class TokenService(
      * так ведут себя параллельные вкладки, обновляющие сессию одной кукой. Им выдаётся ещё одна пара той же
      * цепочки. Повтор позже окна, после выхода или после обнаружения кражи отзывает всю цепочку.
      */
-    @Transactional(noRollbackFor = [ApiException::class])
-    fun rotate(refreshToken: String): Pair<UUID, TokenPair> {
+    @Transactional(noRollbackFor = [QgamesException::class])
+    fun rotate(refreshToken: String): Pair<UUID, TokenPairModel> {
         val now = clock.instant()
         val tokenHash = Hashing.sha256Hex(refreshToken)
         val existing = refreshTokenRepository.findByTokenHash(tokenHash) ?: throw AuthErrors.invalidRefreshToken()
         if (!existing.expiresAt.isAfter(now)) {
             throw AuthErrors.invalidRefreshToken()
         }
-        if (existing.revokedAt == null && refreshTokenRepository.rotate(existing.id!!, now) == 1) {
+        if (existing.revokedAt == null && refreshTokenRepository.rotate(existing.id, now) == 1) {
             return existing.userId to issue(existing.userId, existing.familyId)
         }
         // Токен уже отозван — возможно, только что параллельным запросом, поэтому перечитываем.

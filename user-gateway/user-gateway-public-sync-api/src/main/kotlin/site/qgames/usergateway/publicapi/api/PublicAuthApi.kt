@@ -30,8 +30,8 @@ interface PublicAuthApi {
 
     @Operation(
         summary = "Регистрация по email и паролю",
-        description = "Создаёт аккаунт и отправляет на email 6-значный код подтверждения. Сессия не открывается: " +
-            "войти можно после подтверждения email.",
+        description = "Создаёт аккаунт с ником (3–32 символа, не уникален) и аватаром и отправляет на email 6-значный код " +
+            "подтверждения. Сессия не открывается: войти можно после подтверждения email.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Аккаунт создан, письмо с кодом отправлено"),
@@ -92,7 +92,8 @@ interface PublicAuthApi {
     @Operation(
         summary = "Вход через Google",
         description = "Принимает Google ID token из Google Identity Services. Новый Google-аккаунт создаёт аккаунт " +
-            "или привязывается к существующему с тем же email, если email подтверждён и у нас, и в Google.",
+            "или привязывается к существующему с тем же email, если email подтверждён и у нас, и в Google. Новый аккаунт " +
+            "получает ник вида player-a1b2c3 и аватар CAT — их можно сменить в профиле.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Вход выполнен, возвращены данные пользователя"),

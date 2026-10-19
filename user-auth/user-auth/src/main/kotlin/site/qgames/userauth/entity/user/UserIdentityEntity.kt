@@ -5,15 +5,13 @@ import org.springframework.data.relational.core.mapping.Table
 import java.time.Instant
 import java.util.UUID
 
-/**
- * Способ входа пользователя. Для PASSWORD subject — email, для GOOGLE — claim `sub` из Google ID token.
- */
+/** Строка таблицы user_identity. */
 @Table("user_identity")
 data class UserIdentityEntity(
     @Id
     val id: UUID? = null,
     val userId: UUID,
-    val provider: IdentityProvider,
+    val provider: String,
     val subject: String,
     val passwordHash: String? = null,
     val createdAt: Instant,
