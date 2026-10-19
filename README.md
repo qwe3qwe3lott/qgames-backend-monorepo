@@ -10,7 +10,7 @@
 
 ## Быстрый старт
 
-Нужны Docker и JDK 25.
+Нужны Docker и JDK 25 или новее (байткод собирается под Java 25).
 
 ```bash
 docker compose up --build -d --wait
