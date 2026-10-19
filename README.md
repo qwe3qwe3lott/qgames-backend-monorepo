@@ -13,7 +13,6 @@
 Нужны Docker и JDK 25.
 
 ```bash
-cp .env.example .env                  # по желанию: GOOGLE_CLIENT_IDS для входа через Google
 docker compose up --build -d --wait
 ```
 
