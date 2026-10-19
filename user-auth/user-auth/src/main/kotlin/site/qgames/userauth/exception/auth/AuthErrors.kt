@@ -43,8 +43,8 @@ object AuthErrors {
     fun refreshTokenReused() =
         UnauthorizedException("REFRESH_TOKEN_REUSED", "Refresh token was already used, session is revoked")
 
-    fun invalidGoogleToken() =
-        UnauthorizedException("INVALID_GOOGLE_TOKEN", "Google ID token is invalid")
+    fun invalidGoogleToken(cause: Throwable? = null) =
+        UnauthorizedException("INVALID_GOOGLE_TOKEN", "Google ID token is invalid", cause = cause)
 
     fun googleEmailNotVerified() =
         ClientException("GOOGLE_EMAIL_NOT_VERIFIED", "Google account email is not verified")
