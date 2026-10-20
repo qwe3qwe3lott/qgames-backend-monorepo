@@ -224,8 +224,6 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
             arguments("create", HttpMethod.POST, "/api/games/nothing/rooms", settingsBody("settings"), true),
             arguments("update settings", HttpMethod.PUT, "/api/games/nothing/rooms/$ROOM_ID/settings", settingsBody(null), true),
             arguments("get", HttpMethod.GET, "/api/rooms/$ROOM_ID", null, true),
-            arguments("join", HttpMethod.POST, "/api/rooms/$ROOM_ID/join", null, true),
-            arguments("leave", HttpMethod.POST, "/api/rooms/$ROOM_ID/leave", null, false),
             arguments("change role", HttpMethod.PUT, "/api/rooms/$ROOM_ID/role", """{"role":"SPECTATOR"}""", true),
             arguments("start", HttpMethod.POST, "/api/rooms/$ROOM_ID/session", null, true),
             arguments("cancel", HttpMethod.DELETE, "/api/rooms/$ROOM_ID/session", null, true),

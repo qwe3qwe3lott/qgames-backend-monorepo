@@ -11,7 +11,8 @@ import javax.sql.DataSource
 
 /**
  * Шедулеры работают на всех инстансах. Задачи, которые должен выполнять один инстанс (EmptyRoomCleanupJob,
- * ForceDisabledGameCleanupJob), берут ShedLock (таблица shedlock); MoveTimeoutJob и RoomLeaveJob делят работу между инстансами через FOR UPDATE SKIP LOCKED. Запуск по расписанию
+ * ForceDisabledGameCleanupJob), берут ShedLock (таблица shedlock); MoveTimeoutJob, RoomLeaveJob и RoomConnectionCleanupJob делят работу между
+ * инстансами через FOR UPDATE SKIP LOCKED; RoomConnectionHeartbeatJob у каждого инстанса свой (его потоки). Запуск по расписанию
  * у каждого джоба включается своим флагом (`…-enabled`), в тестах джобы вызываются напрямую.
  */
 @Configuration

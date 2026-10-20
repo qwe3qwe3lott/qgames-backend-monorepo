@@ -120,16 +120,6 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
         assertThat(emptySince(roomId)).isFalse()
     }
 
-    @Test
-    fun `leaving a room you are not in is rejected`() {
-        val roomId = createRoom(ALICE).id
-
-        call(HttpMethod.POST, "/api/rooms/$roomId/leave", BOB).andExpect {
-            status { isForbidden() }
-            jsonPath("$.code") { value("NOT_ROOM_MEMBER") }
-        }
-    }
-
     @ParameterizedTest(name = "{0}")
     @MethodSource("roleChanges")
     fun `changing role`(case: String, setup: RoomSetup, user: UUID, role: RoomRole, expectedStatus: HttpStatus, expectedCode: String?) {
@@ -184,8 +174,7 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
         @JvmStatic
         fun roomOperations(): Stream<Arguments> = Stream.of(
             arguments(HttpMethod.GET, "/api/rooms/{id}", null),
-            arguments(HttpMethod.POST, "/api/rooms/{id}/join", null),
-            arguments(HttpMethod.POST, "/api/rooms/{id}/leave", null),
+            arguments(HttpMethod.GET, "/api/rooms/{id}/events", null),
             arguments(HttpMethod.PUT, "/api/rooms/{id}/role", ChangeRoleRequest(RoomRole.SPECTATOR)),
             arguments(HttpMethod.POST, "/api/rooms/{id}/session", null),
             arguments(HttpMethod.DELETE, "/api/rooms/{id}/session", null),

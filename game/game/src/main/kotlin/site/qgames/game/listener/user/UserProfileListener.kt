@@ -5,6 +5,9 @@ import org.slf4j.LoggerFactory
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.stereotype.Component
 import site.qgames.game.model.replica.UserAvatar
+import site.qgames.game.model.room.RoomEventType
+import site.qgames.game.publisher.room.RoomEventPublisher
+import site.qgames.game.repository.room.RoomMemberRepository
 import site.qgames.game.model.replica.UserAuthUserModel
 import site.qgames.game.repository.replica.UserAuthUserRepository
 import site.qgames.userauth.asyncapi.event.UserProfileChanged
@@ -15,10 +18,16 @@ import site.qgames.userauth.asyncapi.event.Avatar as AvatarProto
 /**
  * Реплика user_auth."user" (CDC). Битое сообщение не повторяется, а пропускается (см. libs/common-cdc-consumer),
  * обработка идемпотентна: снапшот применяется, только если он новее сохранённого.
+ *
+ * Применённый профиль публикует users-changed во все комнаты пользователя. Блокировки комнат не берутся (решение
+ * пользователя): если смена ника попадёт между чтением снапшота и маркером нового подписчика, он её не увидит до
+ * следующего события участников — это допустимо.
  */
 @Component
 class UserProfileListener(
     private val userAuthUserRepository: UserAuthUserRepository,
+    private val roomMemberRepository: RoomMemberRepository,
+    private val roomEventPublisher: RoomEventPublisher,
 ) {
 
     @KafkaListener(topics = [UserAuthTopics.USER_PROFILE])
@@ -34,7 +43,10 @@ class UserProfileListener(
         )
         if (!applied) {
             log.debug("Skipped stale profile snapshot for user {}", event.userId)
+            return
         }
+        roomMemberRepository.findRoomIdsByUser(UUID.fromString(event.userId))
+            .forEach { roomEventPublisher.publish(it, RoomEventType.USERS_CHANGED) }
     }
 
     private fun AvatarProto.toModel(): UserAvatar = when (this) {

@@ -1,7 +1,7 @@
 -- Выполняется перед каждым тестом (@Sql на BaseIntegrationTest): чистит БД и загружает базовые фикстуры.
 -- Значения должны совпадать с константами в site.qgames.game.support.TestData.
 
-TRUNCATE game, "user_auth#user", room, room_member, room_session, room_session_player, room_session_move, shedlock CASCADE;
+TRUNCATE game, "user_auth#user", room, room_member, room_session, room_session_player, room_session_move, room_connection, shedlock CASCADE;
 
 -- Каталог игр — как в DML-миграции 2026-10-18-INSERT-game. Тесты меняют publish_status напрямую.
 INSERT INTO game (code, title, description, sort_order, publish_status)

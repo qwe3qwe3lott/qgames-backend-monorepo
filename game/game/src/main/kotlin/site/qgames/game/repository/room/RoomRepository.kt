@@ -64,6 +64,9 @@ class RoomRepository(
     /** Удаляет комнату. Участники и партии удаляются каскадно. */
     fun delete(id: UUID) = roomPostgresqlRepository.delete(id)
 
-    /** Удаляет комнаты, пустующие с момента раньше [threshold]. Участники и партии удаляются каскадно. */
-    fun deleteEmptySince(threshold: Instant): Int = roomPostgresqlRepository.deleteEmptySince(threshold)
+    /**
+     * Удаляет комнаты, пустующие с момента раньше [threshold], и возвращает их id. Участники, подключения и партии
+     * удаляются каскадно.
+     */
+    fun deleteEmptySince(threshold: Instant): List<UUID> = roomPostgresqlRepository.deleteEmptySince(threshold)
 }

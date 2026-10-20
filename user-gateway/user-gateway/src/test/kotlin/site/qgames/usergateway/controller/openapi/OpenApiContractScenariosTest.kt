@@ -60,6 +60,52 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(strings(parameter.path("schema").path("enum"))).containsExactly("nothing", "carcassonne")
     }
 
+    /** Поток событий комнаты: text/event-stream со схемой-union событий, конверты {type, data} в components. */
+    @Test
+    fun `room events stream is described as a union of events`() {
+        val docs = apiDocs()
+
+        val operation = docs.path("paths").path("/api/rooms/{roomId}/events").path("get")
+        val ok = operation.path("responses").path("200").path("content")
+        assertThat(ok.propertyNames().toList()).containsExactly("text/event-stream")
+        assertThat(ok.path("text/event-stream").path("schema").path("\$ref").asString())
+            .isEqualTo("#/components/schemas/RoomStreamEvent")
+        assertThat(operation.path("responses").propertyNames().toList()).containsExactly("200", "401", "404", "503")
+
+        val schemas = docs.path("components").path("schemas")
+        val union = schemas.path("RoomStreamEvent")
+        assertThat(union.path("discriminator").path("propertyName").asString()).isEqualTo("type")
+        assertThat(union.has("properties")).isFalse()
+        val variants = mapOf(
+            "snapshot" to "RoomSnapshotEvent",
+            "users-changed" to "RoomUsersChangedEvent",
+            "settings-changed" to "RoomSettingsChangedEvent",
+            "session-changed" to "RoomSessionChangedEvent",
+            "room-deleted" to "RoomDeletedEvent",
+        )
+        assertThat(strings(union.path("oneOf")) { it.path("\$ref") })
+            .containsExactlyInAnyOrderElementsOf(variants.values.map { "#/components/schemas/$it" })
+        variants.forEach { (type, variant) ->
+            assertThat(union.path("discriminator").path("mapping").path(type).asString()).isEqualTo("#/components/schemas/$variant")
+            val schema = schemas.path(variant)
+            assertThat(schema.has("allOf")).isFalse()
+            assertThat(strings(schema.path("properties").path("type").path("enum"))).containsExactly(type)
+            assertThat(strings(schema.path("required"))).contains("type", "data")
+        }
+        assertThat(schemas.path("RoomSnapshotEvent").path("properties").path("data").path("\$ref").asString())
+            .isEqualTo("#/components/schemas/RoomResponse")
+        assertThat(schemas.path("EmptyEventDataDto").path("type").asString()).isEqualTo("object")
+        assertThat(schemas.has("ResponseBodyEmitter")).isFalse()
+    }
+
+    @Test
+    fun `presence is the stream, join and leave are gone`() {
+        val paths = apiDocs().path("paths").propertyNames().toList()
+
+        assertThat(paths).contains("/api/rooms/{roomId}/events")
+        assertThat(paths).doesNotContain("/api/rooms/{roomId}/join", "/api/rooms/{roomId}/leave")
+    }
+
     /** Снапшот API на фронте не должен меняться без изменения контракта (springdoc.writer-with-order-by-keys). */
     @ParameterizedTest(name = "{0}")
     @CsvSource("paths", "components.schemas")

@@ -125,10 +125,11 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
         jdbcClient.sql("DELETE FROM room WHERE id = :id").param("id", id).update()
     }
 
-    fun deleteEmptySince(threshold: Instant): Int =
-        jdbcClient.sql("DELETE FROM room WHERE empty_since < :threshold")
+    fun deleteEmptySince(threshold: Instant): List<UUID> =
+        jdbcClient.sql("DELETE FROM room WHERE empty_since < :threshold RETURNING id")
             .param("threshold", threshold.toTimestamp())
-            .update()
+            .query { rs, _ -> rs.getUuid("id")!! }
+            .list()
 
     private val mapper = RowMapper { rs, _ ->
         RoomEntity(

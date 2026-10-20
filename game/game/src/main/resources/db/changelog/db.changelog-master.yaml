@@ -29,3 +29,6 @@ databaseChangeLog:
   - include:
       file: DDL/2026-10-18-CREATE-shedlock.yaml
       relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-20-CREATE-room_connection.yaml
+      relativeToChangelogFile: true

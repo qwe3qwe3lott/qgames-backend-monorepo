@@ -34,6 +34,10 @@ import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
 import site.qgames.game.gatewayapi.dto.room.TimeControlDto
 import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 import site.qgames.game.job.room.RoomLeaveJob
+import site.qgames.game.stream.room.RoomStreamRegistry
+import org.junit.jupiter.api.AfterEach
+import org.springframework.test.web.servlet.MvcResult
+import org.springframework.test.web.servlet.get
 import site.qgames.games.nothing.NothingGameRules
 import site.qgames.userauth.asyncapi.event.Avatar
 import site.qgames.userauth.asyncapi.event.UserProfileChanged
@@ -65,9 +69,18 @@ abstract class BaseIntegrationTest {
     @Autowired
     protected lateinit var roomLeaveJob: RoomLeaveJob
 
+    @Autowired
+    protected lateinit var roomStreamRegistry: RoomStreamRegistry
+
     /** Правила «игры в ничто»: шпион, чтобы проверять ветки, недостижимые с настоящими правилами (сброс — после теста). */
     @MockkSpyBean
     protected lateinit var nothingGameRules: NothingGameRules
+
+    /** Потоки, открытые тестом, закрываются после него (отключения от комнат — до очистки БД следующего теста). */
+    @AfterEach
+    fun closeRoomStreams() {
+        roomStreamRegistry.closeAll()
+    }
 
     protected fun call(method: HttpMethod, path: String, userId: UUID?, body: Any? = null): ResultActionsDsl =
         mockMvc.request(method, path) {
@@ -91,10 +104,13 @@ abstract class BaseIntegrationTest {
     protected fun createRoomRequest(owner: UUID?, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
         call(HttpMethod.POST, "/api/games/$gameCode/rooms", owner, body)
 
-    protected fun createRoom(owner: UUID, settings: RoomSettingsDto = nothingSettings()): RoomResponse =
-        createRoomRequest(owner, CreateRoomRequest(settings))
+    /** Создаёт комнату и, как портал после создания, подключает владельца к её потоку. */
+    protected fun createRoom(owner: UUID, settings: RoomSettingsDto = nothingSettings()): RoomResponse {
+        val created: RoomResponse = createRoomRequest(owner, CreateRoomRequest(settings))
             .andExpect { status { isOk() } }
             .body()
+        return join(owner, created.id)
+    }
 
     protected fun updateSettingsRequest(user: UUID, roomId: UUID, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
         call(HttpMethod.PUT, "/api/games/$gameCode/rooms/$roomId/settings", user, body)
@@ -102,11 +118,43 @@ abstract class BaseIntegrationTest {
     protected fun room(roomId: UUID, viewer: UUID): RoomResponse =
         call(HttpMethod.GET, "/api/rooms/$roomId", viewer).andExpect { status { isOk() } }.body()
 
-    protected fun join(user: UUID, roomId: UUID): RoomResponse =
-        call(HttpMethod.POST, "/api/rooms/$roomId/join", user).andExpect { status { isOk() } }.body()
+    /** Открывает поток событий комнаты (SSE) — вход в комнату. Поток остаётся открытым до [leave] или конца теста. */
+    protected fun openStream(user: UUID, roomId: UUID): MvcResult =
+        mockMvc.get("/api/rooms/$roomId/events") {
+            header(QgamesHeaders.USER_ID, user.toString())
+            accept = MediaType.TEXT_EVENT_STREAM
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
 
+    /** Вход в комнату — подключение к её потоку; возвращает комнату глазами вошедшего. */
+    protected fun join(user: UUID, roomId: UUID): RoomResponse {
+        openStream(user, roomId)
+        return room(roomId, user)
+    }
+
+    /** Выход — закрытие всех потоков пользователя в комнате (все вкладки). */
     protected fun leave(user: UUID, roomId: UUID) {
-        call(HttpMethod.POST, "/api/rooms/$roomId/leave", user).andExpect { status { isOk() } }
+        streams(user, roomId).forEach { it.close() }
+    }
+
+    /** Открытые потоки пользователя в комнате на этом инстансе. */
+    protected fun streams(user: UUID, roomId: UUID) = roomStreamRegistry.subscribers(roomId).filter { it.userId == user }
+
+    /** Сообщения SSE потока [stream] к этому моменту: пары (тип события, data). Комментарии пропускаются. */
+    protected fun events(stream: MvcResult): List<Pair<String, String>> =
+        stream.response.getContentAsString(Charsets.UTF_8).split("\n\n")
+            .filter { it.isNotBlank() }
+            .mapNotNull { message ->
+                val lines = message.lines()
+                val type = lines.firstOrNull { it.startsWith("event:") }?.removePrefix("event:")?.trim() ?: return@mapNotNull null
+                type to lines.filter { it.startsWith("data:") }.joinToString("\n") { it.removePrefix("data:") }
+            }
+
+    /** Ждёт, пока в потоке не наберётся [count] событий, и возвращает их. */
+    protected fun awaitEvents(stream: MvcResult, count: Int): List<Pair<String, String>> {
+        awaitUntil("$count events in the stream") { events(stream).size >= count }
+        return events(stream)
     }
 
     /**

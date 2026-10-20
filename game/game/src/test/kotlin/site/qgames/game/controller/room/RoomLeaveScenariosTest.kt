@@ -21,7 +21,8 @@ import java.util.stream.Stream
 /**
  * Отложенный выход: leave ставит срок (room_member.leave_deadline) по роли участника, вход в пределах срока отменяет
  * выход, а по истечении срока RoomLeaveJob удаляет участника по правилам выхода. Сроки: игроку идущей партии —
- * из правил игры («ничто» — 30 с), владельцу вне игры — 5 с, остальным — 1 с (application.yml).
+ * из правил игры («ничто» — 30 с), владельцу вне игры — 15 с, остальным — 1 с (application.yml). Выход — закрытие
+ * последнего потока комнаты, вход — подключение к нему.
  */
 class RoomLeaveScenariosTest : BaseIntegrationTest() {
 
@@ -174,7 +175,7 @@ class RoomLeaveScenariosTest : BaseIntegrationTest() {
 
     companion object {
         private val GAME = Duration.ofSeconds(30)
-        private val OWNER = Duration.ofSeconds(5)
+        private val OWNER = Duration.ofSeconds(15)
         private val MEMBER = Duration.ofSeconds(1)
 
         @JvmStatic

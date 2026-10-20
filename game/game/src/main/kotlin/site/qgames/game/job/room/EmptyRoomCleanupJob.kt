@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import site.qgames.game.config.GameProperties
-import site.qgames.game.repository.room.RoomRepository
+import site.qgames.game.service.room.RoomService
 import java.time.Clock
 
 /**
@@ -15,7 +15,7 @@ import java.time.Clock
  */
 @Component
 class EmptyRoomCleanupJob(
-    private val roomRepository: RoomRepository,
+    private val roomService: RoomService,
     private val properties: GameProperties,
     private val clock: Clock,
 ) {
@@ -29,7 +29,7 @@ class EmptyRoomCleanupJob(
     }
 
     fun run(): Int {
-        val deleted = roomRepository.deleteEmptySince(clock.instant().minus(properties.room.emptyTtl))
+        val deleted = roomService.deleteEmptyRooms(clock.instant().minus(properties.room.emptyTtl))
         if (deleted > 0) {
             log.info("Deleted {} empty rooms", deleted)
         }

@@ -1,30 +1,13 @@
 package site.qgames.usergateway.publicapi.dto.game
 
-import com.fasterxml.jackson.annotation.JsonValue
-import site.qgames.usergateway.publicapi.dto.room.GameSettingsLimitsDto
-import site.qgames.usergateway.publicapi.dto.room.IntRangeDto
-import site.qgames.usergateway.publicapi.dto.room.RoomSettingsDto
-import site.qgames.usergateway.publicapi.dto.room.TimeControlMode
+import site.qgames.game.gatewayapi.dto.game.GameCode
+import site.qgames.game.gatewayapi.dto.room.GameSettingsLimitsDto
+import site.qgames.game.gatewayapi.dto.room.IntRangeDto
+import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
+import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 
-/** Код игры. В JSON и в путях API (`/api/games/{gameCode}/…`) — строчный [code], например `nothing`. */
-enum class GameCode(@get:JsonValue val code: String) {
-    /** «Игра в ничто»: тестовая игра, игроки по очереди делают ход PASS. */
-    NOTHING(GameCodes.NOTHING),
-
-    /** Каркассон. */
-    CARCASSONNE(GameCodes.CARCASSONNE),
-    ;
-
-    companion object {
-        fun fromCode(code: String): GameCode? = entries.firstOrNull { it.code == code }
-    }
-}
-
-/** Коды игр строками: нужны в аннотациях Jackson и OpenAPI (путь, дискриминатор gameCode). */
-object GameCodes {
-    const val NOTHING = "nothing"
-    const val CARCASSONNE = "carcassonne"
-}
+// Каталог игр пока описан собственными DTO gateway. Общие с комнатами типы (код игры, настройки и их границы) — из
+// контракта game: ручки комнат отдают его DTO как есть, и одноимённые схемы в OpenAPI не должны расходиться.
 
 /** Статус публикации игры. Неопубликованные и принудительно отключённые игры наружу не выдаются (GAME_NOT_FOUND). */
 enum class GamePublishStatus {

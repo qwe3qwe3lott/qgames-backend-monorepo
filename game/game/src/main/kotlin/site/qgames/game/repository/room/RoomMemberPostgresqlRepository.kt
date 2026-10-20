@@ -91,6 +91,12 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .query { rs, _ -> rs.getUuid("room_id")!! }
             .list()
 
+    fun findRoomIdsByUser(userId: UUID): List<UUID> =
+        jdbcClient.sql("SELECT room_id FROM room_member WHERE user_id = :userId")
+            .param("userId", userId)
+            .query { rs, _ -> rs.getUuid("room_id")!! }
+            .list()
+
     fun delete(roomId: UUID, userId: UUID) {
         jdbcClient.sql("DELETE FROM room_member WHERE room_id = :roomId AND user_id = :userId")
             .param("roomId", roomId)

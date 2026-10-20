@@ -32,6 +32,23 @@ data class GameProperties(
         val leaveEnabled: Boolean = true,
         /** Сколько комнат с истёкшими сроками выхода обрабатывается за один запуск, остальные — в следующих. */
         val leaveBatchSize: Int = 100,
+        /** Подключения к потоку событий комнаты (SSE): открытый поток и есть нахождение в комнате. */
+        val connection: Connection,
+    )
+
+    data class Connection(
+        /** Срок аренды подключения: инстанс, держащий поток, продлевает его каждые [heartbeatInterval]. */
+        val lease: Duration,
+        /** Как часто слать в потоки комментарий `: ping` и продлевать аренду подключений (RoomConnectionHeartbeatJob). */
+        val heartbeatInterval: Duration,
+        /** Запуск RoomConnectionHeartbeatJob по расписанию. В тестах выключен: job вызывается напрямую. */
+        val heartbeatEnabled: Boolean = true,
+        /** Как часто удалять подключения с истёкшей арендой — подключения упавших инстансов (RoomConnectionCleanupJob). */
+        val cleanupInterval: Duration,
+        /** Запуск RoomConnectionCleanupJob по расписанию. В тестах выключен: job вызывается напрямую. */
+        val cleanupEnabled: Boolean = true,
+        /** Сколько комнат с протухшими подключениями обрабатывается за один запуск, остальные — в следующих. */
+        val cleanupBatchSize: Int = 100,
     )
 
     data class LeaveGrace(

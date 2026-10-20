@@ -23,7 +23,8 @@ import java.util.UUID
 @Tag(
     name = "Игровые комнаты (для gateway)",
     description = "Внутренние ручки для user-gateway. Публичные комнаты: вход по ссылке с id комнаты для любого " +
-        "авторизованного пользователя. Пользователь определяется по заголовку X-User-Id.",
+        "авторизованного пользователя. Пользователь находится в комнате, пока открыт её поток событий " +
+        "(GET /api/rooms/{roomId}/events). Пользователь определяется по заголовку X-User-Id.",
 )
 @HttpExchange("/api/rooms")
 interface RoomApi {
@@ -44,48 +45,6 @@ interface RoomApi {
     )
     @GetExchange("/{roomId}")
     fun getRoom(@PathVariable roomId: UUID): RoomResponse
-
-    @Operation(
-        summary = "Войти в комнату",
-        description = "Игрок идущей партии возвращается на своё место. Иначе, если партия не идёт и есть свободное место, " +
-            "пользователь становится игроком, а в остальных случаях — наблюдателем. В пустой комнате вошедший становится " +
-            "владельцем. Вход вышедшего участника, пока не истёк срок выхода, отменяет выход: роль и владение сохраняются. " +
-            "Повторный вход ничего не меняет.",
-    )
-    @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Пользователь в комнате"),
-        ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
-        ApiResponse(
-            responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
-        ),
-    )
-    @PostExchange("/{roomId}/join")
-    fun joinRoom(@PathVariable roomId: UUID): RoomResponse
-
-    @Operation(
-        summary = "Выйти из комнаты",
-        description = "Выйти можно всегда, но выход отложенный: участник помечается уходящим (leaving) и до истечения " +
-            "срока сохраняет роль, место и владение, а вход в комнату в пределах срока отменяет выход. Срок: игроку " +
-            "идущей партии его задаёт игра (на паузе отсчёт заморожен), владельцу вне игры — 5 с, остальным — 1 с. " +
-            "По истечении срока участник удаляется: игрок идущей партии сохраняет место и может вернуться, владение " +
-            "переходит к самому раннему из оставшихся: сначала к присутствующим, к уходящим — только если " +
-            "присутствующих нет; в каждой группе сначала игроки, затем наблюдатели. Пустая комната удаляется " +
-            "автоматически через заданное время. Повторный выход срок не продлевает.",
-    )
-    @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Пользователь вышел"),
-        ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
-        ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
-        ApiResponse(
-            responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
-        ),
-    )
-    @PostExchange("/{roomId}/leave")
-    fun leaveRoom(@PathVariable roomId: UUID)
 
     @Operation(
         summary = "Сменить роль",

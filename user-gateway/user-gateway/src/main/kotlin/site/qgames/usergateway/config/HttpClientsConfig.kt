@@ -9,6 +9,7 @@ import org.springframework.web.service.registry.ImportHttpServices
 import site.qgames.game.gatewayapi.api.GameApi
 import site.qgames.game.gatewayapi.api.GameRoomApi
 import site.qgames.game.gatewayapi.api.RoomApi
+import site.qgames.game.gatewayapi.api.RoomEventsApi
 import site.qgames.userauth.gatewayapi.api.AuthApi
 import site.qgames.userauth.gatewayapi.api.UserApi
 import site.qgames.usergateway.interceptor.UserIdPropagationInterceptor
@@ -16,10 +17,14 @@ import site.qgames.usergateway.interceptor.UserIdPropagationInterceptor
 /**
  * Клиенты целевых сервисов строятся по интерфейсам из модулей *-user-gateway-sync-api.
  * Базовый URL группы задаётся свойством spring.http.serviceclient.<группа>.base-url.
+ *
+ * Поток событий комнаты — в отдельной группе game-stream: соединение живёт, пока открыт поток, поэтому у неё не должно
+ * быть read-timeout (настройки таймаутов группы game на неё не влияют).
  */
 @Configuration
 @ImportHttpServices(group = "user-auth", types = [AuthApi::class, UserApi::class])
 @ImportHttpServices(group = "game", types = [RoomApi::class, GameRoomApi::class, GameApi::class])
+@ImportHttpServices(group = "game-stream", types = [RoomEventsApi::class])
 class HttpClientsConfig {
 
     @Bean

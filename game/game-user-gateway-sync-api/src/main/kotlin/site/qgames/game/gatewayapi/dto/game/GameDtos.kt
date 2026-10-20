@@ -8,7 +8,10 @@ import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 
 /** Код игры. В JSON и в путях API (`/api/games/{gameCode}/…`) — строчный [code], например `nothing`. */
 enum class GameCode(@get:JsonValue val code: String) {
+    /** «Игра в ничто»: тестовая игра, игроки по очереди делают ход PASS. */
     NOTHING(GameCodes.NOTHING),
+
+    /** Каркассон. */
     CARCASSONNE(GameCodes.CARCASSONNE),
     ;
 

@@ -15,7 +15,8 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-liquibase")
     implementation(libs.shedlockSpring)
     implementation(libs.shedlockJdbc)
-    runtimeOnly("org.postgresql:postgresql")
+    // PGConnection: LISTEN шины событий комнат (RoomEventListener).
+    implementation("org.postgresql:postgresql")
 
     testImplementation(project(":libs:common-test"))
 }

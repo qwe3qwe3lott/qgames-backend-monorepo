@@ -12,21 +12,22 @@ import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
 import org.springframework.web.service.annotation.PutExchange
-import site.qgames.usergateway.publicapi.dto.room.CreateRoomRequest
-import site.qgames.usergateway.publicapi.dto.game.GameCodes
-import site.qgames.usergateway.publicapi.dto.room.MoveRequest
-import site.qgames.usergateway.publicapi.dto.room.RoomResponse
-import site.qgames.usergateway.publicapi.dto.room.RoomSettingsDto
+import site.qgames.game.gatewayapi.dto.game.GameCodes
+import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
+import site.qgames.game.gatewayapi.dto.room.MoveRequest
+import site.qgames.game.gatewayapi.dto.room.RoomResponse
+import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
 import java.util.UUID
 
 /**
  * Ручки комнат, которым нужен тип игры: он берётся из кода игры в пути (`/api/games/{gameCode}/rooms/…`).
- * Требуют аутентификации.
+ * Требуют аутентификации. Простое проксирование в game: DTO — из его контракта (game-user-gateway-sync-api).
  */
 @Tag(
     name = "Игровые комнаты",
     description = "Публичные комнаты: вход по ссылке с id комнаты для любого авторизованного пользователя. " +
-        "Обновлений в реальном времени пока нет — клиент перечитывает комнату (GET). Все ручки требуют аутентификации.",
+        "Изменения комнаты приходят в реальном времени через поток событий (GET /api/rooms/{roomId}/events), открытый " +
+        "поток и есть нахождение в комнате. Все ручки требуют аутентификации.",
 )
 @HttpExchange("/api/games")
 interface PublicGameRoomApi {
@@ -35,6 +36,7 @@ interface PublicGameRoomApi {
         summary = "Создать комнату",
         description = "Создаёт комнату под игру из пути с заданными настройками: правила времени и настройки игры. " +
             "Создатель становится владельцем и первым игроком, ссылку на комнату (её id) можно отправить другим игрокам. " +
+            "В комнате создателя удерживает подключение к её потоку событий: без него он удаляется через 15 с. " +
             "Игра должна быть доступна (PUBLISHED или HIDDEN): это проверяется до настроек. Границы настроек и " +
             "значения по умолчанию — в параметрах игры (GET /api/games/{gameCode}). Ошибки настроек отдаются по полям " +
             "тела (например, settings.gameSettings.rounds), как у валидации запроса.",

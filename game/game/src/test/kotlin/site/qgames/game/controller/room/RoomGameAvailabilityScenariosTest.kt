@@ -143,8 +143,7 @@ class RoomGameAvailabilityScenariosTest : BaseIntegrationTest() {
         fun roomOperations(): Stream<Arguments> = listOf("NOT_PUBLISHED", "FORCE_DISABLED").flatMap { status ->
             listOf(
                 arguments(status, "get", HttpMethod.GET, "/api/rooms/{id}", null),
-                arguments(status, "join", HttpMethod.POST, "/api/rooms/{id}/join", null),
-                arguments(status, "leave", HttpMethod.POST, "/api/rooms/{id}/leave", null),
+                arguments(status, "events", HttpMethod.GET, "/api/rooms/{id}/events", null),
                 arguments(status, "change role", HttpMethod.PUT, "/api/rooms/{id}/role", ChangeRoleRequest(RoomRole.SPECTATOR)),
                 arguments(status, "start", HttpMethod.POST, "/api/rooms/{id}/session", null),
                 arguments(status, "cancel", HttpMethod.DELETE, "/api/rooms/{id}/session", null),

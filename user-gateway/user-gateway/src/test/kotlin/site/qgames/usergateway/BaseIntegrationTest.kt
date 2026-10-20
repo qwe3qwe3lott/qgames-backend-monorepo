@@ -141,6 +141,7 @@ abstract class BaseIntegrationTest {
             // user-auth и game эмулирует один WireMock: пути у сервисов не пересекаются.
             registry.add("spring.http.serviceclient.user-auth.base-url") { WireMockTestServer.baseUrl }
             registry.add("spring.http.serviceclient.game.base-url") { WireMockTestServer.baseUrl }
+            registry.add("spring.http.serviceclient.game-stream.base-url") { WireMockTestServer.baseUrl }
             registry.add("qgames.gateway.jwt.jwk-set-uri") { WireMockTestServer.baseUrl + JWKS_PATH }
         }
     }

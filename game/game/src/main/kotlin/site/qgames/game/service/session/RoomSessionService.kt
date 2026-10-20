@@ -5,6 +5,8 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.model.room.RoomDetailsModel
+import site.qgames.game.model.room.RoomEventType
+import site.qgames.game.publisher.room.RoomEventPublisher
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomRole
@@ -35,7 +37,8 @@ import java.util.UUID
  * Все операции идут под блокировкой строки комнаты, ход дополнительно защищён версией партии.
  * Таймер хода — колонка room_session.move_deadline: её ставит старт, переставляет каждый ход (в том числе
  * истечение времени), снимают конец и отмена партии. Пауза (room_session.paused_at) запрещает ходы и замораживает
- * таймер хода; отменить партию на паузе можно.
+ * таймер хода; отменить партию на паузе можно. Старт, отмена, пауза, продолжение и конец партии публикуют событие
+ * комнаты session-changed. Ходы событий пока не публикуют.
  */
 @Service
 class RoomSessionService(
@@ -46,6 +49,7 @@ class RoomSessionService(
     private val gameRegistry: GameRegistry,
     private val gameService: GameService,
     private val roomDetailsService: RoomDetailsService,
+    private val roomEventPublisher: RoomEventPublisher,
     private val jsonMapper: JsonMapper,
     private val clock: Clock,
 ) {
@@ -85,6 +89,7 @@ class RoomSessionService(
         )
         val updated = room.copy(status = RoomStatus.IN_GAME, currentSessionId = session.id)
         roomRepository.update(updated)
+        roomEventPublisher.publish(roomId, RoomEventType.SESSION_CHANGED)
         return roomDetailsService.details(updated, userId)
     }
 
@@ -95,6 +100,7 @@ class RoomSessionService(
         roomSessionRepository.finish(sessionId, RoomSessionStatus.CANCELLED, clock.instant())
         val updated = room.copy(status = RoomStatus.WAITING, currentSessionId = null)
         roomRepository.update(updated)
+        roomEventPublisher.publish(roomId, RoomEventType.SESSION_CHANGED)
         return roomDetailsService.details(updated, userId)
     }
 
@@ -107,6 +113,7 @@ class RoomSessionService(
         val (room, session) = lockRunningSessionAsOwner(userId, roomId)
         if (session.pausedAt == null) {
             roomSessionRepository.pause(session.id, clock.instant())
+            roomEventPublisher.publish(roomId, RoomEventType.SESSION_CHANGED)
         }
         return roomDetailsService.details(room, userId)
     }
@@ -123,6 +130,7 @@ class RoomSessionService(
             val shift = Duration.between(pausedAt, clock.instant()).coerceAtLeast(Duration.ZERO)
             roomSessionRepository.resume(session.id, shift)
             roomMemberRepository.shiftLeaveDeadlines(roomId, roomSessionRepository.findPlayers(session.id), shift)
+            roomEventPublisher.publish(roomId, RoomEventType.SESSION_CHANGED)
         }
         return roomDetailsService.details(room, userId)
     }
@@ -245,6 +253,7 @@ class RoomSessionService(
         }
         val updated = room.copy(status = RoomStatus.WAITING, currentSessionId = null)
         roomRepository.update(updated)
+        roomEventPublisher.publish(room.id, RoomEventType.SESSION_CHANGED)
         return updated
     }
 

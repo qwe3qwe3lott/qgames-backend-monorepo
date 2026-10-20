@@ -22,12 +22,6 @@ class RoomController(
     override fun getRoom(roomId: UUID): RoomResponse =
         roomResponseMapper.toResponse(roomService.get(requestUserContext.userId(), roomId))
 
-    override fun joinRoom(roomId: UUID): RoomResponse =
-        roomResponseMapper.toResponse(roomService.join(requestUserContext.userId(), roomId))
-
-    override fun leaveRoom(roomId: UUID) =
-        roomService.leave(requestUserContext.userId(), roomId)
-
     override fun changeRole(roomId: UUID, request: ChangeRoleRequest): RoomResponse =
         roomResponseMapper.toResponse(roomService.changeRole(requestUserContext.userId(), roomId, RoomRole.valueOf(request.role.name)))
 

@@ -38,5 +38,8 @@ class RoomMemberRepository(
     fun findRoomIdsWithExpiredLeave(now: Instant, limit: Int): List<UUID> =
         roomMemberPostgresqlRepository.findRoomIdsWithExpiredLeave(now, limit)
 
+    /** Комнаты, где пользователь числится участником (в том числе уходящим). */
+    fun findRoomIdsByUser(userId: UUID): List<UUID> = roomMemberPostgresqlRepository.findRoomIdsByUser(userId)
+
     fun delete(roomId: UUID, userId: UUID) = roomMemberPostgresqlRepository.delete(roomId, userId)
 }

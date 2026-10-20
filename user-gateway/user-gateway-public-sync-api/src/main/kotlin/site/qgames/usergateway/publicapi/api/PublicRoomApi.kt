@@ -1,10 +1,14 @@
 package site.qgames.usergateway.publicapi.api
 
 import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.service.annotation.DeleteExchange
@@ -12,26 +16,30 @@ import org.springframework.web.service.annotation.GetExchange
 import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
 import org.springframework.web.service.annotation.PutExchange
-import site.qgames.usergateway.publicapi.dto.room.ChangeRoleRequest
-import site.qgames.usergateway.publicapi.dto.room.RoomResponse
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
+import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
+import site.qgames.game.gatewayapi.dto.room.RoomResponse
+import site.qgames.game.gatewayapi.dto.room.RoomStreamEvent
 import java.util.UUID
 
 /**
  * Игровые комнаты и партии: ручки, которым не нужен тип игры. Создание комнаты, настройки и ходы — в
- * [PublicGameRoomApi]. Все ручки требуют аутентификации.
+ * [PublicGameRoomApi]. Все ручки требуют аутентификации. Простое проксирование в game: DTO — из его контракта
+ * (game-user-gateway-sync-api), без собственных дублей.
  */
 @Tag(
     name = "Игровые комнаты",
     description = "Публичные комнаты: вход по ссылке с id комнаты для любого авторизованного пользователя. " +
-        "Обновлений в реальном времени пока нет — клиент перечитывает комнату (GET). Все ручки требуют аутентификации.",
+        "Изменения комнаты приходят в реальном времени через поток событий (GET /api/rooms/{roomId}/events), открытый " +
+        "поток и есть нахождение в комнате. Все ручки требуют аутентификации.",
 )
 @HttpExchange("/api/rooms")
 interface PublicRoomApi {
 
     @Operation(
         summary = "Получить комнату",
-        description = "Участники с ролями, владелец, текущая или последняя партия. Доступно и до входа в комнату — " +
-            "так страница по ссылке показывает комнату ещё до входа.",
+        description = "Участники с ролями, владелец, текущая или последняя партия. Доступно и до входа в комнату " +
+            "(подключения к потоку событий) — так страница по ссылке показывает комнату ещё до входа.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Комната"),
@@ -47,14 +55,32 @@ interface PublicRoomApi {
     fun getRoom(@PathVariable roomId: UUID): RoomResponse
 
     @Operation(
-        summary = "Войти в комнату",
-        description = "Игрок идущей партии возвращается на своё место. Иначе, если партия не идёт и есть свободное место, " +
-            "пользователь становится игроком, в остальных случаях — наблюдателем. В пустой комнате вошедший становится " +
-            "владельцем. Вход вышедшего участника, пока не истёк срок выхода, отменяет выход: роль и владение сохраняются. " +
-            "Повторный вход ничего не меняет.",
+        summary = "Поток событий комнаты",
+        description = "Server-Sent Events (EventSource с withCredentials): сообщения `event: <тип>` + `data: <json>`, " +
+            "без `id:`, раз в ~5 с комментарий `: ping`. Первое сообщение — snapshot: комната целиком для этого " +
+            "пользователя, как в GET /api/rooms/{roomId}; так же после каждого переподключения. Дальше — users-changed " +
+            "(владелец и полный список участников: вход, выход, уход, смена роли, ника, владельца), settings-changed " +
+            "(настройки комнаты), session-changed (старт, отмена, пауза, продолжение, конец партии — перечитать комнату " +
+            "через GET) и room-deleted (комната удалена, после него сервер закрывает поток). События несут полное " +
+            "значение, повтор безопасен. Схема пары тип + данные — RoomStreamEvent ({type, data}, дискриминатор type).\n\n" +
+            "Открытый поток и есть нахождение в комнате: подключение входит в комнату (игрок идущей партии возвращается " +
+            "на своё место; иначе игрок, если партия не идёт и есть место, или наблюдатель; в пустой комнате — " +
+            "владелец; повторное подключение, в том числе в пределах срока выхода, роль и владение не меняет). " +
+            "Подключений у пользователя может быть несколько (вкладки, устройства). Когда закрывается последнее, выход " +
+            "отложенный: участник помечается уходящим (leaving) и до истечения срока сохраняет роль, место и владение. " +
+            "Срок: игроку идущей партии его задаёт игра (в «игре в ничто» 30 с, на паузе отсчёт заморожен), владельцу " +
+            "вне игры — 15 с, остальным — 1 с. По истечении срока участник удаляется: игрок идущей партии сохраняет " +
+            "место, владение переходит к самому раннему из оставшихся (сначала присутствующие, в каждой группе сначала " +
+            "игроки). Создатель комнаты, так и не подключившийся к потоку, удаляется через 15 с. Пустая комната " +
+            "удаляется через 30 минут. Обрыв соединения сервер замечает с задержкой (по неудачной записи ping, обычно 10–30 с). " +
+            "Access-токен проверяется только при подключении: при истечении поток не рвётся.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Пользователь в комнате"),
+        ApiResponse(
+            responseCode = "200",
+            description = "Поток событий",
+            content = [Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = Schema(implementation = RoomStreamEvent::class))],
+        ),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(
             responseCode = "404",
@@ -63,32 +89,8 @@ interface PublicRoomApi {
         ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
-    @PostExchange("/{roomId}/join")
-    fun joinRoom(@PathVariable roomId: UUID): RoomResponse
-
-    @Operation(
-        summary = "Выйти из комнаты",
-        description = "Выйти можно всегда, но выход отложенный: участник помечается уходящим (leaving) и до истечения " +
-            "срока сохраняет роль, место и владение, а вход в комнату в пределах срока отменяет выход. Срок: игроку " +
-            "идущей партии его задаёт игра (в «игре в ничто» 30 с, на паузе отсчёт заморожен), владельцу вне игры — 5 с, " +
-            "остальным — 1 с. По истечении срока участник удаляется: игрок идущей партии сохраняет место и может " +
-            "вернуться, владение переходит к самому раннему из оставшихся: сначала к присутствующим, к уходящим — " +
-            "только если присутствующих нет; в каждой группе сначала игроки, затем наблюдатели. Пустая комната " +
-            "удаляется автоматически через 30 минут. Повторный выход срок не продлевает.",
-    )
-    @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Пользователь вышел"),
-        ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
-        ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
-        ApiResponse(
-            responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
-        ),
-        ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
-    )
-    @PostExchange("/{roomId}/leave")
-    fun leaveRoom(@PathVariable roomId: UUID)
+    @GetExchange("/{roomId}/events", accept = [MediaType.TEXT_EVENT_STREAM_VALUE])
+    fun roomEvents(@PathVariable roomId: UUID): ResponseEntity<ResponseBodyEmitter>
 
     @Operation(
         summary = "Сменить роль",
