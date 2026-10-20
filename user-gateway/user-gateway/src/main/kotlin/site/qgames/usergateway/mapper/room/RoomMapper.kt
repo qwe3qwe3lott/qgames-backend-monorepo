@@ -1,10 +1,11 @@
 package site.qgames.usergateway.mapper.room
 
+import site.qgames.usergateway.mapper.game.toGame
+import site.qgames.usergateway.mapper.game.toPublic
 import site.qgames.usergateway.publicapi.dto.room.ChangeRoleRequest
 import site.qgames.usergateway.publicapi.dto.room.CreateRoomRequest
 import site.qgames.usergateway.publicapi.dto.room.GameSettingsDto
 import site.qgames.usergateway.publicapi.dto.room.GameSettingsLimitsDto
-import site.qgames.usergateway.publicapi.dto.room.GameType
 import site.qgames.usergateway.publicapi.dto.room.IntRangeDto
 import site.qgames.usergateway.publicapi.dto.room.MoveRequest
 import site.qgames.usergateway.publicapi.dto.room.NothingSettingsDto
@@ -24,7 +25,6 @@ import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest as GameChangeRoleR
 import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest as GameCreateRoomRequest
 import site.qgames.game.gatewayapi.dto.room.GameSettingsDto as GameGameSettingsDto
 import site.qgames.game.gatewayapi.dto.room.GameSettingsLimitsDto as GameGameSettingsLimitsDto
-import site.qgames.game.gatewayapi.dto.room.GameType as GameGameType
 import site.qgames.game.gatewayapi.dto.room.IntRangeDto as GameIntRangeDto
 import site.qgames.game.gatewayapi.dto.room.MoveRequest as GameMoveRequest
 import site.qgames.game.gatewayapi.dto.room.NothingSettingsDto as GameNothingSettingsDto
@@ -52,7 +52,7 @@ fun RoomSettingsDto.toGame() = GameRoomSettingsDto(timeControl = timeControl.toG
 
 fun GameRoomResponse.toPublic() = RoomResponse(
     id = id,
-    gameType = gameType.toPublic(),
+    gameCode = gameCode.toPublic(),
     status = status.toPublic(),
     ownerId = ownerId,
     minPlayers = minPlayers,
@@ -67,18 +67,10 @@ fun GameRoomResponse.toPublic() = RoomResponse(
 fun GameRoomSettingsDto.toPublic() = RoomSettingsDto(timeControl = timeControl.toPublic(), gameSettings = gameSettings.toPublic())
 
 fun GameGameSettingsLimitsDto.toPublic(): GameSettingsLimitsDto = when (this) {
-    is GameNothingSettingsLimitsDto -> NothingSettingsLimitsDto(gameType = gameType.toPublic(), rounds = rounds.toPublic())
+    is GameNothingSettingsLimitsDto -> NothingSettingsLimitsDto(gameCode = gameCode.toPublic(), rounds = rounds.toPublic())
 }
 
 fun GameIntRangeDto.toPublic() = IntRangeDto(min = min, max = max)
-
-fun GameType.toGame(): GameGameType = when (this) {
-    GameType.NOTHING -> GameGameType.NOTHING
-}
-
-fun GameGameType.toPublic(): GameType = when (this) {
-    GameGameType.NOTHING -> GameType.NOTHING
-}
 
 fun GameTimeControlMode.toPublic(): TimeControlMode = when (this) {
     GameTimeControlMode.NONE -> TimeControlMode.NONE
@@ -95,11 +87,11 @@ private fun TimeControlDto.toGame() = GameTimeControlDto(mode = mode.toGame(), m
 private fun GameTimeControlDto.toPublic() = TimeControlDto(mode = mode.toPublic(), moveSeconds = moveSeconds)
 
 private fun GameSettingsDto.toGame(): GameGameSettingsDto = when (this) {
-    is NothingSettingsDto -> GameNothingSettingsDto(gameType = gameType.toGame(), rounds = rounds)
+    is NothingSettingsDto -> GameNothingSettingsDto(gameCode = gameCode.toGame(), rounds = rounds)
 }
 
 private fun GameGameSettingsDto.toPublic(): GameSettingsDto = when (this) {
-    is GameNothingSettingsDto -> NothingSettingsDto(gameType = gameType.toPublic(), rounds = rounds)
+    is GameNothingSettingsDto -> NothingSettingsDto(gameCode = gameCode.toPublic(), rounds = rounds)
 }
 
 private fun GameRoomMemberResponse.toPublic() = RoomMemberResponse(

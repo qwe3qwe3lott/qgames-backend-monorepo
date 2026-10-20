@@ -7,7 +7,7 @@ import java.util.UUID
 data class RoomSessionEntity(
     val id: UUID,
     val roomId: UUID,
-    val gameType: String,
+    val gameCode: String,
     val status: String,
     /** JSON (jsonb) состояния. */
     val state: String,

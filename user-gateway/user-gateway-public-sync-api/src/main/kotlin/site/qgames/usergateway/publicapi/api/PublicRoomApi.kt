@@ -36,7 +36,11 @@ interface PublicRoomApi {
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Комната"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
+                "или принудительно отключена (GAME_NOT_FOUND)",
+        ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
     @GetExchange("/{roomId}")
@@ -52,7 +56,11 @@ interface PublicRoomApi {
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Пользователь в комнате"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
+                "или принудительно отключена (GAME_NOT_FOUND)",
+        ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
     @PostExchange("/{roomId}/join")
@@ -72,7 +80,11 @@ interface PublicRoomApi {
         ApiResponse(responseCode = "200", description = "Пользователь вышел"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
+                "или принудительно отключена (GAME_NOT_FOUND)",
+        ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
     @PostExchange("/{roomId}/leave")
@@ -88,7 +100,11 @@ interface PublicRoomApi {
         ApiResponse(responseCode = "400", description = "Не указана роль (VALIDATION_ERROR)"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
+                "или принудительно отключена (GAME_NOT_FOUND)",
+        ),
         ApiResponse(
             responseCode = "409",
             description = "Идёт партия (ROOM_NOT_WAITING) или нет свободного места игрока (NO_FREE_SEAT)",
@@ -98,30 +114,25 @@ interface PublicRoomApi {
     @PutExchange("/{roomId}/role")
     fun changeRole(@PathVariable roomId: UUID, @Valid @RequestBody request: ChangeRoleRequest): RoomResponse
 
-    @Operation(summary = "Удалить комнату", description = "Удаляет комнату вместе с историей партий. Только владелец.")
-    @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Комната удалена"),
-        ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
-        ApiResponse(responseCode = "403", description = "Пользователь не владелец (NOT_ROOM_OWNER)"),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
-        ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
-    )
-    @DeleteExchange("/{roomId}")
-    fun deleteRoom(@PathVariable roomId: UUID)
-
     @Operation(
         summary = "Начать партию",
         description = "Стартует партию с текущими игроками комнаты (места — по порядку входа). Только владелец, " +
-            "число игроков должно укладываться в ограничения игры (minPlayers–maxPlayers).",
+            "число игроков должно укладываться в ограничения игры (minPlayers–maxPlayers). Игра должна быть доступна " +
+            "(PUBLISHED или HIDDEN).",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Партия началась"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(responseCode = "403", description = "Пользователь не владелец (NOT_ROOM_OWNER)"),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
+                "или принудительно отключена (GAME_NOT_FOUND)",
+        ),
         ApiResponse(
             responseCode = "409",
-            description = "Партия уже идёт (ROOM_NOT_WAITING) или число игроков не подходит игре (NOT_ENOUGH_PLAYERS)",
+            description = "Партия уже идёт (ROOM_NOT_WAITING), игра временно недоступна (GAME_UNAVAILABLE), " +
+                "число игроков не подходит игре (NOT_ENOUGH_PLAYERS)",
         ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
@@ -137,7 +148,11 @@ interface PublicRoomApi {
         ApiResponse(responseCode = "200", description = "Партия отменена"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(responseCode = "403", description = "Пользователь не владелец (NOT_ROOM_OWNER)"),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
+                "или принудительно отключена (GAME_NOT_FOUND)",
+        ),
         ApiResponse(responseCode = "409", description = "Партия не идёт (ROOM_NOT_IN_GAME)"),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
@@ -157,7 +172,11 @@ interface PublicRoomApi {
             responseCode = "403",
             description = "Пользователь не в комнате (NOT_ROOM_MEMBER) или не владелец (NOT_ROOM_OWNER)",
         ),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
+                "или принудительно отключена (GAME_NOT_FOUND)",
+        ),
         ApiResponse(responseCode = "409", description = "Партия не идёт (ROOM_NOT_IN_GAME)"),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
@@ -177,7 +196,11 @@ interface PublicRoomApi {
             responseCode = "403",
             description = "Пользователь не в комнате (NOT_ROOM_MEMBER) или не владелец (NOT_ROOM_OWNER)",
         ),
-        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
+                "или принудительно отключена (GAME_NOT_FOUND)",
+        ),
         ApiResponse(responseCode = "409", description = "Партия не идёт (ROOM_NOT_IN_GAME)"),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )

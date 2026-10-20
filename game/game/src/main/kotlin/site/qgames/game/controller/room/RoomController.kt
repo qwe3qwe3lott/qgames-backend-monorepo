@@ -31,9 +31,6 @@ class RoomController(
     override fun changeRole(roomId: UUID, request: ChangeRoleRequest): RoomResponse =
         roomResponseMapper.toResponse(roomService.changeRole(requestUserContext.userId(), roomId, RoomRole.valueOf(request.role.name)))
 
-    override fun deleteRoom(roomId: UUID) =
-        roomService.delete(requestUserContext.userId(), roomId)
-
     override fun startSession(roomId: UUID): RoomResponse =
         roomResponseMapper.toResponse(roomSessionService.start(requestUserContext.userId(), roomId))
 

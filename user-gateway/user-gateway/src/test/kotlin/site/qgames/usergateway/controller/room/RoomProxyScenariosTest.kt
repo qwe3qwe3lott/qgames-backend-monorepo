@@ -20,13 +20,9 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request
 import site.qgames.common.web.header.QgamesHeaders
-import site.qgames.game.gatewayapi.dto.game.GameInfoResponse
-import site.qgames.game.gatewayapi.dto.game.TimeControlLimitsDto
+import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.room.Avatar
-import site.qgames.game.gatewayapi.dto.room.GameType
-import site.qgames.game.gatewayapi.dto.room.IntRangeDto
 import site.qgames.game.gatewayapi.dto.room.NothingSettingsDto
-import site.qgames.game.gatewayapi.dto.room.NothingSettingsLimitsDto
 import site.qgames.game.gatewayapi.dto.room.RoomMemberResponse
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomRole
@@ -69,7 +65,7 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
                 jsonPath("$.members[0].leaving") { value(true) }
                 jsonPath("$.settings.timeControl.mode") { value("PER_MOVE") }
                 jsonPath("$.settings.timeControl.moveSeconds") { value(30) }
-                jsonPath("$.settings.gameSettings.gameType") { value("NOTHING") }
+                jsonPath("$.settings.gameSettings.gameCode") { value("nothing") }
                 jsonPath("$.settings.gameSettings.rounds") { value(5) }
                 jsonPath("$.serverTime") { value("2026-10-18T10:00:10Z") }
             }
@@ -78,31 +74,6 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
         val expected = requestedFor(method.name(), urlEqualTo(path)).withHeader(QgamesHeaders.USER_ID, equalTo(USER_ID.toString()))
         body?.let { expected.withRequestBody(equalToJson(it)) }
         userAuth.verify(1, expected)
-    }
-
-    @Test
-    fun `game parameters are proxied to game`() {
-        val path = "/api/games/nothing"
-        stubGame(HttpMethod.GET, path, 200, json(gameInfo()))
-
-        mockMvc.request(HttpMethod.GET, path) {
-            cookie(Cookie("access_token", accessToken()))
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.gameType") { value("NOTHING") }
-            jsonPath("$.minPlayers") { value(1) }
-            jsonPath("$.maxPlayers") { value(4) }
-            jsonPath("$.timeControl.modes[0]") { value("NONE") }
-            jsonPath("$.timeControl.modes[1]") { value("PER_MOVE") }
-            jsonPath("$.timeControl.moveSeconds.min") { value(5) }
-            jsonPath("$.timeControl.moveSeconds.max") { value(600) }
-            jsonPath("$.gameSettingsLimits.gameType") { value("NOTHING") }
-            jsonPath("$.gameSettingsLimits.rounds.min") { value(1) }
-            jsonPath("$.gameSettingsLimits.rounds.max") { value(50) }
-            jsonPath("$.defaultSettings.timeControl.mode") { value("NONE") }
-            jsonPath("$.defaultSettings.gameSettings.rounds") { value(3) }
-        }
-        userAuth.verify(1, requestedFor("GET", urlEqualTo(path)).withHeader(QgamesHeaders.USER_ID, equalTo(USER_ID.toString())))
     }
 
     @ParameterizedTest(name = "{0} {1}")
@@ -217,13 +188,13 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
 
         /** Тело с настройками комнаты; [wrapper] — имя поля-обёртки (`settings` у создания комнаты). */
         fun settingsBody(wrapper: String?, rounds: Int = 5): String {
-            val settings = """{"timeControl":{"mode":"PER_MOVE","moveSeconds":30},"gameSettings":{"gameType":"NOTHING","rounds":$rounds}}"""
+            val settings = """{"timeControl":{"mode":"PER_MOVE","moveSeconds":30},"gameSettings":{"gameCode":"nothing","rounds":$rounds}}"""
             return if (wrapper == null) settings else """{"$wrapper":$settings}"""
         }
 
         fun gameRoom() = RoomResponse(
             id = ROOM_ID,
-            gameType = GameType.NOTHING,
+            gameCode = GameCode.NOTHING,
             status = RoomStatus.IN_GAME,
             ownerId = USER_ID,
             minPlayers = 1,
@@ -244,17 +215,8 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
                 pausedAt = Instant.parse("2026-10-18T10:00:05Z"),
             ),
             createdAt = Instant.parse("2026-10-18T10:00:00Z"),
-            settings = RoomSettingsDto(TimeControlDto(TimeControlMode.PER_MOVE, 30), NothingSettingsDto(GameType.NOTHING, rounds = 5)),
+            settings = RoomSettingsDto(TimeControlDto(TimeControlMode.PER_MOVE, 30), NothingSettingsDto(GameCode.NOTHING, rounds = 5)),
             serverTime = Instant.parse("2026-10-18T10:00:10Z"),
-        )
-
-        fun gameInfo() = GameInfoResponse(
-            gameType = GameType.NOTHING,
-            minPlayers = 1,
-            maxPlayers = 4,
-            timeControl = TimeControlLimitsDto(listOf(TimeControlMode.NONE, TimeControlMode.PER_MOVE), IntRangeDto(5, 600)),
-            gameSettingsLimits = NothingSettingsLimitsDto(GameType.NOTHING, IntRangeDto(1, 50)),
-            defaultSettings = RoomSettingsDto(TimeControlDto(TimeControlMode.NONE, null), NothingSettingsDto(GameType.NOTHING, rounds = 3)),
         )
 
         @JvmStatic
@@ -265,7 +227,6 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
             arguments("join", HttpMethod.POST, "/api/rooms/$ROOM_ID/join", null, true),
             arguments("leave", HttpMethod.POST, "/api/rooms/$ROOM_ID/leave", null, false),
             arguments("change role", HttpMethod.PUT, "/api/rooms/$ROOM_ID/role", """{"role":"SPECTATOR"}""", true),
-            arguments("delete", HttpMethod.DELETE, "/api/rooms/$ROOM_ID", null, false),
             arguments("start", HttpMethod.POST, "/api/rooms/$ROOM_ID/session", null, true),
             arguments("cancel", HttpMethod.DELETE, "/api/rooms/$ROOM_ID/session", null, true),
             arguments("pause", HttpMethod.POST, "/api/rooms/$ROOM_ID/session/pause", null, true),
@@ -282,23 +243,23 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
             val update = "/api/games/nothing/rooms/$ROOM_ID/settings"
             return Stream.of(
                 arguments("create without settings", HttpMethod.POST, create, "{}", null),
-                arguments("old create body with gameType", HttpMethod.POST, create, """{"gameType":"NOTHING"}""", null),
+                arguments("create body with the game code only", HttpMethod.POST, create, """{"gameCode":"nothing"}""", null),
                 arguments(
                     "game settings without discriminator", HttpMethod.POST, create,
-                    """{"settings":{"timeControl":{"mode":"NONE"},"gameSettings":{"rounds":3}}}""", "settings.gameSettings.gameType",
+                    """{"settings":{"timeControl":{"mode":"NONE"},"gameSettings":{"rounds":3}}}""", "settings.gameSettings.gameCode",
                 ),
                 arguments(
                     "unknown discriminator", HttpMethod.POST, create,
-                    """{"settings":{"timeControl":{"mode":"NONE"},"gameSettings":{"gameType":"CHESS","rounds":3}}}""", "settings.gameSettings.gameType",
+                    """{"settings":{"timeControl":{"mode":"NONE"},"gameSettings":{"gameCode":"chess","rounds":3}}}""", "settings.gameSettings.gameCode",
                 ),
                 arguments(
                     "unknown time control mode", HttpMethod.PUT, update,
-                    """{"timeControl":{"mode":"CHESS"},"gameSettings":{"gameType":"NOTHING","rounds":3}}""", null,
+                    """{"timeControl":{"mode":"CHESS"},"gameSettings":{"gameCode":"nothing","rounds":3}}""", null,
                 ),
-                arguments("settings without time control", HttpMethod.PUT, update, """{"gameSettings":{"gameType":"NOTHING","rounds":3}}""", null),
+                arguments("settings without time control", HttpMethod.PUT, update, """{"gameSettings":{"gameCode":"nothing","rounds":3}}""", null),
                 arguments(
                     "unknown discriminator in update", HttpMethod.PUT, update,
-                    """{"timeControl":{"mode":"NONE"},"gameSettings":{"gameType":"CHESS","rounds":3}}""", "gameSettings.gameType",
+                    """{"timeControl":{"mode":"NONE"},"gameSettings":{"gameCode":"chess","rounds":3}}""", "gameSettings.gameCode",
                 ),
             )
         }

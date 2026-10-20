@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletResponse
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.HttpHeaders
+import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
@@ -44,6 +45,8 @@ class SecurityConfig(
                     "/v3/api-docs/**",
                     "/actuator/health/**",
                 ).permitAll()
+                // Каталог игр и параметры игры видны и гостям. Только GET и только сами игры, не их комнаты.
+                it.requestMatchers(HttpMethod.GET, GAMES_PATH, "$GAMES_PATH/*").permitAll()
                 it.anyRequest().authenticated()
             }
             .oauth2ResourceServer {
@@ -93,5 +96,6 @@ class SecurityConfig(
 
     companion object {
         const val AUTH_PATH = "/api/auth"
+        const val GAMES_PATH = "/api/games"
     }
 }

@@ -1,9 +1,9 @@
 package site.qgames.game.mapper.room
 
 import org.springframework.stereotype.Component
+import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.room.GameSettingsDto
 import site.qgames.game.gatewayapi.dto.room.GameSettingsLimitsDto
-import site.qgames.game.gatewayapi.dto.room.GameType
 import site.qgames.game.gatewayapi.dto.room.IntRangeDto
 import site.qgames.game.gatewayapi.dto.room.NothingSettingsDto
 import site.qgames.game.gatewayapi.dto.room.NothingSettingsLimitsDto
@@ -36,14 +36,14 @@ class RoomSettingsResponseMapper {
     )
 
     fun toLimitsResponse(limits: Any): GameSettingsLimitsDto = when (limits) {
-        is NothingSettingsLimits -> NothingSettingsLimitsDto(gameType = GameType.NOTHING, rounds = toDto(limits.rounds))
+        is NothingSettingsLimits -> NothingSettingsLimitsDto(gameCode = GameCode.NOTHING, rounds = toDto(limits.rounds))
         else -> error("No DTO for game settings limits ${limits::class.qualifiedName}")
     }
 
     fun toDto(range: IntRange) = IntRangeDto(min = range.first, max = range.last)
 
     private fun toResponse(settings: Any): GameSettingsDto = when (settings) {
-        is NothingSettings -> NothingSettingsDto(gameType = GameType.NOTHING, rounds = settings.rounds)
+        is NothingSettings -> NothingSettingsDto(gameCode = GameCode.NOTHING, rounds = settings.rounds)
         else -> error("No DTO for game settings ${settings::class.qualifiedName}")
     }
 }

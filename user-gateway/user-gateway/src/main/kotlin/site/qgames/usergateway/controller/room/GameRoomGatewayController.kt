@@ -3,11 +3,12 @@ package site.qgames.usergateway.controller.room
 import org.springframework.web.bind.annotation.RestController
 import site.qgames.usergateway.exception.game.GameErrors
 import site.qgames.game.gatewayapi.api.GameRoomApi
+import site.qgames.usergateway.mapper.game.toGame
 import site.qgames.usergateway.mapper.room.toGame
 import site.qgames.usergateway.mapper.room.toPublic
 import site.qgames.usergateway.publicapi.api.PublicGameRoomApi
+import site.qgames.usergateway.publicapi.dto.game.GameCode
 import site.qgames.usergateway.publicapi.dto.room.CreateRoomRequest
-import site.qgames.usergateway.publicapi.dto.room.GameType
 import site.qgames.usergateway.publicapi.dto.room.MoveRequest
 import site.qgames.usergateway.publicapi.dto.room.RoomResponse
 import site.qgames.usergateway.publicapi.dto.room.RoomSettingsDto
@@ -33,5 +34,5 @@ class GameRoomGatewayController(
 
     /** Код игры в контракте game по публичному коду; неизвестный — 404 GAME_NOT_FOUND. */
     private fun gameCode(code: String): String =
-        (GameType.fromCode(code) ?: throw GameErrors.gameNotFound()).toGame().code
+        (GameCode.fromCode(code) ?: throw GameErrors.gameNotFound()).toGame().code
 }

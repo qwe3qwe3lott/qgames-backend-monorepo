@@ -31,7 +31,10 @@ class RoomMemberRepository(
     fun shiftLeaveDeadlines(roomId: UUID, userIds: Collection<UUID>, shift: Duration) =
         roomMemberPostgresqlRepository.shiftLeaveDeadlines(roomId, userIds, shift.toNanos() / 1_000)
 
-    /** Комнаты с истёкшими к [now] сроками выхода (без игроков партий на паузе), самые просроченные первыми. Без блокировок. */
+    /**
+     * Комнаты с истёкшими к [now] сроками выхода (без игроков партий на паузе), самые просроченные первыми. Комнаты
+     * принудительно отключённых игр (FORCE_DISABLED) пропускаются: их удалит ForceDisabledGameCleanupJob. Без блокировок.
+     */
     fun findRoomIdsWithExpiredLeave(now: Instant, limit: Int): List<UUID> =
         roomMemberPostgresqlRepository.findRoomIdsWithExpiredLeave(now, limit)
 

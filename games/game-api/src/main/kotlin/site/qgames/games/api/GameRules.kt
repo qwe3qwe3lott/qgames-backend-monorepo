@@ -12,8 +12,11 @@ import java.util.UUID
  */
 interface GameRules<S : Any, M : Any, C : Any> {
 
-    /** Совпадает с именем значения GameType в контракте сервиса game. */
-    val type: String
+    /**
+     * Код игры, например `nothing`: совпадает с кодом в каталоге игр сервиса game (таблица game, enum GameCode)
+     * и в путях API (`/api/games/{gameCode}`).
+     */
+    val code: String
     val minPlayers: Int
     val maxPlayers: Int
     val stateClass: Class<S>

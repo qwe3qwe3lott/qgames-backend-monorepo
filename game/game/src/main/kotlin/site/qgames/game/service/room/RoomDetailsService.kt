@@ -30,7 +30,7 @@ class RoomDetailsService(
 ) {
 
     fun details(room: RoomModel, viewer: UUID): RoomDetailsModel {
-        val rules = gameRegistry.rules(room.gameType)
+        val rules = gameRegistry.rules(room.gameCode)
         val members = roomMemberRepository.findAll(room.id)
         val profiles = userAuthUserRepository.findByIds(members.map { it.userId })
         val session = room.currentSessionId?.let(roomSessionRepository::findById) ?: roomSessionRepository.findLatest(room.id)
@@ -46,7 +46,7 @@ class RoomDetailsService(
     }
 
     private fun sessionDetails(session: RoomSessionModel, viewer: UUID): RoomSessionDetailsModel {
-        val rules = gameRegistry.rules(session.gameType)
+        val rules = gameRegistry.rules(session.gameCode)
         return RoomSessionDetailsModel(
             session = session,
             players = roomSessionRepository.findPlayers(session.id),

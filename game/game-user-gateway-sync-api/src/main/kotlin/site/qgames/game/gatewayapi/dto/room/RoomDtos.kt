@@ -3,28 +3,9 @@ package site.qgames.game.gatewayapi.dto.room
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
+import site.qgames.game.gatewayapi.dto.game.GameCode
 import java.time.Instant
 import java.util.UUID
-
-/** [code] — код игры в путях API (`/api/games/{gameCode}/…`). */
-enum class GameType(val code: String) {
-    NOTHING(GameCodes.NOTHING),
-    ;
-
-    companion object {
-        fun fromCode(code: String): GameType? = entries.firstOrNull { it.code == code }
-    }
-}
-
-/** Коды игр строками: нужны в аннотациях OpenAPI. */
-object GameCodes {
-    const val NOTHING = "nothing"
-}
-
-/** Имена значений [GameType] строками: нужны в аннотациях Jackson и OpenAPI (дискриминатор gameType). */
-object GameTypeNames {
-    const val NOTHING = "NOTHING"
-}
 
 enum class RoomStatus {
     /** Партия не идёт: можно менять роли и стартовать. */
@@ -50,7 +31,7 @@ enum class SessionStatus {
     CANCELLED,
 }
 
-/** Тип игры — из кода игры в пути. */
+/** Игра — из кода игры в пути. */
 data class CreateRoomRequest(
     @field:NotNull
     @field:Valid
@@ -74,7 +55,7 @@ data class MoveRequest(
 
 data class RoomResponse(
     val id: UUID,
-    val gameType: GameType,
+    val gameCode: GameCode,
     val status: RoomStatus,
     /** Нет, если в комнате никого не осталось: владельцем станет первый вошедший. */
     val ownerId: UUID?,

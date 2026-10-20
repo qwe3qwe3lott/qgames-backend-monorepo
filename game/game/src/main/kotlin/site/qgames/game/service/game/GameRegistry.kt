@@ -1,21 +1,28 @@
 package site.qgames.game.service.game
 
 import org.springframework.stereotype.Component
-import site.qgames.game.model.room.RoomGameType
+import site.qgames.game.model.game.GameCode
 import site.qgames.games.api.GameRules
 
+/**
+ * Правила подключённых игр по коду. Модуль правил есть не у каждой игры каталога: неопубликованной игре (NOT_PUBLISHED)
+ * он не обязателен. Соответствие каталога и модулей проверяет GameCatalogVerifier при старте.
+ */
 @Component
 class GameRegistry(rules: List<GameRules<*, *, *>>) {
 
-    private val byType: Map<RoomGameType, GameRules<Any, Any, Any>> = rules.associate {
+    private val byCode: Map<GameCode, GameRules<Any, Any, Any>> = rules.associate {
         @Suppress("UNCHECKED_CAST")
-        RoomGameType.valueOf(it.type) to (it as GameRules<Any, Any, Any>)
+        val typed = it as GameRules<Any, Any, Any>
+        (GameCode.fromCode(it.code) ?: error("Rules ${it::class.qualifiedName} have unknown game code '${it.code}'")) to typed
     }
 
-    init {
-        val missing = RoomGameType.entries - byType.keys
-        check(missing.isEmpty()) { "No rules registered for game types $missing" }
-    }
+    /**
+     * Правила игры, у которой они обязаны быть: комнаты и партии бывают только у игр с правилами (игры без
+     * правил наружу не выдаются).
+     */
+    fun rules(code: GameCode): GameRules<Any, Any, Any> = rulesOrNull(code) ?: error("No rules registered for game $code")
 
-    fun rules(gameType: RoomGameType): GameRules<Any, Any, Any> = byType.getValue(gameType)
+    /** Правила игры; null — модуля правил нет (неопубликованная игра). */
+    fun rulesOrNull(code: GameCode): GameRules<Any, Any, Any>? = byCode[code]
 }

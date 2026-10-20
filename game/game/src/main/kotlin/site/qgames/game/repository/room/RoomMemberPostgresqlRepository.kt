@@ -76,8 +76,10 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
             SELECT m.room_id
             FROM room_member m
                      JOIN room r ON r.id = m.room_id
+                     JOIN game g ON g.code = r.game_code
                      LEFT JOIN room_session s ON s.id = r.current_session_id AND s.paused_at IS NOT NULL
             WHERE m.leave_deadline <= :now
+              AND g.publish_status <> 'FORCE_DISABLED'
               AND NOT EXISTS (SELECT 1 FROM room_session_player p WHERE p.session_id = s.id AND p.user_id = m.user_id)
             GROUP BY m.room_id
             ORDER BY min(m.leave_deadline)

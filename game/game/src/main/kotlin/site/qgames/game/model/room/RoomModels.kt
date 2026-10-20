@@ -1,11 +1,13 @@
 package site.qgames.game.model.room
 
+import site.qgames.game.model.game.GameCode
 import java.time.Instant
 import java.util.UUID
 
 data class RoomModel(
     val id: UUID,
-    val gameType: RoomGameType,
+    /** Игра комнаты. */
+    val gameCode: GameCode,
     /** Нет, если в комнате никого не осталось: владельцем станет первый вошедший. */
     val ownerId: UUID?,
     val status: RoomStatus,
@@ -39,11 +41,6 @@ data class RoomSettingsModel(
     val timeControl: RoomTimeControlModel,
     val gameSettings: Any,
 )
-
-/** Тип игры комнаты. Имя значения совпадает с GameRules.type модуля игры. */
-enum class RoomGameType {
-    NOTHING,
-}
 
 enum class RoomStatus {
     WAITING,

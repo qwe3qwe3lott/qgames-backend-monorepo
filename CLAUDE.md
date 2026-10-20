@@ -66,11 +66,12 @@ docker/                        Dockerfile, init-скрипты, dev-ключи, 
 - Новая игра — это новый модуль `games/<игра>`. Кроме него нужны:
   - зависимость в `game/game/build.gradle.kts`;
   - бин правил в `GamesConfig`;
-  - значение в enum `GameType` контрактов (game и gateway);
+  - значение в enum `GameCode` модели game и обоих контрактов (game и gateway), а также константа в `GameCodes`; `GameRules.code` модуля совпадает с кодом;
+  - строка в таблице `game` DML-миграцией `<дата>-INSERT-game` (см. §4 «Каталог игр»). Пока игра в разработке — статус `NOT_PUBLISHED`, модуль правил и DTO для неё ещё не обязательны;
   - DTO настроек и границ (`<Игра>SettingsDto`, `<Игра>SettingsLimitsDto`) как новый вариант `oneOf` в обоих контрактах;
   - ветки в `RoomSettingsResponseMapper` (game) и `RoomMapper` (gateway).
 
-  Новый сервис, БД и миграции для этого не нужны.
+  Новый сервис и DDL-миграции для этого не нужны.
 - Что `GameRules` задаёт помимо ходов:
   - **настройки игры:** класс, границы и значения по умолчанию (их отдаёт `GET /api/games/{gameCode}`), проверку, `initialState(players, seed, settings)`;
   - **поддерживаемые режимы времени** и их границы. Сейчас есть `NONE` и `PER_MOVE`; расширение (`PER_ROUND`, `CHESS`) — новым значением `TimeControlMode`;
@@ -117,13 +118,13 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 ### Слои: entity, модель, репозиторий
 
 - **Entity** (`entity/<фича>/<Имя>Entity`) — строка таблицы, ровно как в БД: перечисления хранятся `String`, nullable `id`/`version` для Spring Data JDBC. Entity живёт только в `entity/`, `mapper/` и `repository/`.
-- **Модель** (`model/<фича>/<Имя>Model`) — то, с чем работают сервисы, контроллеры, листенеры, джобы и паблишеры. Перечисления — enum модели с префиксом сущности (`RoomGameType`, `RoomStatus`, `UserAvatar`). Id не nullable: модель существует только для сохранённой строки.
+- **Модель** (`model/<фича>/<Имя>Model`) — то, с чем работают сервисы, контроллеры, листенеры, джобы и паблишеры. Перечисления — enum модели с префиксом сущности (`GameCode`, `RoomStatus`, `UserAvatar`). Id не nullable: модель существует только для сохранённой строки.
 - **Маппер** entity ↔ модель — ручной `@Component` `mapper/<фича>/<Имя>EntityMapper` (`toModel`/`toEntity`), без кодогенерации.
 - **DTO** контрактов (`*-sync-api`) живут только в контроллерах и их мапперах `mapper/<фича>/<Имя>ResponseMapper` (модель → DTO, DTO-enum → enum модели). Сервисы принимают и возвращают модели и примитивы, а составные ответы — композитными моделями (`RoomDetailsModel`, `AuthResultModel`). Данные для такой модели собирает сервис (`RoomDetailsService`); маппер в репозитории не ходит.
 - **Репозиторий — всегда два слоя:**
   - `<Имя>Repository` (`@Repository`-класс) — единственный, кого видят сервисы. Принимает и возвращает модели и параметры (вставка — `insert(…)` с полями, а не готовой entity), маппит через бин-маппер;
   - `<Имя><Хранилище>Repository` — работа с конкретным хранилищем на entity: `…PostgresqlRepository` (Spring Data `CrudRepository` или `JdbcClient`), позже `…RedisRepository`. Используется только своим фасадом.
-- Доменные enum'ы в DTO контрактов (`*-sync-api`) — свои; контроллер (или его маппер) переводит их в enum модели по имени (`RoomGameType.valueOf(request.gameType.name)`).
+- Доменные enum'ы в DTO контрактов (`*-sync-api`) — свои; контроллер (или его маппер) переводит их в enum модели по имени (`RoomRole.valueOf(request.role.name)`).
 
 ### Ошибки (`libs/common-exception`)
 
@@ -144,7 +145,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - Обработчики подключаются автоконфигурацией при подключении библиотеки (сервисы подключают её явно, `common-web` — через `api`):
   - `QgamesExceptionHandler` — `QgamesException` по родительскому типу → ProblemDetail с `code` и `properties`; 400 `VALIDATION_ERROR` для `@Valid` и битого тела; ловушка `Exception` → лог ERROR и 500 `INTERNAL_ERROR` без деталей. Стандартные исключения Spring MVC (404 маршрута, 405) обрабатывает `ResponseEntityExceptionHandler`;
   - `PersistenceExceptionHandler` (если в classpath есть spring-dao) — `DuplicateKeyException` и `OptimisticLockingFailureException` → 409 `CONFLICT`.
-- Неизвестный или отсутствующий дискриминатор полиморфного DTO (`InvalidTypeIdException` Jackson) — 400 `VALIDATION_ERROR` с ошибкой по полю `errors[<путь>.<дискриминатор>]`, например `settings.gameSettings.gameType`.
+- Неизвестный или отсутствующий дискриминатор полиморфного DTO (`InvalidTypeIdException` Jackson) — 400 `VALIDATION_ERROR` с ошибкой по полю `errors[<путь>.<дискриминатор>]`, например `settings.gameSettings.gameCode`.
 - Advice библиотеки имеют самый низкий приоритет. **Собственный advice сервиса** объявляет `@Order(Ordered.HIGHEST_PRECEDENCE)`, иначе его исключения может перехватить ловушка `Exception` (пример — `DownstreamExceptionHandler` в gateway).
 - `@Transactional(noRollbackFor = [QgamesException::class])` — когда изменение (счётчик попыток, отзыв сессии) должно сохраниться, несмотря на ошибку.
 
@@ -161,6 +162,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - `required` проставляется автоматически (`KotlinRequiredPropertiesConverter` в `libs/common-web`): обязательны параметры конструктора DTO, которые не nullable и без значения по умолчанию. `@Schema(requiredMode)` на полях не пишем; необязательное поле — nullable или со значением по умолчанию;
   - обязательные строки запросов дополнительно помечаются `@NotBlank` (серверная проверка, 400 `VALIDATION_ERROR`). `@Size(max)` перебивает `minLength` от `@NotBlank` до 0, поэтому вместе с ним — `@Size(min = 1, max = …)`;
   - успешные ответы — `application/json` (`springdoc.default-produces-media-type` по умолчанию в `libs/common-web`), ошибки — `application/problem+json`;
+  - ключи документа (пути, схемы, ответы) отсортированы по алфавиту: `springdoc.writer-with-order-by-keys=true` по умолчанию в `libs/common-web`. Иначе springdoc отдаёт их в нестабильном порядке, и снапшот API на фронте меняется без изменения контракта. Проверяет `OpenApiContractScenariosTest` в gateway;
   - в схемах OpenAPI 3.1 тип задаётся через `types(setOf(…))`, а не `type(…)`;
   - регулярки в `@Pattern` должны работать и в Java, и в JS (`RegExp` с флагом `u`): только Unicode-классы (`\p{Cc}`), без Java-специфичных (`\p{Cntrl}`, `\p{javaLetter}`);
   - **полиморфные DTO** (например, настройки конкретной игры) оформляются так:
@@ -169,13 +171,17 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
     - дискриминатор — параметр конструктора с `@field:Schema(type = "string", allowableValues = [...])`.
 
     Чистый `oneOf` + `discriminator` без цикла `allOf` от swagger-core даёт `DiscriminatedUnionCustomizer` из `libs/common-web`. Форму схемы проверяет `OpenApiContractScenariosTest` в gateway. `jackson-annotations` (версия из BOM) подключается в `*-sync-api`.
-- **Тип игры — через `gameCode` в пути.** Ручка, которой нужен тип игры, живёт под `/api/games/{gameCode}/...`, сначала `games`, потом `rooms`:
+
+    Дискриминатор настроек игры (`gameSettings`, `gameSettingsLimits`) — поле `gameCode`, значения — коды игр (`nothing`), константы из `GameCodes`.
+- **Код игры — единственный идентификатор игры.** Enum `GameCode` в контрактах сериализуется строчным кодом (`@get:JsonValue val code`), поэтому в JSON и в OpenAPI значения — `nothing`, `carcassonne`, а не имена констант. Отдельного «типа игры» нет.
+- **Код игры — в пути.** Ручка, которой нужна игра, живёт под `/api/games/{gameCode}/...`, сначала `games`, потом `rooms`:
+  - каталог игр — `GET /api/games`, игра с параметрами правил — `GET /api/games/{gameCode}`;
   - создание комнаты — `POST /api/games/{gameCode}/rooms`;
   - настройки — `PUT …/rooms/{roomId}/settings`;
-  - ход — `POST …/rooms/{roomId}/moves`;
-  - параметры игры — `GET /api/games/{gameCode}`.
+  - ход — `POST …/rooms/{roomId}/moves`.
 
-  `gameType` в теле запроса не передаётся. Неизвестный код gateway отклоняет сам (404 `GAME_NOT_FOUND`). Если код не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`. Ручкам без привязки к игре (комната, вход, роль, партия) код не нужен.
+  `{gameCode}` — строка с `allowableValues`. Код игры в теле запроса не передаётся. Неизвестный код gateway отклоняет сам (404 `GAME_NOT_FOUND`). Если код не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`. Ручкам без привязки к игре (комната, вход, роль, партия) код не нужен.
+- **Каталог игр доступен гостям:** `GET /api/games` и `GET /api/games/{gameCode}` в user-gateway — permitAll (только GET и только сами игры, комнаты требуют входа). Сервис game отдаёт каталог без `X-User-Id`. Гость с протухшей access-кукой получает на этих ручках 401 (Bearer-фильтр проверяет токен и на permitAll) — принято осознанно, 401 описан в `@ApiResponses`.
 - **Gateway → сервисы:** Spring HTTP Interfaces (`@ImportHttpServices`), **не Feign**. Интерфейсы лежат в `<svc>-user-gateway-sync-api`; сервис реализует их контроллером (`class AuthController : AuthApi`), gateway строит по ним клиент. Базовый URL: `spring.http.serviceclient.<группа>.base-url`.
 - **X-User-Id:** проставляет только `UserIdPropagationInterceptor` gateway из проверенного JWT. В сигнатурах `*-user-gateway-sync-api` userId нет — сервис берёт его через `RequestUserContext.userId()`.
 - **Сервис ↔ сервис (синхронно):** gRPC через стартеры Spring Boot 4.1 (`spring-boot-starter-grpc-server/client`). Контракты — в `<svc>-internal-sync-api`.
@@ -218,10 +224,31 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - **Реплики сейчас:** `game."user_auth#user"` (id, nickname, avatar, version) из события `UserProfileChanged` user-auth.
 - Начальное наполнение реплики, если потребитель подключается к уже существующим данным источника (бэкфилл), — решить при первой такой необходимости.
 
+### Каталог игр (сервис `game`)
+
+- Игры объявляются в таблице `game` (`code`, `title`, `description`, `sort_order`, `publish_status`) DML-миграциями (`<дата>-INSERT-game`). `room.game_code` и `room_session.game_code` ссылаются на `game(code)`. Статус позже будет менять админка.
+- Набор кодов в таблице совпадает с enum `GameCode`, модуль правил обязателен для всех игр, кроме `NOT_PUBLISHED`. Это проверяет `GameCatalogVerifier` при старте `game` (после миграций); при расхождении сервис не стартует.
+- **Статусы публикации** (`publish_status`, CHECK в DDL). Наружу (публичный `GamePublishStatus`) выходят только `PUBLISHED`, `DISABLED`, `HIDDEN`, поэтому `rules` в `GameDetailsResponse` всегда есть:
+
+  | Статус | В `GET /api/games` | `GET /api/games/{gameCode}` | Новые комнаты и партии | Существующие комнаты и партии |
+  |---|---|---|---|---|
+  | `PUBLISHED` | да | да | да | работают |
+  | `HIDDEN` | нет | да (доступ по прямой ссылке) | да | работают |
+  | `DISABLED` | да (фронт: «Временно недоступна») | да | 409 `GAME_UNAVAILABLE` | работают, идущие партии продолжаются |
+  | `NOT_PUBLISHED` | нет | 404 `GAME_NOT_FOUND` | 404 `GAME_NOT_FOUND` | все ручки комнат — 404 `GAME_NOT_FOUND`; комнаты не удаляются. Игра в разработке, модуля правил может не быть |
+  | `FORCE_DISABLED` | нет | 404 `GAME_NOT_FOUND` | 404 `GAME_NOT_FOUND` | все ручки комнат — 404 `GAME_NOT_FOUND`; `ForceDisabledGameCleanupJob` отменяет партии и удаляет комнаты |
+
+- Доступность игры проверяет `GameService`: `checkPlayable` — при создании комнаты (до проверки настроек) и старте партии, `checkAccessible` — во всех остальных операциях с комнатой, по игре комнаты под её блокировкой.
+- **`ForceDisabledGameCleanupJob`** (ShedLock, `qgames.game.catalog.force-disabled-cleanup-enabled`, интервал 1m): пачкой находит комнаты `FORCE_DISABLED`-игр, каждую — `room FOR UPDATE SKIP LOCKED` с перепроверкой статуса, отменяет идущую партию и удаляет комнату (участники и партии — каскадно). `MoveTimeoutJob` и `RoomLeaveJob` комнаты `FORCE_DISABLED`-игр пропускают (фильтр в SQL), комнаты `NOT_PUBLISHED`-игр — нет.
+- Решить при реализации admin-gateway:
+  - запрет перевода игры обратно в `NOT_PUBLISHED`;
+  - запрет публикации (любой статус, кроме `NOT_PUBLISHED`) игры без модуля правил — сейчас такая игра наружу не выдаётся (404), но статус это не запрещает;
+  - завершение партий и удаление комнат при смене статуса вызовом из админки и судьба периодического `ForceDisabledGameCleanupJob`.
+
 ### Игровые комнаты (сервис `game`)
 
 - **Публичные комнаты без поиска:** вход по ссылке с id комнаты для любого авторизованного пользователя. Приватные комнаты и поиск — решить при реализации.
-- Комната создаётся под тип игры; создатель — владелец и первый игрок.
+- Комната создаётся под игру (`room.game_code` → `game.code`); создатель — владелец и первый игрок.
 - **Вход:**
   - игрок идущей партии возвращается на своё место (PLAYER);
   - иначе, если партия не идёт и есть место, — PLAYER;
@@ -240,20 +267,20 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - **Владелец:**
   - при удалении владельца владение переходит к самому раннему из присутствующих (без `leave_deadline`) — сначала игроки, затем наблюдатели. Уходящим владение достаётся только если присутствующих нет, в том же порядке;
   - если комната опустела, владельца нет, и им становится первый вошедший;
-  - только владелец стартует партию, ставит её на паузу и продолжает, отменяет её (комната возвращается в ожидание) и удаляет комнату.
+  - только владелец стартует партию, ставит её на паузу и продолжает, отменяет её (комната возвращается в ожидание).
 - **Партии.** В комнате идут несколько партий подряд; после конца или отмены комната снова в WAITING, а последняя партия видна в ответе.
 - **Автоудаление:** комната без игроков и наблюдателей дольше `qgames.game.room.empty-ttl` (30m) удаляется шедулером `EmptyRoomCleanupJob` с ShedLock.
-- **Конкурентность:** каждая мутация комнаты, участников и партии идёт под `SELECT … FOR UPDATE` строки `room`; ход дополнительно защищён версией партии. Джобы (`MoveTimeoutJob`, `RoomLeaveJob`) берут блокировки в том же порядке: сначала `room` (`FOR UPDATE … SKIP LOCKED`), потом перепроверка под блокировкой.
+- **Конкурентность:** каждая мутация комнаты, участников и партии идёт под `SELECT … FOR UPDATE` строки `room`; ход дополнительно защищён версией партии. Джобы (`MoveTimeoutJob`, `RoomLeaveJob`, `ForceDisabledGameCleanupJob`) берут блокировки в том же порядке: сначала `room` (`FOR UPDATE … SKIP LOCKED`), потом перепроверка под блокировкой.
 - **Real-time пока нет:** клиент перечитывает `GET` комнаты. SSE + шина — по §3, когда дойдём.
 
 ### Сессии комнаты — партии (сервис `game`)
 
 - Партия называется **сессией комнаты** (`room_session`, в коде `RoomSession*`). Таблицы общие для всех игр, своих таблиц у игры нет:
-  - `room_session`: тип игры, статус, `state jsonb` (снапшот, формат задаёт модуль игры), `state_schema_version`, `seed`, `version`, снапшот настроек комнаты, `move_deadline`, `paused_at`;
+  - `room_session`: код игры (`game_code` → `game.code`), статус, `state jsonb` (снапшот, формат задаёт модуль игры), `state_schema_version`, `seed`, `version`, снапшот настроек комнаты, `move_deadline`, `paused_at`;
   - `room_session_player`: места игроков партии;
   - `room_session_move`: журнал ходов (`session_id`, `seq` = версия партии после хода, игрок, `move jsonb` — конверт хода как его прислал клиент).
 - **Ручка хода одна на все игры:** `POST /api/games/{gameCode}/rooms/{roomId}/moves`.
-  - `gameCode` — строчный код игры (`GameType.code`: `nothing`, позже `carcassonne`). Неизвестный код — 404 `GAME_NOT_FOUND` (gateway отклоняет сам), не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`.
+  - `gameCode` — строчный код игры (`GameCode.code`: `nothing`, `carcassonne`). Неизвестный код — 404 `GAME_NOT_FOUND` (gateway отклоняет сам), не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`.
   - Тело — общий конверт `{type, data, expectedVersion}`: `type` — вид действия (`PASS`, `PLACE_TILE`), `data` — его параметры в свободном формате. Сервис превращает `{type, data}` в класс хода игры (`GameRules.moveClass`); неподходящий формат — 400 `VALIDATION_ERROR`.
   - Своих ручек у игр нет. Схема `data` в OpenAPI пока не типизируется — решить при появлении второй игры (Каркассон).
 - Ход применяется в одной транзакции: читаем снапшот, применяем правила из модуля игры, затем `UPDATE room_session … WHERE id = :id AND version = :expected` и `INSERT` в `room_session_move`. Если обновилось 0 строк, партию уже изменил другой запрос: 409 `SESSION_CONFLICT`, клиент перечитывает состояние. Клиент может передать `expectedVersion`, чтобы не ходить по устаревшему виду.
@@ -282,7 +309,7 @@ src/main/resources/db/changelog/
   DML/<имя>.yaml, DML/SQL/<имя>.sql, DML/SQL/<имя>-rollback.sql
 ```
 
-- **Имя миграции:** `<yyyy-MM-dd>-<ДЕЙСТВИЕ>-<таблица>`, например `2026-10-17-CREATE-user_identity`, `2026-11-02-ALTER-user`, `2026-11-02-INSERT-game_type`. Действие капсом: `CREATE`, `ALTER`, `DROP` (DDL), `INSERT`, `UPDATE`, `DELETE` (DML). Имя одновременно служит `id` changeSet'а. Если в один день над одной таблицей нужно два одинаковых действия — добавить уточнение в конец (`2026-11-02-ALTER-user-add_nickname`).
+- **Имя миграции:** `<yyyy-MM-dd>-<ДЕЙСТВИЕ>-<таблица>`, например `2026-10-17-CREATE-user_identity`, `2026-11-02-ALTER-user`, `2026-11-02-INSERT-game`. Действие капсом: `CREATE`, `ALTER`, `DROP` (DDL), `INSERT`, `UPDATE`, `DELETE` (DML). Имя одновременно служит `id` changeSet'а. Если в один день над одной таблицей нужно два одинаковых действия — добавить уточнение в конец (`2026-11-02-ALTER-user-add_nickname`).
 - **Одна таблица — одна миграция.** Индексы и ограничения таблицы входят в её CREATE-миграцию.
 - **DDL** (структура) и **DML** (данные) лежат в разных папках. Порядок выполнения задаёт только master: файлы перечисляются явно, `includeAll` не используем.
 - yaml-changelog шаблон:
@@ -351,7 +378,7 @@ src/main/resources/db/changelog/
 - Миграции — Liquibase (его lock защищает от параллельного запуска).
 - Шедулеры:
   - джоб, который обрабатывает строки по одной (`MoveTimeoutJob`, `RoomLeaveJob`), работает без ShedLock: id выбираются без блокировки, затем `FOR UPDATE SKIP LOCKED` с перепроверкой, работу делят инстансы;
-  - остальные (`EmptyRoomCleanupJob`) — с ShedLock;
+  - остальные (`EmptyRoomCleanupJob`, `ForceDisabledGameCleanupJob`) — с ShedLock. `ForceDisabledGameCleanupJob` при этом блокирует каждую комнату так же, как первые (`FOR UPDATE SKIP LOCKED` с перепроверкой, транзакция на комнату);
   - у каждого джоба свой флаг включения `…-enabled`. В тестах джобы выключены и вызываются напрямую через `run()`.
 - Kafka — consumer groups, идемпотентная обработка.
 - Побочные эффекты (письма, события) — после коммита (`@TransactionalEventListener`) или через outbox.
@@ -531,6 +558,14 @@ docker compose down -v                # остановить и удалить �
 | Google-аккаунту: запрос ника через ошибку `PROFILE_REQUIRED` и повтор входа | Лишний шаг при первом входе | Сгенерированный ник, смена в профиле |
 | Отдельная ручка смены только ника | Аватар тоже меняется | Одна `PATCH /profile` на ник и аватар |
 
+### Каталог игр
+
+| Вариант | Почему отклонён | Что вместо |
+|---|---|---|
+| Флаг `disabled` у игры | Нужны разные режимы недоступности: скрыть из списка, временно запретить новые партии, отключить с удалением комнат | `publish_status` (см. §4 «Каталог игр») |
+| Статус `ANNOUNCED` («скоро выйдет») в каталоге | Убран пользователем | Игра в разработке — `NOT_PUBLISHED`, наружу не выдаётся |
+| `gameType` наряду с кодом игры (`GameType.NOTHING` + `nothing`) | Два идентификатора одной сущности, их приходится сопоставлять в каждом маппере и на фронте | Только `gameCode` (enum `GameCode` со строчными кодами), в том числе в дискриминаторе настроек |
+
 ### Игровые комнаты
 
 | Вариант | Почему отклонён | Что вместо |
@@ -545,13 +580,14 @@ docker compose down -v                # остановить и удалить �
 | Мгновенное удаление участника при `leave` | Портал выходит сам при уходе со страницы, и перезагрузка отдавала владение и место другому | Отложенный выход со сроком по ролям + `RoomLeaveJob` |
 | Передавать владение самому раннему, даже уходящему | Владельцем на время становился отсутствующий | Сначала присутствующие, уходящие — только если присутствующих нет |
 | Отклонять ход, пришедший после дедлайна, до срабатывания джоба | Лишний код ошибки ради окна ~1 с | Ход принимается |
+| Удаление комнаты владельцем | Хватает автоудаления пустых комнат (`EmptyRoomCleanupJob`), а ручное удаление выкидывает остальных участников и стирает историю партий | Только автоудаление пустых комнат |
 
 ### Настройки и таймеры
 
 | Вариант | Почему отклонён | Что вместо |
 |---|---|---|
 | `gameType` в теле запроса (`POST /api/rooms {gameType}`) | Тип игры в каждой ручке передаётся по-разному | `gameCode` в пути `/api/games/{gameCode}/rooms/...` |
-| Ключ настроек по имени игры (`nothing: {...}`) | Дублирует `gameType` | Полиморфный `gameSettings` (`oneOf` по `gameType`) |
+| Ключ настроек по имени игры (`nothing: {...}`) | Дублирует дискриминатор | Полиморфный `gameSettings` (`oneOf` по `gameCode`) |
 | Плоские nullable-поля настроек / нетипизированный `settings` | Поля копятся с каждой игрой / нет типов на фронте | Полиморфный `gameSettings` + границы в `GET /api/games/{gameCode}` |
 | Только `@Min/@Max` в DTO без ручки параметров игры | Границы одинаковы для всех игр, режимы фронт знает сам | `GET /api/games/{gameCode}` |
 | Таймауты лениво при GET комнаты | GET меняет данные, нечего публиковать в SSE | `MoveTimeoutJob` раз в секунду |

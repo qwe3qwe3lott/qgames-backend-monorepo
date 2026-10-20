@@ -5,7 +5,7 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.model.room.RoomDetailsModel
-import site.qgames.game.model.room.RoomGameType
+import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
@@ -19,6 +19,7 @@ import site.qgames.game.repository.room.RoomRepository
 import site.qgames.game.repository.session.RoomSessionMoveRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
+import site.qgames.game.service.game.GameService
 import site.qgames.game.service.room.RoomDetailsService
 import site.qgames.games.api.GameRules
 import site.qgames.games.api.MoveResult
@@ -43,6 +44,7 @@ class RoomSessionService(
     private val roomSessionRepository: RoomSessionRepository,
     private val roomSessionMoveRepository: RoomSessionMoveRepository,
     private val gameRegistry: GameRegistry,
+    private val gameService: GameService,
     private val roomDetailsService: RoomDetailsService,
     private val jsonMapper: JsonMapper,
     private val clock: Clock,
@@ -52,15 +54,16 @@ class RoomSessionService(
 
     /**
      * Игроки — участники с ролью PLAYER, места — по порядку входа в комнату. Партия получает снимок настроек
-     * комнаты; при таймере на ход сразу ставится дедлайн первого хода.
+     * комнаты; при таймере на ход сразу ставится дедлайн первого хода. Игра должна быть доступна для новых партий.
      */
     @Transactional
     fun start(userId: UUID, roomId: UUID): RoomDetailsModel {
         val room = lockAsOwner(userId, roomId)
+        gameService.checkPlayable(room.gameCode)
         if (room.status != RoomStatus.WAITING) {
             throw RoomErrors.roomNotWaiting()
         }
-        val rules = gameRegistry.rules(room.gameType)
+        val rules = gameRegistry.rules(room.gameCode)
         val players = roomMemberRepository.findAll(roomId).filter { it.role == RoomRole.PLAYER }.map { it.userId }
         if (players.size !in rules.minPlayers..rules.maxPlayers) {
             throw RoomErrors.notEnoughPlayers(rules.minPlayers, rules.maxPlayers)
@@ -70,7 +73,7 @@ class RoomSessionService(
         val settings = jsonMapper.readValue(room.gameSettings, rules.settingsClass)
         val session = roomSessionRepository.insert(
             roomId = roomId,
-            gameType = room.gameType,
+            gameCode = room.gameCode,
             state = jsonMapper.writeValueAsString(rules.initialState(players, seed, settings)),
             stateSchemaVersion = rules.stateSchemaVersion,
             seed = seed,
@@ -131,14 +134,14 @@ class RoomSessionService(
     @Transactional
     fun move(
         userId: UUID,
-        gameType: RoomGameType,
+        gameCode: GameCode,
         roomId: UUID,
         type: String,
         data: Map<String, Any?>?,
         expectedVersion: Long?,
     ): RoomDetailsModel {
-        val room = roomRepository.lockById(roomId) ?: throw RoomErrors.roomNotFound()
-        if (room.gameType != gameType) {
+        val room = lock(roomId)
+        if (room.gameCode != gameCode) {
             throw RoomErrors.gameTypeMismatch()
         }
         val rawMove = buildMap {
@@ -160,7 +163,7 @@ class RoomSessionService(
             throw RoomErrors.sessionConflict()
         }
 
-        val rules = gameRegistry.rules(session.gameType)
+        val rules = gameRegistry.rules(session.gameCode)
         val move = try {
             jsonMapper.convertValue(rawMove, rules.moveClass)
         } catch (_: RuntimeException) {
@@ -197,7 +200,7 @@ class RoomSessionService(
         ) {
             return false
         }
-        val rules = gameRegistry.rules(session.gameType)
+        val rules = gameRegistry.rules(session.gameCode)
         val state = jsonMapper.readValue(session.state, rules.stateClass)
         val player = rules.playerToMove(state)
         if (player == null) {
@@ -253,7 +256,7 @@ class RoomSessionService(
 
     /** Комната под блокировкой и её идущая партия; вызывать может только участник-владелец. */
     private fun lockRunningSessionAsOwner(userId: UUID, roomId: UUID): Pair<RoomModel, RoomSessionModel> {
-        val room = roomRepository.lockById(roomId) ?: throw RoomErrors.roomNotFound()
+        val room = lock(roomId)
         if (roomMemberRepository.findAll(roomId).none { it.userId == userId }) {
             throw RoomErrors.notRoomMember()
         }
@@ -265,10 +268,17 @@ class RoomSessionService(
     }
 
     private fun lockAsOwner(userId: UUID, roomId: UUID): RoomModel {
-        val room = roomRepository.lockById(roomId) ?: throw RoomErrors.roomNotFound()
+        val room = lock(roomId)
         if (room.ownerId != userId) {
             throw RoomErrors.notRoomOwner()
         }
+        return room
+    }
+
+    /** Комната под блокировкой. С комнатой принудительно отключённой игры работать нельзя (404 GAME_NOT_FOUND). */
+    private fun lock(roomId: UUID): RoomModel {
+        val room = roomRepository.lockById(roomId) ?: throw RoomErrors.roomNotFound()
+        gameService.checkAccessible(room.gameCode)
         return room
     }
 

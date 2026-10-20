@@ -1,6 +1,6 @@
 package site.qgames.game.support
 
-import site.qgames.game.gatewayapi.dto.room.GameType
+import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.room.NothingSettingsDto
 import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
 import site.qgames.game.gatewayapi.dto.room.TimeControlDto
@@ -23,9 +23,15 @@ object TestData {
 
     val NICKNAMES = mapOf(ALICE to "Alice", BOB to "Bob", CAROL to "Carol", DAVE to "Dave", EVE to "Eve")
 
+    /** Каталог игр (таблица game), как в DML-миграции. «Игра в ничто» — PUBLISHED, Каркассон — NOT_PUBLISHED без правил. */
+    const val NOTHING_TITLE = "Игра в ничто"
+    const val NOTHING_DESCRIPTION = "Тестовая игра: игроки по очереди завершают ход, партия длится заданное число раундов."
+    const val CARCASSONNE_TITLE = "Каркассон"
+    const val CARCASSONNE_DESCRIPTION = "Строим города, дороги и монастыри. Игра в разработке."
+
     /** Максимум игроков «игры в ничто». */
     const val NOTHING_MAX_PLAYERS = 4
 
     /** Настройки «игры в ничто» по умолчанию (из её правил): 3 круга, без таймера. */
-    val NOTHING_DEFAULT_SETTINGS = RoomSettingsDto(TimeControlDto(TimeControlMode.NONE, null), NothingSettingsDto(GameType.NOTHING, 3))
+    val NOTHING_DEFAULT_SETTINGS = RoomSettingsDto(TimeControlDto(TimeControlMode.NONE, null), NothingSettingsDto(GameCode.NOTHING, 3))
 }

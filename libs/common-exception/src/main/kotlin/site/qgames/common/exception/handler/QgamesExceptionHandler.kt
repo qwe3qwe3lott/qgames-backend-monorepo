@@ -64,7 +64,7 @@ class QgamesExceptionHandler : ResponseEntityExceptionHandler() {
     /**
      * Тело не разобралось (неизвестное значение enum, нет обязательного поля): тот же код, что и у валидации.
      * Неизвестный или отсутствующий дискриминатор полиморфного поля (`@JsonTypeInfo`) — ошибка по полю дискриминатора
-     * в формате `@Valid`: `errors[<путь>.<дискриминатор>]`, например `settings.gameSettings.gameType`.
+     * в формате `@Valid`: `errors[<путь>.<дискриминатор>]`, например `settings.gameSettings.gameCode`.
      */
     override fun handleHttpMessageNotReadable(
         ex: HttpMessageNotReadableException,

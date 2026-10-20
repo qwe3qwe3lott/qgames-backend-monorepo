@@ -5,13 +5,12 @@ import site.qgames.common.web.context.RequestUserContext
 import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.gatewayapi.api.GameRoomApi
 import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
-import site.qgames.game.gatewayapi.dto.room.GameType
 import site.qgames.game.gatewayapi.dto.room.MoveRequest
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
 import site.qgames.game.mapper.room.RoomResponseMapper
 import site.qgames.game.mapper.room.RoomSettingsResponseMapper
-import site.qgames.game.model.room.RoomGameType
+import site.qgames.game.model.game.GameCode
 import site.qgames.game.service.room.RoomService
 import site.qgames.game.service.session.RoomSessionService
 import java.util.UUID
@@ -27,14 +26,14 @@ class GameRoomController(
 
     override fun createRoom(gameCode: String, request: CreateRoomRequest): RoomResponse =
         roomResponseMapper.toResponse(
-            roomService.create(requestUserContext.userId(), gameType(gameCode), roomSettingsResponseMapper.toModel(request.settings)),
+            roomService.create(requestUserContext.userId(), gameCode(gameCode), roomSettingsResponseMapper.toModel(request.settings)),
         )
 
     override fun updateRoomSettings(gameCode: String, roomId: UUID, request: RoomSettingsDto): RoomResponse =
         roomResponseMapper.toResponse(
             roomService.updateSettings(
                 userId = requestUserContext.userId(),
-                gameType = gameType(gameCode),
+                gameCode = gameCode(gameCode),
                 roomId = roomId,
                 settings = roomSettingsResponseMapper.toModel(request),
             ),
@@ -44,7 +43,7 @@ class GameRoomController(
         roomResponseMapper.toResponse(
             roomSessionService.move(
                 userId = requestUserContext.userId(),
-                gameType = gameType(gameCode),
+                gameCode = gameCode(gameCode),
                 roomId = roomId,
                 type = request.type,
                 data = request.data,
@@ -52,6 +51,5 @@ class GameRoomController(
             ),
         )
 
-    private fun gameType(gameCode: String): RoomGameType =
-        RoomGameType.valueOf((GameType.fromCode(gameCode) ?: throw RoomErrors.gameNotFound()).name)
+    private fun gameCode(gameCode: String): GameCode = GameCode.fromCode(gameCode) ?: throw RoomErrors.gameNotFound()
 }

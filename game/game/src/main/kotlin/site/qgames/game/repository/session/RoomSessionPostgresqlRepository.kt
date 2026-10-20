@@ -17,7 +17,7 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
 
     fun insert(
         roomId: UUID,
-        gameType: String,
+        gameCode: String,
         status: String,
         state: String,
         stateSchemaVersion: Int,
@@ -31,15 +31,15 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
     ): RoomSessionEntity {
         val session = jdbcClient.sql(
             """
-            INSERT INTO room_session (room_id, game_type, status, state, state_schema_version, seed, time_control_mode,
+            INSERT INTO room_session (room_id, game_code, status, state, state_schema_version, seed, time_control_mode,
                                       move_seconds, game_settings, move_deadline, created_at)
-            VALUES (:roomId, :gameType, :status, CAST(:state AS jsonb), :stateSchemaVersion, :seed, :timeControlMode,
+            VALUES (:roomId, :gameCode, :status, CAST(:state AS jsonb), :stateSchemaVersion, :seed, :timeControlMode,
                     :moveSeconds, CAST(:gameSettings AS jsonb), :moveDeadline, :now)
             RETURNING $COLUMNS
             """,
         )
             .param("roomId", roomId)
-            .param("gameType", gameType)
+            .param("gameCode", gameCode)
             .param("status", status)
             .param("state", state)
             .param("stateSchemaVersion", stateSchemaVersion)
@@ -77,13 +77,19 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .query { rs, _ -> rs.getUuid("user_id")!! }
             .list()
 
-    /** Статус — литералом, чтобы подходил частичный индекс room_session_move_deadline_idx. */
+    /**
+     * Партии принудительно отключённых игр пропускаются: их отменит ForceDisabledGameCleanupJob, а иначе они занимали
+     * бы пачку. Статус — литералом, чтобы подходил частичный индекс room_session_move_deadline_idx.
+     */
     fun findIdsWithExpiredMove(now: Instant, limit: Int): List<UUID> =
         jdbcClient.sql(
             """
-            SELECT id FROM room_session
-            WHERE status = 'IN_PROGRESS' AND move_deadline <= :now AND paused_at IS NULL
-            ORDER BY move_deadline
+            SELECT s.id
+            FROM room_session s
+                     JOIN game g ON g.code = s.game_code
+            WHERE s.status = 'IN_PROGRESS' AND s.move_deadline <= :now AND s.paused_at IS NULL
+              AND g.publish_status <> 'FORCE_DISABLED'
+            ORDER BY s.move_deadline
             LIMIT :limit
             """,
         )
@@ -159,7 +165,7 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
         RoomSessionEntity(
             id = rs.getUuid("id")!!,
             roomId = rs.getUuid("room_id")!!,
-            gameType = rs.getString("game_type"),
+            gameCode = rs.getString("game_code"),
             status = rs.getString("status"),
             state = rs.getString("state"),
             stateSchemaVersion = rs.getInt("state_schema_version"),
@@ -177,7 +183,7 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
 
     companion object {
         private const val COLUMNS =
-            "id, room_id, game_type, status, state::text AS state, state_schema_version, seed, version, time_control_mode, " +
+            "id, room_id, game_code, status, state::text AS state, state_schema_version, seed, version, time_control_mode, " +
                 "move_seconds, game_settings::text AS game_settings, move_deadline, paused_at, created_at, finished_at"
     }
 }

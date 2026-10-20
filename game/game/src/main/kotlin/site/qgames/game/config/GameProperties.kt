@@ -5,9 +5,19 @@ import java.time.Duration
 
 @ConfigurationProperties("qgames.game")
 data class GameProperties(
+    val catalog: Catalog,
     val room: Room,
     val session: Session,
 ) {
+    data class Catalog(
+        /** Как часто ForceDisabledGameCleanupJob ищет комнаты принудительно отключённых игр. */
+        val forceDisabledCleanupInterval: Duration,
+        /** Запуск ForceDisabledGameCleanupJob по расписанию. В тестах выключен: job вызывается напрямую. */
+        val forceDisabledCleanupEnabled: Boolean = true,
+        /** Сколько комнат удаляется за один запуск, остальные — в следующих. */
+        val forceDisabledCleanupBatchSize: Int = 100,
+    )
+
     data class Room(
         /** Комната без игроков и наблюдателей удаляется, когда пустует дольше этого времени. */
         val emptyTtl: Duration,

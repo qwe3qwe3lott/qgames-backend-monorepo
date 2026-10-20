@@ -3,7 +3,7 @@ package site.qgames.game.mapper.session
 import org.springframework.stereotype.Component
 import site.qgames.game.entity.session.RoomSessionEntity
 import site.qgames.game.entity.session.RoomSessionMoveEntity
-import site.qgames.game.model.room.RoomGameType
+import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomTimeControlMode
 import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.model.session.RoomSessionModel
@@ -16,7 +16,7 @@ class RoomSessionEntityMapper {
     fun toModel(entity: RoomSessionEntity) = RoomSessionModel(
         id = entity.id,
         roomId = entity.roomId,
-        gameType = RoomGameType.valueOf(entity.gameType),
+        gameCode = GameCode.fromCode(entity.gameCode) ?: error("Unknown game code '${entity.gameCode}'"),
         status = RoomSessionStatus.valueOf(entity.status),
         state = entity.state,
         stateSchemaVersion = entity.stateSchemaVersion,

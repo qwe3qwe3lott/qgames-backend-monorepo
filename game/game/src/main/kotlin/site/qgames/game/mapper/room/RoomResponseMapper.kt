@@ -1,8 +1,8 @@
 package site.qgames.game.mapper.room
 
 import org.springframework.stereotype.Component
+import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.room.Avatar
-import site.qgames.game.gatewayapi.dto.room.GameType
 import site.qgames.game.gatewayapi.dto.room.RoomMemberResponse
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomRole
@@ -25,7 +25,7 @@ class RoomResponseMapper(
         val room = details.room
         return RoomResponse(
             id = room.id,
-            gameType = GameType.valueOf(room.gameType.name),
+            gameCode = GameCode.valueOf(room.gameCode.name),
             status = RoomStatus.valueOf(room.status.name),
             ownerId = room.ownerId,
             minPlayers = details.minPlayers,

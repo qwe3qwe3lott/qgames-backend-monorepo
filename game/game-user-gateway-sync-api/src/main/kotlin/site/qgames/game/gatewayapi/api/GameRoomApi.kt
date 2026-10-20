@@ -13,7 +13,7 @@ import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
 import org.springframework.web.service.annotation.PutExchange
 import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
-import site.qgames.game.gatewayapi.dto.room.GameCodes
+import site.qgames.game.gatewayapi.dto.game.GameCodes
 import site.qgames.game.gatewayapi.dto.room.MoveRequest
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
@@ -34,7 +34,8 @@ interface GameRoomApi {
     @Operation(
         summary = "Создать комнату",
         description = "Создаёт комнату под игру из пути с заданными настройками. Создатель становится владельцем и " +
-            "первым игроком. Настройки проверяются по правилам игры, ошибки отдаются по полям, как у валидации запроса.",
+            "первым игроком. Игра должна быть доступна (PUBLISHED или HIDDEN): это проверяется до настроек. Настройки " +
+            "проверяются по правилам игры, ошибки отдаются по полям, как у валидации запроса.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Комната создана"),
@@ -43,11 +44,18 @@ interface GameRoomApi {
             description = "Настройки не подходят игре или запрос некорректен (VALIDATION_ERROR, поля — в errors)",
         ),
         ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
-        ApiResponse(responseCode = "404", description = "Неизвестный код игры (GAME_NOT_FOUND)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND)",
+        ),
+        ApiResponse(
+            responseCode = "409",
+            description = "Игра временно недоступна (GAME_UNAVAILABLE)",
+        ),
     )
     @PostExchange("/{gameCode}/rooms")
     fun createRoom(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
         @PathVariable gameCode: String,
         @Valid @RequestBody request: CreateRoomRequest,
     ): RoomResponse
@@ -70,7 +78,8 @@ interface GameRoomApi {
         ),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры (GAME_NOT_FOUND) или комнаты нет (ROOM_NOT_FOUND)",
+            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND), " +
+                "комнаты нет (ROOM_NOT_FOUND)",
         ),
         ApiResponse(
             responseCode = "409",
@@ -79,7 +88,7 @@ interface GameRoomApi {
     )
     @PutExchange("/{gameCode}/rooms/{roomId}/settings")
     fun updateRoomSettings(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: RoomSettingsDto,
@@ -89,7 +98,8 @@ interface GameRoomApi {
         summary = "Сделать ход",
         description = "Применяет ход по правилам игры. Код игры в пути должен совпадать с игрой комнаты. Ходить может " +
             "только игрок партии, находящийся в комнате. Если у партии есть таймер, ход переставляет дедлайн следующего " +
-            "хода. Когда партия заканчивается, комната возвращается в ожидание.",
+            "хода. Когда партия заканчивается, комната возвращается в ожидание. Идущая партия продолжается, даже если " +
+            "игра стала временно недоступной.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Ход принят, возвращено новое состояние"),
@@ -104,7 +114,8 @@ interface GameRoomApi {
         ),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры (GAME_NOT_FOUND) или комнаты нет (ROOM_NOT_FOUND)",
+            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND), " +
+                "комнаты нет (ROOM_NOT_FOUND)",
         ),
         ApiResponse(
             responseCode = "409",
@@ -119,7 +130,7 @@ interface GameRoomApi {
     )
     @PostExchange("/{gameCode}/rooms/{roomId}/moves")
     fun makeMove(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: MoveRequest,

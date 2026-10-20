@@ -1,6 +1,9 @@
 qgames:
   game:
-    # Шедулеры в тестах выключены: EmptyRoomCleanupJob, RoomLeaveJob и MoveTimeoutJob вызываются напрямую.
+    # Шедулеры в тестах выключены: ForceDisabledGameCleanupJob, EmptyRoomCleanupJob, RoomLeaveJob и MoveTimeoutJob
+    # вызываются напрямую.
+    catalog:
+      force-disabled-cleanup-enabled: false
     room:
       cleanup-enabled: false
       leave-enabled: false

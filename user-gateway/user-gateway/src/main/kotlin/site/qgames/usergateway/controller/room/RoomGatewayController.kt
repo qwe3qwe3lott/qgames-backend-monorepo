@@ -26,8 +26,6 @@ class RoomGatewayController(
     override fun changeRole(roomId: UUID, request: ChangeRoleRequest): RoomResponse =
         roomApi.changeRole(roomId, request.toGame()).toPublic()
 
-    override fun deleteRoom(roomId: UUID) = roomApi.deleteRoom(roomId)
-
     override fun startSession(roomId: UUID): RoomResponse = roomApi.startSession(roomId).toPublic()
 
     override fun cancelSession(roomId: UUID): RoomResponse = roomApi.cancelSession(roomId).toPublic()

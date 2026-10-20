@@ -2,7 +2,7 @@ package site.qgames.game.service.room
 
 import org.springframework.stereotype.Component
 import site.qgames.game.exception.room.RoomErrors
-import site.qgames.game.model.room.RoomGameType
+import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.games.api.TimeControlMode
@@ -18,16 +18,16 @@ class RoomSettingsValidator(private val gameRegistry: GameRegistry) {
      * [fieldPrefix] — путь к настройкам в теле запроса (`settings.` при создании комнаты, пусто при замене настроек),
      * чтобы клиент подсветил нужное поле формы.
      */
-    fun check(gameType: RoomGameType, settings: RoomSettingsModel, fieldPrefix: String) {
-        val errors = validate(gameType, settings)
+    fun check(gameCode: GameCode, settings: RoomSettingsModel, fieldPrefix: String) {
+        val errors = validate(gameCode, settings)
         if (errors.isNotEmpty()) {
             throw RoomErrors.invalidSettings(errors.mapKeys { fieldPrefix + it.key })
         }
     }
 
     /** Нарушения по полям относительно настроек комнаты (`timeControl.moveSeconds`, `gameSettings.rounds`). */
-    fun validate(gameType: RoomGameType, settings: RoomSettingsModel): Map<String, String> {
-        val rules = gameRegistry.rules(gameType)
+    fun validate(gameCode: GameCode, settings: RoomSettingsModel): Map<String, String> {
+        val rules = gameRegistry.rules(gameCode)
         val errors = linkedMapOf<String, String>()
 
         val timeControl = settings.timeControl
@@ -48,7 +48,7 @@ class RoomSettingsValidator(private val gameRegistry: GameRegistry) {
         }
 
         if (!rules.settingsClass.isInstance(settings.gameSettings)) {
-            errors["gameSettings.gameType"] = "must match the game of the room"
+            errors["gameSettings.gameCode"] = "must match the game of the room"
         } else {
             rules.validateSettings(settings.gameSettings).forEach { errors["gameSettings.${it.field}"] = it.message }
         }

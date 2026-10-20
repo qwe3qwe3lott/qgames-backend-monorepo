@@ -13,7 +13,7 @@ import site.qgames.game.BaseIntegrationTest
 import site.qgames.game.gatewayapi.dto.room.Avatar
 import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
 import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
-import site.qgames.game.gatewayapi.dto.room.GameType
+import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.room.MoveRequest
 import site.qgames.game.gatewayapi.dto.room.RoomRole
 import site.qgames.game.gatewayapi.dto.room.RoomStatus
@@ -41,7 +41,7 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
     fun `creator becomes owner and the first player, member profile comes from the replica`() {
         val room = createRoom(ALICE)
 
-        assertThat(room.gameType).isEqualTo(GameType.NOTHING)
+        assertThat(room.gameCode).isEqualTo(GameCode.NOTHING)
         assertThat(room.status).isEqualTo(RoomStatus.WAITING)
         assertThat(room.ownerId).isEqualTo(ALICE)
         assertThat(room.minPlayers to room.maxPlayers).isEqualTo(1 to 4)
@@ -155,18 +155,6 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
         assertThat(room.members.single { it.userId == ALICE }.role).isEqualTo(RoomRole.SPECTATOR)
     }
 
-    @ParameterizedTest(name = "deleted by {0}")
-    @MethodSource("deleters")
-    fun `only the owner can delete the room`(case: String, user: UUID, expectedStatus: HttpStatus) {
-        val roomId = roomWith(ALICE, BOB, started = true)
-
-        call(HttpMethod.DELETE, "/api/rooms/$roomId", user).andExpect { status { isEqualTo(expectedStatus.value()) } }
-
-        val deleted = expectedStatus == HttpStatus.OK
-        assertThat(countRows("room WHERE id = :id", "id" to roomId)).isEqualTo(if (deleted) 0 else 1)
-        assertThat(countRows("room_session WHERE room_id = :id", "id" to roomId)).isEqualTo(if (deleted) 0 else 1)
-    }
-
     @Test
     fun `cleanup deletes only rooms that stayed empty longer than the ttl`() {
         val longEmpty = roomWith(ALICE).also { leaveCompletely(ALICE, it) }
@@ -199,7 +187,6 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
             arguments(HttpMethod.POST, "/api/rooms/{id}/join", null),
             arguments(HttpMethod.POST, "/api/rooms/{id}/leave", null),
             arguments(HttpMethod.PUT, "/api/rooms/{id}/role", ChangeRoleRequest(RoomRole.SPECTATOR)),
-            arguments(HttpMethod.DELETE, "/api/rooms/{id}", null),
             arguments(HttpMethod.POST, "/api/rooms/{id}/session", null),
             arguments(HttpMethod.DELETE, "/api/rooms/{id}/session", null),
             arguments(HttpMethod.POST, "/api/rooms/{id}/session/pause", null),
@@ -270,13 +257,6 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
                 BOB, RoomRole.SPECTATOR, HttpStatus.CONFLICT, "ROOM_NOT_WAITING",
             ),
             arguments("not in the room", RoomSetup { roomWith(ALICE) }, BOB, RoomRole.PLAYER, HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER"),
-        )
-
-        @JvmStatic
-        fun deleters(): Stream<Arguments> = Stream.of(
-            arguments("owner", ALICE, HttpStatus.OK),
-            arguments("another member", BOB, HttpStatus.FORBIDDEN),
-            arguments("a stranger", EVE, HttpStatus.FORBIDDEN),
         )
     }
 }

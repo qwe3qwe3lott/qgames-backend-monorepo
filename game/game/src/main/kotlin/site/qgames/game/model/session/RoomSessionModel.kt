@@ -1,6 +1,6 @@
 package site.qgames.game.model.session
 
-import site.qgames.game.model.room.RoomGameType
+import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomTimeControlModel
 import java.time.Instant
 import java.util.UUID
@@ -8,7 +8,7 @@ import java.util.UUID
 data class RoomSessionModel(
     val id: UUID,
     val roomId: UUID,
-    val gameType: RoomGameType,
+    val gameCode: GameCode,
     val status: RoomSessionStatus,
     /** JSON состояния, формат задаёт модуль игры. */
     val state: String,

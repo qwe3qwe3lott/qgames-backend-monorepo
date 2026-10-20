@@ -15,7 +15,7 @@ import java.util.UUID
  */
 class NothingGameRules : GameRules<NothingState, NothingMove, NothingSettings> {
 
-    override val type = TYPE
+    override val code = CODE
     override val minPlayers = 1
     override val maxPlayers = 4
     override val stateClass = NothingState::class.java
@@ -72,7 +72,7 @@ class NothingGameRules : GameRules<NothingState, NothingMove, NothingSettings> {
     private fun currentPlayer(state: NothingState) = state.players[state.turn % state.players.size]
 
     companion object {
-        const val TYPE = "NOTHING"
+        const val CODE = "nothing"
         const val PASS = "PASS"
         private val ROUNDS = 1..50
     }

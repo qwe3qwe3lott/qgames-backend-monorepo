@@ -2,7 +2,7 @@ package site.qgames.game.repository.session
 
 import org.springframework.stereotype.Repository
 import site.qgames.game.mapper.session.RoomSessionEntityMapper
-import site.qgames.game.model.room.RoomGameType
+import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.RoomSessionStatus
@@ -22,7 +22,7 @@ class RoomSessionRepository(
      */
     fun insert(
         roomId: UUID,
-        gameType: RoomGameType,
+        gameCode: GameCode,
         state: String,
         stateSchemaVersion: Int,
         seed: Long,
@@ -34,7 +34,7 @@ class RoomSessionRepository(
     ): RoomSessionModel = roomSessionEntityMapper.toModel(
         roomSessionPostgresqlRepository.insert(
             roomId = roomId,
-            gameType = gameType.name,
+            gameCode = gameCode.code,
             status = RoomSessionStatus.IN_PROGRESS.name,
             state = state,
             stateSchemaVersion = stateSchemaVersion,
@@ -58,7 +58,10 @@ class RoomSessionRepository(
     /** Игроки партии в порядке мест. */
     fun findPlayers(sessionId: UUID): List<UUID> = roomSessionPostgresqlRepository.findPlayers(sessionId)
 
-    /** Идущие партии не на паузе, у которых время хода истекло к [now], — самые просроченные первыми. Без блокировок. */
+    /**
+     * Идущие партии не на паузе, у которых время хода истекло к [now], — самые просроченные первыми. Партии
+     * принудительно отключённых игр (FORCE_DISABLED) пропускаются. Без блокировок.
+     */
     fun findIdsWithExpiredMove(now: Instant, limit: Int): List<UUID> =
         roomSessionPostgresqlRepository.findIdsWithExpiredMove(now, limit)
 

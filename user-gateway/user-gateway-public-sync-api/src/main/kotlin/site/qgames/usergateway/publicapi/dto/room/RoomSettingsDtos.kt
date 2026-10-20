@@ -6,6 +6,8 @@ import io.swagger.v3.oas.annotations.media.DiscriminatorMapping
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
+import site.qgames.usergateway.publicapi.dto.game.GameCode
+import site.qgames.usergateway.publicapi.dto.game.GameCodes
 
 /** Режим контроля времени. Будут добавлены время на раунд и шахматные часы. */
 enum class TimeControlMode {
@@ -33,21 +35,21 @@ data class RoomSettingsDto(
     val gameSettings: GameSettingsDto,
 )
 
-/** Настройки конкретной игры. Вид определяется полем gameType, оно должно совпадать с игрой комнаты. */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameType", visible = true)
-@JsonSubTypes(JsonSubTypes.Type(value = NothingSettingsDto::class, name = GameTypeNames.NOTHING))
+/** Настройки конкретной игры. Вид определяется полем gameCode, оно должно совпадать с игрой комнаты. */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameCode", visible = true)
+@JsonSubTypes(JsonSubTypes.Type(value = NothingSettingsDto::class, name = GameCodes.NOTHING))
 @Schema(
-    description = "Настройки конкретной игры, вид — по полю gameType",
+    description = "Настройки конкретной игры, вид — по полю gameCode",
     oneOf = [NothingSettingsDto::class],
-    discriminatorProperty = "gameType",
-    discriminatorMapping = [DiscriminatorMapping(value = GameTypeNames.NOTHING, schema = NothingSettingsDto::class)],
+    discriminatorProperty = "gameCode",
+    discriminatorMapping = [DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSettingsDto::class)],
 )
 sealed interface GameSettingsDto
 
 /** Настройки «игры в ничто». */
 data class NothingSettingsDto(
-    @field:Schema(type = "string", allowableValues = [GameTypeNames.NOTHING])
-    val gameType: GameType,
+    @field:Schema(type = "string", allowableValues = [GameCodes.NOTHING])
+    val gameCode: GameCode,
     /** Число кругов партии. */
     val rounds: Int,
 ) : GameSettingsDto
@@ -58,20 +60,20 @@ data class IntRangeDto(
     val max: Int,
 )
 
-/** Границы настроек конкретной игры, вид — по полю gameType. */
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameType", visible = true)
-@JsonSubTypes(JsonSubTypes.Type(value = NothingSettingsLimitsDto::class, name = GameTypeNames.NOTHING))
+/** Границы настроек конкретной игры, вид — по полю gameCode. */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameCode", visible = true)
+@JsonSubTypes(JsonSubTypes.Type(value = NothingSettingsLimitsDto::class, name = GameCodes.NOTHING))
 @Schema(
-    description = "Границы настроек конкретной игры, вид — по полю gameType",
+    description = "Границы настроек конкретной игры, вид — по полю gameCode",
     oneOf = [NothingSettingsLimitsDto::class],
-    discriminatorProperty = "gameType",
-    discriminatorMapping = [DiscriminatorMapping(value = GameTypeNames.NOTHING, schema = NothingSettingsLimitsDto::class)],
+    discriminatorProperty = "gameCode",
+    discriminatorMapping = [DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSettingsLimitsDto::class)],
 )
 sealed interface GameSettingsLimitsDto
 
 /** Границы настроек «игры в ничто». */
 data class NothingSettingsLimitsDto(
-    @field:Schema(type = "string", allowableValues = [GameTypeNames.NOTHING])
-    val gameType: GameType,
+    @field:Schema(type = "string", allowableValues = [GameCodes.NOTHING])
+    val gameCode: GameCode,
     val rounds: IntRangeDto,
 ) : GameSettingsLimitsDto

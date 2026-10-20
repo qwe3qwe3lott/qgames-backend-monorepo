@@ -4,7 +4,7 @@ CREATE TABLE room_session
 (
     id                   uuid PRIMARY KEY     DEFAULT uuidv7(),
     room_id              uuid        NOT NULL REFERENCES room (id) ON DELETE CASCADE,
-    game_type            varchar(32) NOT NULL,
+    game_code            varchar(32) NOT NULL REFERENCES game (code),
     status               varchar(16) NOT NULL,
     state                jsonb       NOT NULL,
     state_schema_version integer     NOT NULL,

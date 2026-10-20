@@ -7,7 +7,7 @@ import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
 import site.qgames.game.exception.room.RoomErrors
-import site.qgames.game.model.room.RoomGameType
+import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomDetailsModel
 import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.repository.room.RoomMemberRepository
@@ -15,6 +15,8 @@ import site.qgames.game.repository.room.RoomRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.config.GameProperties
 import site.qgames.game.service.game.GameRegistry
+import site.qgames.game.service.game.GameService
+import site.qgames.game.model.session.RoomSessionStatus
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
 import java.time.Instant
@@ -29,6 +31,7 @@ class RoomService(
     private val roomMemberRepository: RoomMemberRepository,
     private val roomSessionRepository: RoomSessionRepository,
     private val gameRegistry: GameRegistry,
+    private val gameService: GameService,
     private val roomDetailsService: RoomDetailsService,
     private val roomSettingsValidator: RoomSettingsValidator,
     private val jsonMapper: JsonMapper,
@@ -36,12 +39,16 @@ class RoomService(
     private val clock: Clock,
 ) {
 
-    /** Настройки проверяются по правилам игры; ошибки — по полям тела запроса создания (`settings.…`). */
+    /**
+     * Игра должна быть доступна для новых комнат (проверяется до настроек). Настройки проверяются по правилам игры;
+     * ошибки — по полям тела запроса создания (`settings.…`).
+     */
     @Transactional
-    fun create(userId: UUID, gameType: RoomGameType, settings: RoomSettingsModel): RoomDetailsModel {
-        roomSettingsValidator.check(gameType, settings, fieldPrefix = "settings.")
+    fun create(userId: UUID, gameCode: GameCode, settings: RoomSettingsModel): RoomDetailsModel {
+        gameService.checkPlayable(gameCode)
+        roomSettingsValidator.check(gameCode, settings, fieldPrefix = "settings.")
         val now = clock.instant()
-        val room = roomRepository.insert(gameType, userId, settings.timeControl, jsonMapper.writeValueAsString(settings.gameSettings), now)
+        val room = roomRepository.insert(gameCode, userId, settings.timeControl, jsonMapper.writeValueAsString(settings.gameSettings), now)
         roomMemberRepository.insert(RoomMemberModel(room.id, userId, RoomRole.PLAYER, now))
         return roomDetailsService.details(room, userId)
     }
@@ -51,9 +58,9 @@ class RoomService(
      * свой снимок настроек. Ошибки настроек — по полям тела запроса (`timeControl.…`, `gameSettings.…`).
      */
     @Transactional
-    fun updateSettings(userId: UUID, gameType: RoomGameType, roomId: UUID, settings: RoomSettingsModel): RoomDetailsModel {
+    fun updateSettings(userId: UUID, gameCode: GameCode, roomId: UUID, settings: RoomSettingsModel): RoomDetailsModel {
         val room = lock(roomId)
-        if (room.gameType != gameType) {
+        if (room.gameCode != gameCode) {
             throw RoomErrors.gameTypeMismatch()
         }
         if (roomMemberRepository.findAll(roomId).none { it.userId == userId }) {
@@ -65,15 +72,18 @@ class RoomService(
         if (room.status != RoomStatus.WAITING) {
             throw RoomErrors.roomNotWaiting()
         }
-        roomSettingsValidator.check(gameType, settings, fieldPrefix = "")
+        roomSettingsValidator.check(gameCode, settings, fieldPrefix = "")
         val updated = room.copy(timeControl = settings.timeControl, gameSettings = jsonMapper.writeValueAsString(settings.gameSettings))
         roomRepository.update(updated)
         return roomDetailsService.details(updated, userId)
     }
 
     @Transactional(readOnly = true)
-    fun get(userId: UUID, roomId: UUID): RoomDetailsModel =
-        roomDetailsService.details(roomRepository.findById(roomId) ?: throw RoomErrors.roomNotFound(), userId)
+    fun get(userId: UUID, roomId: UUID): RoomDetailsModel {
+        val room = roomRepository.findById(roomId) ?: throw RoomErrors.roomNotFound()
+        gameService.checkAccessible(room.gameCode)
+        return roomDetailsService.details(room, userId)
+    }
 
     /**
      * Игрок идущей партии возвращается на своё место. Иначе — игрок, если партии нет и есть место, или наблюдатель.
@@ -149,13 +159,21 @@ class RoomService(
         return roomDetailsService.details(room, userId)
     }
 
+    /**
+     * Удаляет комнату принудительно отключённой игры: отменяет идущую партию и удаляет комнату вместе с участниками
+     * и историей партий (каскадно). Комната берётся под блокировку без ожидания: если её держит другой запрос, она
+     * обработается в следующий раз. Возвращает true, если комната удалена.
+     */
     @Transactional
-    fun delete(userId: UUID, roomId: UUID) {
-        val room = lock(roomId)
-        if (room.ownerId != userId) {
-            throw RoomErrors.notRoomOwner()
+    fun deleteOfForceDisabledGame(roomId: UUID): Boolean {
+        val room = roomRepository.lockByIdSkipLocked(roomId) ?: return false
+        // Перепроверка под блокировкой: статус игры могли вернуть.
+        if (!gameService.isForceDisabled(room.gameCode)) {
+            return false
         }
+        room.currentSessionId?.let { roomSessionRepository.finish(it, RoomSessionStatus.CANCELLED, clock.instant()) }
         roomRepository.delete(roomId)
+        return true
     }
 
     private fun roleOnJoin(room: RoomModel, members: List<RoomMemberModel>, userId: UUID): RoomRole = when (room.status) {
@@ -173,7 +191,7 @@ class RoomService(
         val now = clock.instant()
         val session = room.currentSessionId?.let(roomSessionRepository::findById)
         if (session != null && userId in roomSessionRepository.findPlayers(session.id)) {
-            return (session.pausedAt ?: now) + gameRegistry.rules(room.gameType).reconnectGrace
+            return (session.pausedAt ?: now) + gameRegistry.rules(room.gameCode).reconnectGrace
         }
         return now + if (room.ownerId == userId) properties.room.leaveGrace.owner else properties.room.leaveGrace.member
     }
@@ -205,7 +223,12 @@ class RoomService(
             ?.userId
     }
 
-    private fun maxPlayers(room: RoomModel) = gameRegistry.rules(room.gameType).maxPlayers
+    private fun maxPlayers(room: RoomModel) = gameRegistry.rules(room.gameCode).maxPlayers
 
-    private fun lock(roomId: UUID): RoomModel = roomRepository.lockById(roomId) ?: throw RoomErrors.roomNotFound()
+    /** Комната под блокировкой. С комнатой принудительно отключённой игры работать нельзя (404 GAME_NOT_FOUND). */
+    private fun lock(roomId: UUID): RoomModel {
+        val room = roomRepository.lockById(roomId) ?: throw RoomErrors.roomNotFound()
+        gameService.checkAccessible(room.gameCode)
+        return room
+    }
 }

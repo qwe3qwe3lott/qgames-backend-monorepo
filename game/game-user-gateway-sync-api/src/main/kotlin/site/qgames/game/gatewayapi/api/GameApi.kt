@@ -9,33 +9,49 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.service.annotation.GetExchange
 import org.springframework.web.service.annotation.HttpExchange
-import site.qgames.game.gatewayapi.dto.game.GameInfoResponse
-import site.qgames.game.gatewayapi.dto.room.GameCodes
+import site.qgames.game.gatewayapi.dto.game.GameCodes
+import site.qgames.game.gatewayapi.dto.game.GameDetailsResponse
+import site.qgames.game.gatewayapi.dto.game.GameListResponse
 
 /**
- * Параметры подключённых игр. Строятся из правил игр, а не из БД.
+ * Каталог игр: описание и статус публикации — из БД сервиса, параметры правил — из модулей игр.
+ * Доступен без пользователя (X-User-Id не нужен).
  */
 @Tag(
     name = "Игры (для gateway)",
-    description = "Внутренние ручки для user-gateway: параметры игр для формы настроек комнаты. " +
-        "Пользователь определяется по заголовку X-User-Id.",
+    description = "Внутренние ручки для user-gateway: каталог игр и параметры игры для формы настроек комнаты. " +
+        "Пользователь не нужен.",
 )
 @HttpExchange("/api/games")
 interface GameApi {
 
     @Operation(
-        summary = "Параметры игры",
-        description = "Число игроков, поддерживаемые режимы времени и их границы, границы настроек игры и настройки " +
-            "по умолчанию. Нужны для формы создания комнаты и смены настроек.",
+        summary = "Каталог игр",
+        description = "Игры в порядке показа с названием, описанием и статусом публикации. Скрытые (HIDDEN), " +
+            "неопубликованные и принудительно отключённые игры в список не попадают.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Параметры игры"),
-        ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
-        ApiResponse(responseCode = "404", description = "Неизвестный код игры (GAME_NOT_FOUND)"),
+        ApiResponse(responseCode = "200", description = "Каталог игр"),
+    )
+    @GetExchange
+    fun listGames(): GameListResponse
+
+    @Operation(
+        summary = "Игра",
+        description = "Описание и статус публикации игры, а также параметры правил: число игроков, режимы времени и " +
+            "их границы, границы настроек игры и настройки по умолчанию. Скрытая игра отдаётся (доступ по прямой " +
+            "ссылке).",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Игра"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND)",
+        ),
     )
     @GetExchange("/{gameCode}")
     fun getGame(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
         @PathVariable gameCode: String,
-    ): GameInfoResponse
+    ): GameDetailsResponse
 }

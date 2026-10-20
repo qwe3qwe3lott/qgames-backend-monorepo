@@ -6,7 +6,7 @@ import java.util.UUID
 /** Строка таблицы room. Перечисления хранятся строками, в модель их переводит RoomEntityMapper. */
 data class RoomEntity(
     val id: UUID,
-    val gameType: String,
+    val gameCode: String,
     val ownerId: UUID?,
     val status: String,
     val currentSessionId: UUID?,

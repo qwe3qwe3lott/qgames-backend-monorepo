@@ -24,8 +24,8 @@ import site.qgames.common.test.container.RedpandaTestContainer
 import site.qgames.common.web.header.QgamesHeaders
 import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
 import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
-import site.qgames.game.gatewayapi.dto.room.GameType
-import site.qgames.game.gatewayapi.dto.room.GameCodes
+import site.qgames.game.gatewayapi.dto.game.GameCode
+import site.qgames.game.gatewayapi.dto.game.GameCodes
 import site.qgames.game.gatewayapi.dto.room.MoveRequest
 import site.qgames.game.gatewayapi.dto.room.NothingSettingsDto
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
@@ -86,7 +86,7 @@ abstract class BaseIntegrationTest {
         rounds: Int = 3,
         mode: TimeControlMode = TimeControlMode.NONE,
         moveSeconds: Int? = null,
-    ) = RoomSettingsDto(TimeControlDto(mode, moveSeconds), NothingSettingsDto(GameType.NOTHING, rounds))
+    ) = RoomSettingsDto(TimeControlDto(mode, moveSeconds), NothingSettingsDto(GameCode.NOTHING, rounds))
 
     protected fun createRoomRequest(owner: UUID?, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
         call(HttpMethod.POST, "/api/games/$gameCode/rooms", owner, body)
@@ -175,6 +175,14 @@ abstract class BaseIntegrationTest {
         players.forEach { join(it, roomId) }
         if (started) start(owner, roomId)
         return roomId
+    }
+
+    /** Статус публикации игры [code] в каталоге (позже его будет менять админка). */
+    protected fun setPublishStatus(code: String, status: String) {
+        jdbcClient.sql("UPDATE game SET publish_status = :status WHERE code = :code")
+            .param("status", status)
+            .param("code", code)
+            .update()
     }
 
     protected fun countRows(sql: String, vararg params: Pair<String, Any?>): Long =

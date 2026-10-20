@@ -10,7 +10,7 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.http.HttpStatus
 import site.qgames.game.BaseIntegrationTest
 import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
-import site.qgames.game.gatewayapi.dto.room.GameType
+import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.room.NothingSettingsDto
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomRole
@@ -69,12 +69,12 @@ class RoomSettingsScenariosTest : BaseIntegrationTest() {
     @Test
     fun `settings change with a foreign game settings discriminator is rejected by the field`() {
         val roomId = roomWith(ALICE)
-        val body = mapOf("timeControl" to mapOf("mode" to "NONE"), "gameSettings" to mapOf("gameType" to "CHESS", "rounds" to 5))
+        val body = mapOf("timeControl" to mapOf("mode" to "NONE"), "gameSettings" to mapOf("gameCode" to "chess", "rounds" to 5))
 
         updateSettingsRequest(ALICE, roomId, body).andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("VALIDATION_ERROR") }
-            jsonPath("$.errors['gameSettings.gameType']") { value("unsupported value") }
+            jsonPath("$.errors['gameSettings.gameCode']") { value("unsupported value") }
         }
         assertThat(storedSettings(roomId).rounds).isEqualTo(3)
     }
@@ -163,10 +163,10 @@ class RoomSettingsScenariosTest : BaseIntegrationTest() {
         private fun settings(rounds: Int = 3, mode: TimeControlMode = TimeControlMode.NONE, moveSeconds: Int? = null) =
             RoomSettingsDto(
                 TimeControlDto(mode, moveSeconds),
-                NothingSettingsDto(GameType.NOTHING, rounds),
+                NothingSettingsDto(GameCode.NOTHING, rounds),
             )
 
-        private fun gameSettingsJson(rounds: Int = 3) = mapOf("gameType" to "NOTHING", "rounds" to rounds)
+        private fun gameSettingsJson(rounds: Int = 3) = mapOf("gameCode" to "nothing", "rounds" to rounds)
 
         @JvmStatic
         fun validSettings(): Stream<Arguments> = Stream.of(
@@ -189,16 +189,16 @@ class RoomSettingsScenariosTest : BaseIntegrationTest() {
         @JvmStatic
         fun malformedCreateBodies(): Stream<Arguments> = Stream.of(
             arguments("no settings", emptyMap<String, Any?>(), null),
-            arguments("old body with game type only", mapOf("gameType" to "NOTHING"), null),
+            arguments("body with the game code only", mapOf("gameCode" to "nothing"), null),
             arguments(
                 "foreign game settings discriminator",
-                mapOf("settings" to mapOf("timeControl" to mapOf("mode" to "NONE"), "gameSettings" to mapOf("gameType" to "CHESS", "rounds" to 3))),
-                "settings.gameSettings.gameType",
+                mapOf("settings" to mapOf("timeControl" to mapOf("mode" to "NONE"), "gameSettings" to mapOf("gameCode" to "chess", "rounds" to 3))),
+                "settings.gameSettings.gameCode",
             ),
             arguments(
                 "game settings without discriminator",
                 mapOf("settings" to mapOf("timeControl" to mapOf("mode" to "NONE"), "gameSettings" to mapOf("rounds" to 3))),
-                "settings.gameSettings.gameType",
+                "settings.gameSettings.gameCode",
             ),
             arguments(
                 "unknown time control mode",

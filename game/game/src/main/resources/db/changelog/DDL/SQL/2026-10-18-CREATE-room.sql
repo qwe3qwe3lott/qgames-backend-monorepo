@@ -1,7 +1,7 @@
 CREATE TABLE room
 (
     id                 uuid PRIMARY KEY     DEFAULT uuidv7(),
-    game_type          varchar(32) NOT NULL,
+    game_code          varchar(32) NOT NULL REFERENCES game (code),
     -- NULL, если в комнате никого не осталось: владельцем станет первый вошедший.
     owner_id           uuid,
     status             varchar(16) NOT NULL,
@@ -18,3 +18,5 @@ CREATE TABLE room
 );
 
 CREATE INDEX room_empty_since_idx ON room (empty_since) WHERE empty_since IS NOT NULL;
+-- Комнаты игры (ForceDisabledGameCleanupJob).
+CREATE INDEX room_game_code_idx ON room (game_code);
