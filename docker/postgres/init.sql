@@ -8,4 +8,8 @@ CREATE DATABASE user_auth OWNER user_auth;
 CREATE ROLE game LOGIN PASSWORD 'game';
 CREATE DATABASE game OWNER game;
 
-REVOKE CONNECT ON DATABASE user_auth, game FROM PUBLIC;
+-- Администраторы админ-панели. CDC нет, поэтому REPLICATION не нужен.
+CREATE ROLE admin_auth LOGIN PASSWORD 'admin_auth';
+CREATE DATABASE admin_auth OWNER admin_auth;
+
+REVOKE CONNECT ON DATABASE user_auth, game, admin_auth FROM PUBLIC;

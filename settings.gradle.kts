@@ -29,3 +29,10 @@ include(":user-gateway:user-gateway-public-sync-api")
 // Комнаты и партии всех игр.
 include(":game:game")
 include(":game:game-user-gateway-sync-api")
+
+// Админ-панель: аутентификация администраторов и точка входа админки.
+include(":admin-auth:admin-auth")
+include(":admin-auth:admin-auth-admin-gateway-sync-api")
+
+include(":admin-gateway:admin-gateway")
+include(":admin-gateway:admin-gateway-public-sync-api")

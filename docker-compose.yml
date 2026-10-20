@@ -1,6 +1,6 @@
 # Локальный запуск всего проекта: docker compose up --build
-# Наружу публикуются gateway (8080), Swagger сервисов (8081–8082, только для локальной разработки),
-# Mailpit UI (8025), PostgreSQL (5432) и Redpanda для IDE (19092).
+# Наружу публикуются user-gateway (8080) и admin-gateway (8083), Swagger сервисов (8081, 8082, 8084 — только для
+# локальной разработки), Mailpit UI (8025), PostgreSQL (5432) и Redpanda для IDE (19092).
 
 x-service-build: &service-build
   context: .
@@ -190,6 +190,51 @@ services:
     healthcheck:
       <<: *service-healthcheck
       test: ["CMD", "curl", "-fs", "http://localhost:8082/actuator/health/readiness"]
+
+  # Аутентификация администраторов админ-панели: свой ключ подписи JWT и issuer, токен игрока в админку не проходит.
+  admin-auth:
+    build:
+      <<: *service-build
+      args:
+        SERVICE: admin-auth
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/admin_auth
+      DB_USERNAME: admin_auth
+      DB_PASSWORD: admin_auth
+      JWT_KEY_ID: admin-dev-key-1
+      JWT_PRIVATE_KEY_LOCATION: file:/keys/admin-jwt-private.pem
+      JWT_PUBLIC_KEY_LOCATION: file:/keys/admin-jwt-public.pem
+      # Первый администратор: создаётся при старте, только если администраторов ещё нет. Только для локального стенда.
+      ADMIN_BOOTSTRAP_LOGIN: admin
+      ADMIN_BOOTSTRAP_PASSWORD: admin
+    volumes:
+      - ./docker/dev-keys:/keys:ro
+    ports:
+      - "8084:8084"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      <<: *service-healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8084/actuator/health/readiness"]
+
+  # Точка входа админ-панели (http://localhost:3001): куки admin_access_token / admin_refresh_token.
+  admin-gateway:
+    build:
+      <<: *service-build
+      args:
+        SERVICE: admin-gateway
+    environment:
+      ADMIN_AUTH_URL: http://admin-auth:8084
+      CORS_ALLOWED_ORIGINS: ${ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:3001}
+    ports:
+      - "8083:8083"
+    depends_on:
+      admin-auth:
+        condition: service_healthy
+    healthcheck:
+      <<: *service-healthcheck
+      test: ["CMD", "curl", "-fs", "http://localhost:8083/actuator/health/readiness"]
 
 volumes:
   postgres-data:
