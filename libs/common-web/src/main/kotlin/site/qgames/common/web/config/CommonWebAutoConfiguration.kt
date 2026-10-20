@@ -7,6 +7,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.PropertySource
 import site.qgames.common.web.context.RequestUserContext
+import site.qgames.common.web.openapi.DiscriminatedUnionCustomizer
 import site.qgames.common.web.openapi.KotlinRequiredPropertiesConverter
 import site.qgames.common.web.openapi.ProblemDetailResponsesCustomizer
 
@@ -23,6 +24,9 @@ class CommonWebAutoConfiguration {
 
         @Bean
         fun problemDetailResponsesCustomizer() = ProblemDetailResponsesCustomizer()
+
+        @Bean
+        fun discriminatedUnionCustomizer() = DiscriminatedUnionCustomizer()
 
         /** springdoc подхватывает бины ModelConverter сам. */
         @Bean

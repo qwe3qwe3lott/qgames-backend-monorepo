@@ -13,12 +13,12 @@ import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
 import org.springframework.web.service.annotation.PutExchange
 import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
-import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import java.util.UUID
 
 /**
- * Игровые комнаты и партии. Пользователь определяется по заголовку X-User-Id от gateway.
+ * Игровые комнаты и партии: ручки, которым не нужен тип игры. Создание комнаты, настройки и ходы — в [GameRoomApi].
+ * Пользователь определяется по заголовку X-User-Id от gateway.
  */
 @Tag(
     name = "Игровые комнаты (для gateway)",
@@ -27,18 +27,6 @@ import java.util.UUID
 )
 @HttpExchange("/api/rooms")
 interface RoomApi {
-
-    @Operation(
-        summary = "Создать комнату",
-        description = "Создаёт комнату под выбранную игру. Создатель становится владельцем и первым игроком.",
-    )
-    @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Комната создана"),
-        ApiResponse(responseCode = "400", description = "Не указан или неизвестен тип игры (VALIDATION_ERROR)"),
-        ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
-    )
-    @PostExchange
-    fun createRoom(@Valid @RequestBody request: CreateRoomRequest): RoomResponse
 
     @Operation(
         summary = "Получить комнату",
@@ -57,7 +45,8 @@ interface RoomApi {
         summary = "Войти в комнату",
         description = "Игрок идущей партии возвращается на своё место. Иначе, если партия не идёт и есть свободное место, " +
             "пользователь становится игроком, а в остальных случаях — наблюдателем. В пустой комнате вошедший становится " +
-            "владельцем. Повторный вход ничего не меняет.",
+            "владельцем. Вход вышедшего участника, пока не истёк срок выхода, отменяет выход: роль и владение сохраняются. " +
+            "Повторный вход ничего не меняет.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Пользователь в комнате"),
@@ -69,9 +58,13 @@ interface RoomApi {
 
     @Operation(
         summary = "Выйти из комнаты",
-        description = "Выйти можно всегда. Игрок идущей партии сохраняет место и может вернуться. Если вышел владелец, " +
-            "владение переходит к самому раннему из оставшихся: сначала игроки, затем наблюдатели. Пустая комната " +
-            "удаляется автоматически через заданное время.",
+        description = "Выйти можно всегда, но выход отложенный: участник помечается уходящим (leaving) и до истечения " +
+            "срока сохраняет роль, место и владение, а вход в комнату в пределах срока отменяет выход. Срок: игроку " +
+            "идущей партии его задаёт игра (на паузе отсчёт заморожен), владельцу вне игры — 5 с, остальным — 1 с. " +
+            "По истечении срока участник удаляется: игрок идущей партии сохраняет место и может вернуться, владение " +
+            "переходит к самому раннему из оставшихся: сначала к присутствующим, к уходящим — только если " +
+            "присутствующих нет; в каждой группе сначала игроки, затем наблюдатели. Пустая комната удаляется " +
+            "автоматически через заданное время. Повторный выход срок не продлевает.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Пользователь вышел"),
@@ -132,7 +125,8 @@ interface RoomApi {
 
     @Operation(
         summary = "Отменить партию",
-        description = "Завершает идущую партию без результата и возвращает комнату в ожидание. Только владелец.",
+        description = "Завершает идущую партию без результата и возвращает комнату в ожидание. Работает и на паузе. " +
+            "Только владелец.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Партия отменена"),
@@ -143,4 +137,42 @@ interface RoomApi {
     )
     @DeleteExchange("/{roomId}/session")
     fun cancelSession(@PathVariable roomId: UUID): RoomResponse
+
+    @Operation(
+        summary = "Поставить партию на паузу",
+        description = "Замораживает идущую партию: ходы запрещены, время хода и сроки возвращения вышедших игроков " +
+            "партии не идут. Вход, выход и отмена партии работают. Только владелец. Повторный вызов на паузе " +
+            "ничего не меняет.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Партия на паузе"),
+        ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
+        ApiResponse(
+            responseCode = "403",
+            description = "Пользователь не в комнате (NOT_ROOM_MEMBER) или не владелец (NOT_ROOM_OWNER)",
+        ),
+        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(responseCode = "409", description = "Партия не идёт (ROOM_NOT_IN_GAME)"),
+    )
+    @PostExchange("/{roomId}/session/pause")
+    fun pauseSession(@PathVariable roomId: UUID): RoomResponse
+
+    @Operation(
+        summary = "Продолжить партию",
+        description = "Снимает паузу. Время хода и сроки возвращения вышедших игроков партии сдвигаются на длительность " +
+            "паузы: остаётся столько же времени, сколько было в момент паузы. Только владелец. Без паузы вызов ничего " +
+            "не меняет.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "200", description = "Партия продолжается"),
+        ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
+        ApiResponse(
+            responseCode = "403",
+            description = "Пользователь не в комнате (NOT_ROOM_MEMBER) или не владелец (NOT_ROOM_OWNER)",
+        ),
+        ApiResponse(responseCode = "404", description = "Комнаты нет или она удалена (ROOM_NOT_FOUND)"),
+        ApiResponse(responseCode = "409", description = "Партия не идёт (ROOM_NOT_IN_GAME)"),
+    )
+    @PostExchange("/{roomId}/session/resume")
+    fun resumeSession(@PathVariable roomId: UUID): RoomResponse
 }

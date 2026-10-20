@@ -9,6 +9,11 @@ CREATE TABLE room
     current_session_id uuid,
     -- С какого момента в комнате нет ни игроков, ни наблюдателей. Используется для автоудаления.
     empty_since        timestamptz,
+    -- Настройки комнаты: с ними стартует следующая партия. Режим времени (NONE, PER_MOVE, …) и секунды на ход.
+    time_control_mode  varchar(16) NOT NULL,
+    move_seconds       integer,
+    -- Настройки конкретной игры, формат задаёт модуль игры (games/*).
+    game_settings      jsonb       NOT NULL,
     created_at         timestamptz NOT NULL DEFAULT now()
 );
 

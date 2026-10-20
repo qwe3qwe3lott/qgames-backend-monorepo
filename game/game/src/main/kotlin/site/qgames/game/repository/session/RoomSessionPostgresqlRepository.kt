@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Repository
 import site.qgames.game.entity.session.RoomSessionEntity
 import site.qgames.game.util.getInstant
+import site.qgames.game.util.getIntOrNull
 import site.qgames.game.util.getUuid
 import site.qgames.game.util.toTimestamp
 import java.time.Instant
@@ -21,15 +22,20 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
         state: String,
         stateSchemaVersion: Int,
         seed: Long,
+        timeControlMode: String,
+        moveSeconds: Int?,
+        gameSettings: String,
+        moveDeadline: Instant?,
         players: List<UUID>,
         now: Instant,
     ): RoomSessionEntity {
         val session = jdbcClient.sql(
             """
-            INSERT INTO room_session (room_id, game_type, status, state, state_schema_version, seed, created_at)
-            VALUES (:roomId, :gameType, :status, CAST(:state AS jsonb), :stateSchemaVersion, :seed, :now)
-            RETURNING id, room_id, game_type, status, state::text AS state, state_schema_version, seed, version,
-                      created_at, finished_at
+            INSERT INTO room_session (room_id, game_type, status, state, state_schema_version, seed, time_control_mode,
+                                      move_seconds, game_settings, move_deadline, created_at)
+            VALUES (:roomId, :gameType, :status, CAST(:state AS jsonb), :stateSchemaVersion, :seed, :timeControlMode,
+                    :moveSeconds, CAST(:gameSettings AS jsonb), :moveDeadline, :now)
+            RETURNING $COLUMNS
             """,
         )
             .param("roomId", roomId)
@@ -38,6 +44,10 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .param("state", state)
             .param("stateSchemaVersion", stateSchemaVersion)
             .param("seed", seed)
+            .param("timeControlMode", timeControlMode)
+            .param("moveSeconds", moveSeconds)
+            .param("gameSettings", gameSettings)
+            .param("moveDeadline", moveDeadline.toTimestamp())
             .param("now", now.toTimestamp())
             .query(mapper)
             .single()
@@ -52,10 +62,10 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
     }
 
     fun findById(id: UUID): RoomSessionEntity? =
-        jdbcClient.sql("$SELECT WHERE id = :id").param("id", id).query(mapper).optional().orElse(null)
+        jdbcClient.sql("SELECT $COLUMNS FROM room_session WHERE id = :id").param("id", id).query(mapper).optional().orElse(null)
 
     fun findLatest(roomId: UUID): RoomSessionEntity? =
-        jdbcClient.sql("$SELECT WHERE room_id = :roomId ORDER BY created_at DESC, id DESC LIMIT 1")
+        jdbcClient.sql("SELECT $COLUMNS FROM room_session WHERE room_id = :roomId ORDER BY created_at DESC, id DESC LIMIT 1")
             .param("roomId", roomId)
             .query(mapper)
             .optional()
@@ -67,11 +77,34 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .query { rs, _ -> rs.getUuid("user_id")!! }
             .list()
 
-    fun updateState(id: UUID, expectedVersion: Long, state: String, status: String, finishedAt: Instant?): Boolean =
+    /** Статус — литералом, чтобы подходил частичный индекс room_session_move_deadline_idx. */
+    fun findIdsWithExpiredMove(now: Instant, limit: Int): List<UUID> =
+        jdbcClient.sql(
+            """
+            SELECT id FROM room_session
+            WHERE status = 'IN_PROGRESS' AND move_deadline <= :now AND paused_at IS NULL
+            ORDER BY move_deadline
+            LIMIT :limit
+            """,
+        )
+            .param("now", now.toTimestamp())
+            .param("limit", limit)
+            .query { rs, _ -> rs.getUuid("id")!! }
+            .list()
+
+    fun updateState(
+        id: UUID,
+        expectedVersion: Long,
+        state: String,
+        status: String,
+        moveDeadline: Instant?,
+        finishedAt: Instant?,
+    ): Boolean =
         jdbcClient.sql(
             """
             UPDATE room_session
-            SET state = CAST(:state AS jsonb), status = :status, finished_at = :finishedAt, version = version + 1
+            SET state = CAST(:state AS jsonb), status = :status, move_deadline = :moveDeadline, finished_at = :finishedAt,
+                version = version + 1
             WHERE id = :id AND version = :expectedVersion
             """,
         )
@@ -79,11 +112,43 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .param("expectedVersion", expectedVersion)
             .param("state", state)
             .param("status", status)
+            .param("moveDeadline", moveDeadline.toTimestamp())
             .param("finishedAt", finishedAt.toTimestamp())
             .update() == 1
 
+    fun clearMoveDeadline(id: UUID) {
+        jdbcClient.sql("UPDATE room_session SET move_deadline = NULL WHERE id = :id").param("id", id).update()
+    }
+
+    fun pause(id: UUID, now: Instant) {
+        jdbcClient.sql("UPDATE room_session SET paused_at = :now WHERE id = :id AND paused_at IS NULL")
+            .param("id", id)
+            .param("now", now.toTimestamp())
+            .update()
+    }
+
+    /** Снимает паузу и сдвигает дедлайн хода (если он есть) на [micros] микросекунд. */
+    fun resume(id: UUID, micros: Long) {
+        jdbcClient.sql(
+            """
+            UPDATE room_session
+            SET move_deadline = move_deadline + :micros * interval '1 microsecond', paused_at = NULL
+            WHERE id = :id
+            """,
+        )
+            .param("id", id)
+            .param("micros", micros)
+            .update()
+    }
+
     fun finish(id: UUID, status: String, finishedAt: Instant) {
-        jdbcClient.sql("UPDATE room_session SET status = :status, finished_at = :finishedAt WHERE id = :id")
+        jdbcClient.sql(
+            """
+            UPDATE room_session
+            SET status = :status, finished_at = :finishedAt, move_deadline = NULL, paused_at = NULL
+            WHERE id = :id
+            """,
+        )
             .param("id", id)
             .param("status", status)
             .param("finishedAt", finishedAt.toTimestamp())
@@ -100,16 +165,19 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
             stateSchemaVersion = rs.getInt("state_schema_version"),
             seed = rs.getLong("seed"),
             version = rs.getLong("version"),
+            timeControlMode = rs.getString("time_control_mode"),
+            moveSeconds = rs.getIntOrNull("move_seconds"),
+            gameSettings = rs.getString("game_settings"),
+            moveDeadline = rs.getInstant("move_deadline"),
+            pausedAt = rs.getInstant("paused_at"),
             createdAt = rs.getInstant("created_at")!!,
             finishedAt = rs.getInstant("finished_at"),
         )
     }
 
     companion object {
-        private const val SELECT = """
-            SELECT id, room_id, game_type, status, state::text AS state, state_schema_version, seed, version,
-                   created_at, finished_at
-            FROM room_session
-        """
+        private const val COLUMNS =
+            "id, room_id, game_type, status, state::text AS state, state_schema_version, seed, version, time_control_mode, " +
+                "move_seconds, game_settings::text AS game_settings, move_deadline, paused_at, created_at, finished_at"
     }
 }

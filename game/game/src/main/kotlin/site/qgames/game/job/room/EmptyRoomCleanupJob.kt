@@ -10,7 +10,8 @@ import java.time.Clock
 
 /**
  * Удаляет комнаты, в которых нет ни игроков, ни наблюдателей дольше qgames.game.room.empty-ttl.
- * Запускается на всех инстансах, выполняется одним (ShedLock).
+ * Запускается на всех инстансах, выполняется одним (ShedLock). По расписанию — только при
+ * qgames.game.room.cleanup-enabled.
  */
 @Component
 class EmptyRoomCleanupJob(
@@ -21,6 +22,12 @@ class EmptyRoomCleanupJob(
 
     @Scheduled(fixedDelayString = "\${qgames.game.room.cleanup-interval}")
     @SchedulerLock(name = "empty-room-cleanup", lockAtMostFor = "PT5M")
+    fun scheduledRun() {
+        if (properties.room.cleanupEnabled) {
+            run()
+        }
+    }
+
     fun run(): Int {
         val deleted = roomRepository.deleteEmptySince(clock.instant().minus(properties.room.emptyTtl))
         if (deleted > 0) {

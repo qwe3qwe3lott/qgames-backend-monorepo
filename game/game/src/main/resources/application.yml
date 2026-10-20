@@ -34,3 +34,15 @@ qgames:
       empty-ttl: ${ROOM_EMPTY_TTL:30m}
       cleanup-interval: 1m
       cleanup-enabled: true
+      # Выход отложенный: столько вышедший участник ещё числится в комнате и может вернуться без потери роли и
+      # владения. Игрокам идущей партии срок задаёт игра (GameRules.reconnectGrace).
+      leave-grace:
+        owner: 5s
+        member: 1s
+      # Как часто удалять участников с истёкшим сроком выхода (RoomLeaveJob).
+      leave-check-interval: 1s
+      leave-enabled: true
+    session:
+      # Как часто искать партии с истёкшим временем хода (MoveTimeoutJob).
+      timeout-check-interval: 1s
+      timeout-enabled: true

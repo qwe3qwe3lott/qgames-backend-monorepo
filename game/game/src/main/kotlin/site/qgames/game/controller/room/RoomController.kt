@@ -2,11 +2,9 @@ package site.qgames.game.controller.room
 
 import org.springframework.web.bind.annotation.RestController
 import site.qgames.common.web.context.RequestUserContext
-import site.qgames.game.model.room.RoomGameType
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.gatewayapi.api.RoomApi
 import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
-import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.mapper.room.RoomResponseMapper
 import site.qgames.game.service.room.RoomService
@@ -20,9 +18,6 @@ class RoomController(
     private val roomResponseMapper: RoomResponseMapper,
     private val requestUserContext: RequestUserContext,
 ) : RoomApi {
-
-    override fun createRoom(request: CreateRoomRequest): RoomResponse =
-        roomResponseMapper.toResponse(roomService.create(requestUserContext.userId(), RoomGameType.valueOf(request.gameType.name)))
 
     override fun getRoom(roomId: UUID): RoomResponse =
         roomResponseMapper.toResponse(roomService.get(requestUserContext.userId(), roomId))
@@ -44,4 +39,10 @@ class RoomController(
 
     override fun cancelSession(roomId: UUID): RoomResponse =
         roomResponseMapper.toResponse(roomSessionService.cancel(requestUserContext.userId(), roomId))
+
+    override fun pauseSession(roomId: UUID): RoomResponse =
+        roomResponseMapper.toResponse(roomSessionService.pause(requestUserContext.userId(), roomId))
+
+    override fun resumeSession(roomId: UUID): RoomResponse =
+        roomResponseMapper.toResponse(roomSessionService.resume(requestUserContext.userId(), roomId))
 }

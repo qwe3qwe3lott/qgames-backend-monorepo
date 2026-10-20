@@ -11,6 +11,10 @@ data class RoomEntity(
     val status: String,
     val currentSessionId: UUID?,
     val emptySince: Instant?,
+    val timeControlMode: String,
+    val moveSeconds: Int?,
+    /** JSON (jsonb) настроек игры. */
+    val gameSettings: String,
     val createdAt: Instant,
 )
 
@@ -20,4 +24,6 @@ data class RoomMemberEntity(
     val userId: UUID,
     val role: String,
     val joinedAt: Instant,
+    /** Когда вышедший участник перестанет числиться в комнате; null — участник присутствует. */
+    val leaveDeadline: Instant? = null,
 )

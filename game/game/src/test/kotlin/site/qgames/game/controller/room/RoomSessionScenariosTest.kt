@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
+import org.junit.jupiter.params.provider.CsvSource
 import org.junit.jupiter.params.provider.MethodSource
 import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.http.HttpMethod
@@ -14,15 +15,18 @@ import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomRole
 import site.qgames.game.gatewayapi.dto.room.RoomStatus
 import site.qgames.game.gatewayapi.dto.room.SessionStatus
+import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.game.support.TestData.DAVE
+import java.time.Instant
 import java.util.UUID
 import java.util.stream.Stream
 
 /**
- * Партии «игры в ничто»: игроки по очереди делают PASS, после 3 кругов партия заканчивается.
+ * Партии «игры в ничто»: игроки по очереди делают PASS, после заданного в настройках числа кругов (по умолчанию 3)
+ * партия заканчивается. При таймере на ход у партии есть дедлайн текущего хода.
  */
 class RoomSessionScenariosTest : BaseIntegrationTest() {
 
@@ -80,6 +84,70 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
         assertThat(next.session!!.status).isEqualTo(SessionStatus.IN_PROGRESS)
     }
 
+    @ParameterizedTest(name = "{0} round(s), {1} player(s)")
+    @CsvSource("1, 1", "1, 3", "2, 2", "5, 2")
+    fun `game lasts the number of rounds from the room settings`(rounds: Int, playerCount: Int) {
+        val players = listOf(ALICE, BOB, CAROL, DAVE).take(playerCount)
+        val roomId = roomWith(players.first(), *players.drop(1).toTypedArray(), started = true, settings = nothingSettings(rounds = rounds))
+
+        var last: RoomResponse? = null
+        repeat(rounds) { round ->
+            players.forEach { player ->
+                assertThat(last?.status ?: RoomStatus.IN_GAME).isEqualTo(RoomStatus.IN_GAME)
+                last = pass(player, roomId)
+            }
+            if (round < rounds - 1) assertThat(last!!.session!!.state).containsEntry("round", round + 2)
+        }
+
+        assertThat(last!!.status).isEqualTo(RoomStatus.WAITING)
+        assertThat(last!!.session!!.state).containsEntry("rounds", rounds).containsEntry("finished", true)
+        assertThat(countRows("room_session_move")).isEqualTo((rounds * playerCount).toLong())
+    }
+
+    @Test
+    fun `move timer starts with the game and every move resets it`() {
+        val roomId = roomWith(ALICE, BOB, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+
+        val beforeStart = Instant.now()
+        val started = start(ALICE, roomId)
+        val afterStart = Instant.now()
+        val firstDeadline = started.session!!.moveDeadline!!
+        assertThat(firstDeadline).isBetween(beforeStart.plusSeconds(30).minusMillis(1), afterStart.plusSeconds(30))
+        assertThat(started.serverTime).isBetween(beforeStart.minusMillis(1), afterStart)
+        assertThat(storedDeadline(roomId)).isEqualTo(firstDeadline)
+
+        val beforeMove = Instant.now()
+        val afterAlice = pass(ALICE, roomId)
+        val afterMove = Instant.now()
+        val secondDeadline = afterAlice.session!!.moveDeadline!!
+        assertThat(secondDeadline).isBetween(beforeMove.plusSeconds(30).minusMillis(1), afterMove.plusSeconds(30))
+        assertThat(storedDeadline(roomId)).isEqualTo(secondDeadline)
+
+        val cancelled = cancel(ALICE, roomId)
+        assertThat(cancelled.session!!.moveDeadline).isNull()
+        assertThat(storedDeadline(roomId)).isNull()
+    }
+
+    @Test
+    fun `game without a timer has no deadline`() {
+        val roomId = roomWith(ALICE, BOB, started = true)
+
+        assertThat(room(roomId, ALICE).session!!.moveDeadline).isNull()
+        assertThat(pass(ALICE, roomId).session!!.moveDeadline).isNull()
+        assertThat(storedDeadline(roomId)).isNull()
+    }
+
+    @Test
+    fun `finished game has no deadline`() {
+        val roomId = roomWith(ALICE, started = true, settings = nothingSettings(rounds = 1, mode = TimeControlMode.PER_MOVE, moveSeconds = 5))
+
+        val finished = pass(ALICE, roomId)
+
+        assertThat(finished.session!!.status).isEqualTo(SessionStatus.FINISHED)
+        assertThat(finished.session!!.moveDeadline).isNull()
+        assertThat(storedDeadline(roomId)).isNull()
+    }
+
     @ParameterizedTest(name = "{0}")
     @MethodSource("rejectedMoves")
     fun `move is rejected without changing the game`(
@@ -127,7 +195,7 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
     @Test
     fun `player who left keeps the seat and continues after returning`() {
         val roomId = roomWith(ALICE, BOB, started = true)
-        leave(BOB, roomId)
+        leaveCompletely(BOB, roomId)
 
         val afterAlice = pass(ALICE, roomId)
         assertThat(afterAlice.status).isEqualTo(RoomStatus.IN_GAME)
@@ -183,6 +251,13 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
         assertThat(seenByCarol.session!!.state).containsEntry("currentPlayer", ALICE.toString())
     }
 
+    private fun storedDeadline(roomId: UUID): Instant? =
+        jdbcClient.sql("SELECT move_deadline FROM room_session WHERE room_id = :id ORDER BY created_at DESC LIMIT 1")
+            .param("id", roomId)
+            .query { rs, _ -> rs.getTimestamp("move_deadline")?.toInstant() }
+            .list()
+            .single()
+
     companion object {
         private fun started(): RoomSetup = RoomSetup { roomWith(ALICE, BOB, started = true) }
 
@@ -215,7 +290,7 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
             ),
             arguments(
                 "player who left the room",
-                RoomSetup { roomWith(ALICE, BOB, started = true).also { leave(ALICE, it) } },
+                RoomSetup { roomWith(ALICE, BOB, started = true).also { leaveCompletely(ALICE, it) } },
                 ALICE, PASS, null, HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER", null,
             ),
             arguments("stale version", started(), ALICE, PASS, 5L, HttpStatus.CONFLICT, "SESSION_CONFLICT", null),

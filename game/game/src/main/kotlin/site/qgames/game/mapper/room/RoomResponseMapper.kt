@@ -11,11 +11,15 @@ import site.qgames.game.gatewayapi.dto.room.SessionResponse
 import site.qgames.game.gatewayapi.dto.room.SessionStatus
 import site.qgames.game.model.room.RoomDetailsModel
 import site.qgames.game.model.room.RoomSessionDetailsModel
+import site.qgames.game.model.session.RoomSessionStatus
 import tools.jackson.databind.json.JsonMapper
 
 /** Модель комнаты → DTO контракта для gateway. Только преобразование, без обращений к данным. */
 @Component
-class RoomResponseMapper(private val jsonMapper: JsonMapper) {
+class RoomResponseMapper(
+    private val jsonMapper: JsonMapper,
+    private val roomSettingsResponseMapper: RoomSettingsResponseMapper,
+) {
 
     fun toResponse(details: RoomDetailsModel): RoomResponse {
         val room = details.room
@@ -33,11 +37,14 @@ class RoomResponseMapper(private val jsonMapper: JsonMapper) {
                     avatar = profile?.avatar?.let { Avatar.valueOf(it.name) },
                     role = RoomRole.valueOf(member.role.name),
                     owner = member.userId == room.ownerId,
+                    leaving = member.leaveDeadline != null,
                     joinedAt = member.joinedAt,
                 )
             },
             session = details.session?.let(::toResponse),
             createdAt = room.createdAt,
+            settings = roomSettingsResponseMapper.toResponse(details.settings),
+            serverTime = details.serverTime,
         )
     }
 
@@ -48,5 +55,7 @@ class RoomResponseMapper(private val jsonMapper: JsonMapper) {
         players = details.players,
         version = details.session.version,
         state = jsonMapper.convertValue(details.view, Map::class.java) as Map<String, Any?>,
+        moveDeadline = details.session.moveDeadline.takeIf { details.session.status == RoomSessionStatus.IN_PROGRESS },
+        pausedAt = details.session.pausedAt.takeIf { details.session.status == RoomSessionStatus.IN_PROGRESS },
     )
 }

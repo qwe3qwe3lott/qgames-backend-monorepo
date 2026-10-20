@@ -36,9 +36,15 @@ object RoomErrors {
     fun sessionConflict() =
         ConflictException("SESSION_CONFLICT", "The game has changed, reload the state and retry")
 
+    fun sessionPaused() = ConflictException("SESSION_PAUSED", "The game is paused")
+
     fun moveRejected(reason: String, message: String) =
         UnprocessableException("MOVE_REJECTED", message, mapOf("reason" to reason))
 
     fun invalidMove() =
         ClientException(ErrorCodes.VALIDATION_ERROR, "Move does not match the game format")
+
+    /** [errors] — поле запроса → причина, в том же формате, что у ошибок `@Valid`. */
+    fun invalidSettings(errors: Map<String, String>) =
+        ClientException(ErrorCodes.VALIDATION_ERROR, "Room settings do not match the game", mapOf("errors" to errors))
 }

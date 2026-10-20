@@ -3,7 +3,6 @@ package site.qgames.game.config
 import net.javacrumbs.shedlock.core.LockProvider
 import net.javacrumbs.shedlock.provider.jdbctemplate.JdbcTemplateLockProvider
 import net.javacrumbs.shedlock.spring.annotation.EnableSchedulerLock
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.jdbc.core.JdbcTemplate
@@ -11,12 +10,13 @@ import org.springframework.scheduling.annotation.EnableScheduling
 import javax.sql.DataSource
 
 /**
- * Шедулеры работают на всех инстансах, но ShedLock (таблица shedlock) пускает в задачу только один.
+ * Шедулеры работают на всех инстансах. Задачи, которые должен выполнять один инстанс, берут ShedLock (таблица
+ * shedlock); MoveTimeoutJob и RoomLeaveJob делят работу между инстансами через FOR UPDATE SKIP LOCKED. Запуск по расписанию
+ * у каждого джоба включается своим флагом (`…-enabled`), в тестах джобы вызываются напрямую.
  */
 @Configuration
 @EnableScheduling
 @EnableSchedulerLock(defaultLockAtMostFor = "PT5M")
-@ConditionalOnBooleanProperty("qgames.game.room.cleanup-enabled", matchIfMissing = true)
 class SchedulingConfig {
 
     @Bean

@@ -14,6 +14,13 @@ data class RoomSessionEntity(
     val stateSchemaVersion: Int,
     val seed: Long,
     val version: Long,
+    val timeControlMode: String,
+    val moveSeconds: Int?,
+    /** JSON (jsonb) настроек игры. */
+    val gameSettings: String,
+    val moveDeadline: Instant?,
+    /** С какого момента партия на паузе; null — не на паузе. */
+    val pausedAt: Instant?,
     val createdAt: Instant,
     val finishedAt: Instant?,
 )

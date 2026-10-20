@@ -8,6 +8,8 @@ import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
+import site.qgames.game.model.room.RoomTimeControlMode
+import site.qgames.game.model.room.RoomTimeControlModel
 
 @Component
 class RoomEntityMapper {
@@ -19,6 +21,8 @@ class RoomEntityMapper {
         status = RoomStatus.valueOf(entity.status),
         currentSessionId = entity.currentSessionId,
         emptySince = entity.emptySince,
+        timeControl = RoomTimeControlModel(RoomTimeControlMode.valueOf(entity.timeControlMode), entity.moveSeconds),
+        gameSettings = entity.gameSettings,
         createdAt = entity.createdAt,
     )
 
@@ -29,6 +33,9 @@ class RoomEntityMapper {
         status = model.status.name,
         currentSessionId = model.currentSessionId,
         emptySince = model.emptySince,
+        timeControlMode = model.timeControl.mode.name,
+        moveSeconds = model.timeControl.moveSeconds,
+        gameSettings = model.gameSettings,
         createdAt = model.createdAt,
     )
 
@@ -37,6 +44,7 @@ class RoomEntityMapper {
         userId = entity.userId,
         role = RoomRole.valueOf(entity.role),
         joinedAt = entity.joinedAt,
+        leaveDeadline = entity.leaveDeadline,
     )
 
     fun toEntity(model: RoomMemberModel) = RoomMemberEntity(
@@ -44,5 +52,6 @@ class RoomEntityMapper {
         userId = model.userId,
         role = model.role.name,
         joinedAt = model.joinedAt,
+        leaveDeadline = model.leaveDeadline,
     )
 }

@@ -1,5 +1,6 @@
 package site.qgames.common.exception.handler
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo
 import org.slf4j.LoggerFactory
 import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
@@ -17,6 +18,7 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 import site.qgames.common.exception.exception.ErrorCodes
 import site.qgames.common.exception.exception.QgamesException
 import site.qgames.common.exception.exception.ServerException
+import tools.jackson.databind.exc.InvalidTypeIdException
 
 /**
  * Все ошибки — ProblemDetail с полем `code`. Стандартные исключения Spring MVC (404 маршрута, 405 и т.п.)
@@ -59,19 +61,43 @@ class QgamesExceptionHandler : ResponseEntityExceptionHandler() {
         return ResponseEntity.badRequest().body(problem)
     }
 
-    /** Тело не разобралось (неизвестное значение enum, нет обязательного поля): тот же код, что и у валидации. */
+    /**
+     * Тело не разобралось (неизвестное значение enum, нет обязательного поля): тот же код, что и у валидации.
+     * Неизвестный или отсутствующий дискриминатор полиморфного поля (`@JsonTypeInfo`) — ошибка по полю дискриминатора
+     * в формате `@Valid`: `errors[<путь>.<дискриминатор>]`, например `settings.gameSettings.gameType`.
+     */
     override fun handleHttpMessageNotReadable(
         ex: HttpMessageNotReadableException,
         headers: HttpHeaders,
         status: HttpStatusCode,
         request: WebRequest,
-    ): ResponseEntity<Any>? =
-        ResponseEntity.badRequest().body(problem(HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_ERROR, "Request body is malformed"))
+    ): ResponseEntity<Any>? {
+        val problem = problem(HttpStatus.BAD_REQUEST, ErrorCodes.VALIDATION_ERROR, "Request body is malformed")
+        invalidTypeId(ex)?.let { problem.setProperty("errors", mapOf(discriminatorField(it) to discriminatorMessage(it))) }
+        return ResponseEntity.badRequest().body(problem)
+    }
+
+    private fun invalidTypeId(ex: Throwable): InvalidTypeIdException? =
+        generateSequence(ex) { it.cause?.takeIf { cause -> cause !== it } }.filterIsInstance<InvalidTypeIdException>().firstOrNull()
+
+    /** Путь до полиморфного объекта (из пути исключения) + имя свойства-дискриминатора из `@JsonTypeInfo`. */
+    private fun discriminatorField(ex: InvalidTypeIdException): String {
+        val path = ex.path.mapNotNull { ref -> ref.propertyName ?: ref.index.takeIf { it >= 0 }?.let { "[$it]" } }
+        val property = ex.baseType?.rawClass?.getAnnotation(JsonTypeInfo::class.java)?.property?.takeIf { it.isNotEmpty() }
+            ?: DEFAULT_TYPE_PROPERTY
+        return (path + property).joinToString(".").replace(".[", "[")
+    }
+
+    private fun discriminatorMessage(ex: InvalidTypeIdException): String =
+        if (ex.typeId == null) "must not be null" else "unsupported value"
 
     private fun problem(status: HttpStatusCode, code: String, detail: String?): ProblemDetail =
         ProblemDetail.forStatusAndDetail(status, detail).apply { setProperty(ErrorCodes.CODE_PROPERTY, code) }
 
     companion object {
         private val log = LoggerFactory.getLogger(QgamesExceptionHandler::class.java)
+
+        /** Имя свойства типа по умолчанию у `@JsonTypeInfo(use = NAME)` без явного `property`. */
+        private const val DEFAULT_TYPE_PROPERTY = "@type"
     }
 }

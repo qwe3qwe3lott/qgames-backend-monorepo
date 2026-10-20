@@ -1,5 +1,8 @@
 qgames:
   game:
+    # Шедулеры в тестах выключены: EmptyRoomCleanupJob, RoomLeaveJob и MoveTimeoutJob вызываются напрямую.
     room:
-      # Шедулер в тестах выключен: EmptyRoomCleanupJob вызывается напрямую.
       cleanup-enabled: false
+      leave-enabled: false
+    session:
+      timeout-enabled: false

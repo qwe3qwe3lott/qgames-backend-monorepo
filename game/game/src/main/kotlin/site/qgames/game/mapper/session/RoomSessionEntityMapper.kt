@@ -1,11 +1,13 @@
 package site.qgames.game.mapper.session
 
 import org.springframework.stereotype.Component
-import site.qgames.game.entity.session.RoomSessionMoveEntity
 import site.qgames.game.entity.session.RoomSessionEntity
+import site.qgames.game.entity.session.RoomSessionMoveEntity
 import site.qgames.game.model.room.RoomGameType
-import site.qgames.game.model.session.RoomSessionMoveModel
+import site.qgames.game.model.room.RoomTimeControlMode
+import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.model.session.RoomSessionModel
+import site.qgames.game.model.session.RoomSessionMoveModel
 import site.qgames.game.model.session.RoomSessionStatus
 
 @Component
@@ -20,6 +22,10 @@ class RoomSessionEntityMapper {
         stateSchemaVersion = entity.stateSchemaVersion,
         seed = entity.seed,
         version = entity.version,
+        timeControl = RoomTimeControlModel(RoomTimeControlMode.valueOf(entity.timeControlMode), entity.moveSeconds),
+        gameSettings = entity.gameSettings,
+        moveDeadline = entity.moveDeadline,
+        pausedAt = entity.pausedAt,
         createdAt = entity.createdAt,
         finishedAt = entity.finishedAt,
     )

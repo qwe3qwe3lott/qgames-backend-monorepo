@@ -11,3 +11,5 @@ fun Instant?.toTimestamp(): Timestamp? = this?.let(Timestamp::from)
 fun ResultSet.getInstant(column: String): Instant? = getTimestamp(column)?.toInstant()
 
 fun ResultSet.getUuid(column: String): UUID? = getObject(column, UUID::class.java)
+
+fun ResultSet.getIntOrNull(column: String): Int? = getInt(column).takeUnless { wasNull() }

@@ -12,6 +12,7 @@ import org.springframework.http.HttpStatus
 import site.qgames.game.BaseIntegrationTest
 import site.qgames.game.gatewayapi.dto.room.Avatar
 import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
+import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
 import site.qgames.game.gatewayapi.dto.room.GameType
 import site.qgames.game.gatewayapi.dto.room.MoveRequest
 import site.qgames.game.gatewayapi.dto.room.RoomRole
@@ -22,6 +23,7 @@ import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.game.support.TestData.DAVE
 import site.qgames.game.support.TestData.EVE
+import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
 import java.util.UUID
 import java.util.stream.Stream
 
@@ -44,22 +46,13 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
         assertThat(room.ownerId).isEqualTo(ALICE)
         assertThat(room.minPlayers to room.maxPlayers).isEqualTo(1 to 4)
         assertThat(room.session).isNull()
+        assertThat(room.settings).isEqualTo(NOTHING_DEFAULT_SETTINGS)
         val member = room.members.single()
         assertThat(member.userId).isEqualTo(ALICE)
         assertThat(member.role).isEqualTo(RoomRole.PLAYER)
         assertThat(member.owner).isTrue()
         assertThat(member.nickname).isEqualTo("Alice")
         assertThat(member.avatar).isEqualTo(Avatar.CAT)
-    }
-
-    @ParameterizedTest(name = "body {0}")
-    @MethodSource("invalidCreateBodies")
-    fun `room cannot be created without a known game type`(body: Map<String, Any?>) {
-        call(HttpMethod.POST, "/api/rooms", ALICE, body).andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("VALIDATION_ERROR") }
-        }
-        assertThat(countRows("room")).isZero()
     }
 
     @Test
@@ -82,7 +75,7 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
 
     @Test
     fun `request without user header is unauthenticated`() {
-        call(HttpMethod.POST, "/api/rooms", null, mapOf("gameType" to "NOTHING")).andExpect {
+        createRoomRequest(null, CreateRoomRequest(nothingSettings())).andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value("UNAUTHENTICATED") }
         }
@@ -104,7 +97,7 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
     fun `ownership after somebody leaves`(case: String, setup: RoomSetup, leaver: UUID, expectedOwner: UUID?) {
         val roomId = with(setup) { prepare() }
 
-        leave(leaver, roomId)
+        leaveCompletely(leaver, roomId)
 
         val viewer = expectedOwner ?: ALICE
         val room = room(roomId, viewer)
@@ -115,8 +108,8 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
     @Test
     fun `empty room waits for its first visitor who becomes the owner`() {
         val roomId = roomWith(ALICE, BOB)
-        leave(BOB, roomId)
-        leave(ALICE, roomId)
+        leaveCompletely(BOB, roomId)
+        leaveCompletely(ALICE, roomId)
         assertThat(room(roomId, DAVE).ownerId).isNull()
         assertThat(emptySince(roomId)).isTrue()
 
@@ -176,8 +169,8 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
 
     @Test
     fun `cleanup deletes only rooms that stayed empty longer than the ttl`() {
-        val longEmpty = roomWith(ALICE).also { leave(ALICE, it) }
-        val recentlyEmpty = roomWith(BOB).also { leave(BOB, it) }
+        val longEmpty = roomWith(ALICE).also { leaveCompletely(ALICE, it) }
+        val recentlyEmpty = roomWith(BOB).also { leaveCompletely(BOB, it) }
         val occupied = roomWith(CAROL)
         markEmptyMinutesAgo(longEmpty, 31)
         markEmptyMinutesAgo(recentlyEmpty, 29)
@@ -201,12 +194,6 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
 
     companion object {
         @JvmStatic
-        fun invalidCreateBodies(): Stream<Arguments> = Stream.of(
-            arguments(mapOf("gameType" to "CHESS")),
-            arguments(emptyMap<String, Any?>()),
-        )
-
-        @JvmStatic
         fun roomOperations(): Stream<Arguments> = Stream.of(
             arguments(HttpMethod.GET, "/api/rooms/{id}", null),
             arguments(HttpMethod.POST, "/api/rooms/{id}/join", null),
@@ -215,7 +202,10 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
             arguments(HttpMethod.DELETE, "/api/rooms/{id}", null),
             arguments(HttpMethod.POST, "/api/rooms/{id}/session", null),
             arguments(HttpMethod.DELETE, "/api/rooms/{id}/session", null),
+            arguments(HttpMethod.POST, "/api/rooms/{id}/session/pause", null),
+            arguments(HttpMethod.POST, "/api/rooms/{id}/session/resume", null),
             arguments(HttpMethod.POST, "/api/games/nothing/rooms/{id}/moves", MoveRequest(PASS)),
+            arguments(HttpMethod.PUT, "/api/games/nothing/rooms/{id}/settings", NOTHING_DEFAULT_SETTINGS),
         )
 
         @JvmStatic
@@ -225,7 +215,7 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
             arguments("game in progress", RoomSetup { roomWith(ALICE, started = true) }, BOB, RoomRole.SPECTATOR),
             arguments(
                 "player of the running game returns to their seat",
-                RoomSetup { roomWith(ALICE, BOB, started = true).also { leave(BOB, it) } },
+                RoomSetup { roomWith(ALICE, BOB, started = true).also { leaveCompletely(BOB, it) } },
                 BOB, RoomRole.PLAYER,
             ),
             arguments(
