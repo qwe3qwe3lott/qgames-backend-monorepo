@@ -23,14 +23,11 @@ class GameService(
     private val gameRegistry: GameRegistry,
 ) {
 
-    /**
-     * Игры каталога в порядке показа, без скрытых (HIDDEN), неопубликованных (NOT_PUBLISHED) и принудительно
-     * отключённых (FORCE_DISABLED).
-     */
+    /** Игры каталога в порядке показа, без скрытых (HIDDEN) и неопубликованных (NOT_PUBLISHED). */
     @Transactional(readOnly = true)
     fun list(): List<GameModel> = gameRepository.findAll().filter { it.publishStatus.listed }
 
-    /** Игра с параметрами правил. Скрытая игра отдаётся, неопубликованная и принудительно отключённая — 404. */
+    /** Игра с параметрами правил. Скрытая игра отдаётся, неопубликованная — 404 GAME_NOT_FOUND. */
     @Transactional(readOnly = true)
     fun details(code: GameCode): GameDetailsModel {
         val game = accessible(code)
@@ -38,26 +35,15 @@ class GameService(
     }
 
     /**
-     * Игра доступна для новых комнат и партий: опубликована или скрыта. Неопубликованная и принудительно
-     * отключённая — 404 GAME_NOT_FOUND, временно недоступная — 409 GAME_UNAVAILABLE.
-     */
-    fun checkPlayable(code: GameCode) {
-        val game = accessible(code)
-        if (!game.publishStatus.playable) {
-            throw RoomErrors.gameUnavailable()
-        }
-    }
-
-    /**
-     * С комнатами и партиями игры можно работать, если игра видна наружу: не NOT_PUBLISHED и не FORCE_DISABLED
-     * (иначе 404 GAME_NOT_FOUND).
+     * С комнатами и партиями игры можно работать (в том числе создавать комнаты и начинать партии), если игра видна
+     * наружу: опубликована или скрыта. Неопубликованная (NOT_PUBLISHED) — 404 GAME_NOT_FOUND.
      */
     fun checkAccessible(code: GameCode) {
         accessible(code)
     }
 
-    fun isForceDisabled(code: GameCode): Boolean =
-        gameRepository.findByCode(code)?.publishStatus == GamePublishStatus.FORCE_DISABLED
+    fun isNotPublished(code: GameCode): Boolean =
+        gameRepository.findByCode(code)?.publishStatus == GamePublishStatus.NOT_PUBLISHED
 
     private fun accessible(code: GameCode): GameModel {
         val game = gameRepository.findByCode(code)

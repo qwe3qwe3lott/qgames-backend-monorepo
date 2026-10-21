@@ -9,10 +9,9 @@ CREATE TABLE game
     description    text        NOT NULL,
     -- Порядок в каталоге: по возрастанию.
     sort_order     integer     NOT NULL,
-    -- PUBLISHED — доступна; HIDDEN — не в каталоге, но доступна по ссылке; DISABLED — временно недоступна (новые
-    -- комнаты и партии запрещены); NOT_PUBLISHED — в разработке, наружу не выдаётся (может не иметь модуля правил);
-    -- FORCE_DISABLED — отключена принудительно: партии отменяются, комнаты удаляются.
+    -- PUBLISHED — доступна; HIDDEN — не в каталоге, но доступна по ссылке; NOT_PUBLISHED — в разработке или отключена:
+    -- наружу не выдаётся, партии отменяются, комнаты удаляются (может не иметь модуля правил).
     publish_status varchar(32) NOT NULL
         CONSTRAINT game_publish_status_check
-            CHECK (publish_status IN ('PUBLISHED', 'HIDDEN', 'DISABLED', 'NOT_PUBLISHED', 'FORCE_DISABLED'))
+            CHECK (publish_status IN ('PUBLISHED', 'HIDDEN', 'NOT_PUBLISHED'))
 );

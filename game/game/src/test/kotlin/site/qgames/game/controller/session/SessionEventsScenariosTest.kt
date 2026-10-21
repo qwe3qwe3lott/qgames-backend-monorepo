@@ -26,7 +26,7 @@ import site.qgames.game.gatewayapi.dto.session.SessionPatchStreamEvent
 import site.qgames.game.gatewayapi.dto.session.SessionStreamEvent
 import site.qgames.game.gatewayapi.dto.session.SessionTimerStatus
 import site.qgames.game.gatewayapi.dto.session.SessionTurnsDto
-import site.qgames.game.job.game.ForceDisabledGameCleanupJob
+import site.qgames.game.job.game.NotPublishedGameCleanupJob
 import site.qgames.game.job.room.RoomConnectionHeartbeatJob
 import site.qgames.game.job.session.MoveTimeoutJob
 import site.qgames.game.mapper.session.SessionEventJsonMapper
@@ -51,7 +51,7 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
     private lateinit var roomConnectionHeartbeatJob: RoomConnectionHeartbeatJob
 
     @Autowired
-    private lateinit var forceDisabledGameCleanupJob: ForceDisabledGameCleanupJob
+    private lateinit var notPublishedGameCleanupJob: NotPublishedGameCleanupJob
 
     @Autowired
     private lateinit var moveTimeoutJob: MoveTimeoutJob
@@ -293,9 +293,9 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
         val sessionId = sessionId(roomId)
         val stream = openSessionStream(BOB, roomId)
         awaitEvents(stream, 1)
-        setPublishStatus("nothing", "FORCE_DISABLED")
+        setPublishStatus("nothing", "NOT_PUBLISHED")
 
-        forceDisabledGameCleanupJob.run()
+        notPublishedGameCleanupJob.run()
 
         awaitUntil("stream is closed") { sessionStreamRegistry.subscribers(sessionId).isEmpty() }
         assertThat(events(stream).map { it.first }).containsExactly("snapshot")

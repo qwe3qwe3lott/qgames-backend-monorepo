@@ -74,7 +74,7 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .list()
 
     /**
-     * Партии принудительно отключённых игр пропускаются: их отменит ForceDisabledGameCleanupJob, а иначе они занимали
+     * Партии неопубликованных игр пропускаются: их отменит NotPublishedGameCleanupJob, а иначе они занимали
      * бы пачку. Статус — литералом, чтобы подходил частичный индекс room_session_move_deadline_idx. Таймер на паузе
      * дедлайна в проекции не имеет.
      */
@@ -85,7 +85,7 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
             FROM room_session s
                      JOIN game g ON g.code = s.game_code
             WHERE s.status = 'IN_PROGRESS' AND s.move_deadline <= :now
-              AND g.publish_status <> 'FORCE_DISABLED'
+              AND g.publish_status <> 'NOT_PUBLISHED'
             ORDER BY s.move_deadline
             LIMIT :limit
             """,

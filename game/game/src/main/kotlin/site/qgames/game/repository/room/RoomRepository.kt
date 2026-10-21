@@ -54,7 +54,7 @@ class RoomRepository(
 
     /**
      * Блокирует комнату партии [sessionId], если партия не на паузе, время хода в ней истекло к [now] и игра не
-     * отключена принудительно (FORCE_DISABLED). Уже заблокированную комнату
+     * снята с публикации (NOT_PUBLISHED). Уже заблокированную комнату
      * пропускает (SKIP LOCKED) и возвращает null — её обработает следующий запуск джоба.
      */
     fun lockWithExpiredMove(sessionId: UUID, now: Instant): RoomModel? =
@@ -74,7 +74,7 @@ class RoomRepository(
 
     /**
      * Комнаты, у которых окно владения истекло к [now] (не больше [limit]), самые просроченные первыми. Комнаты
-     * принудительно отключённых игр (FORCE_DISABLED) пропускаются: их удалит ForceDisabledGameCleanupJob. Без блокировок.
+     * неопубликованных игр (NOT_PUBLISHED) пропускаются: их удалит NotPublishedGameCleanupJob. Без блокировок.
      */
     fun findIdsWithExpiredOwnerGrace(now: Instant, limit: Int): List<UUID> =
         roomPostgresqlRepository.findIdsWithExpiredOwnerGrace(now, limit)

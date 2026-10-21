@@ -14,11 +14,8 @@ object RoomErrors {
 
     fun roomNotFound() = NotFoundException("ROOM_NOT_FOUND", "Room not found")
 
-    /** Неизвестный код игры, игра не опубликована (NOT_PUBLISHED) или принудительно отключена (FORCE_DISABLED). */
+    /** Неизвестный код игры или игра не опубликована (NOT_PUBLISHED). */
     fun gameNotFound() = NotFoundException("GAME_NOT_FOUND", "Unknown game code")
-
-    /** Игра временно недоступна (DISABLED): новые комнаты и партии запрещены. */
-    fun gameUnavailable() = ConflictException("GAME_UNAVAILABLE", "The game is not available now")
 
     fun gameTypeMismatch() = ConflictException("GAME_TYPE_MISMATCH", "The room is for another game")
 

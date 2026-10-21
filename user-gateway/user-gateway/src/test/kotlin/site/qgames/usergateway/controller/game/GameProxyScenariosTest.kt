@@ -19,7 +19,6 @@ import site.qgames.common.web.header.QgamesHeaders
 import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.game.GameDetailsResponse
 import site.qgames.game.gatewayapi.dto.game.GameListResponse
-import site.qgames.game.gatewayapi.dto.game.GamePublishStatus
 import site.qgames.game.gatewayapi.dto.game.GameRulesDto
 import site.qgames.game.gatewayapi.dto.game.GameSummaryDto
 import site.qgames.game.gatewayapi.dto.game.TimeControlLimitsDto
@@ -47,9 +46,8 @@ class GameProxyScenariosTest : BaseIntegrationTest() {
             jsonPath("$.games[0].code") { value("nothing") }
             jsonPath("$.games[0].title") { value("Игра в ничто") }
             jsonPath("$.games[0].description") { value("Тестовая игра") }
-            jsonPath("$.games[0].publishStatus") { value("DISABLED") }
+            jsonPath("$.games[0].publishStatus") { doesNotExist() }
             jsonPath("$.games[1].code") { value("carcassonne") }
-            jsonPath("$.games[1].publishStatus") { value("PUBLISHED") }
         }
         userAuth.verify(1, requestedFor("GET", urlEqualTo("/api/games")).withoutHeader(QgamesHeaders.USER_ID))
     }
@@ -63,7 +61,7 @@ class GameProxyScenariosTest : BaseIntegrationTest() {
             status { isOk() }
             jsonPath("$.code") { value("nothing") }
             jsonPath("$.title") { value("Игра в ничто") }
-            jsonPath("$.publishStatus") { value("HIDDEN") }
+            jsonPath("$.publishStatus") { doesNotExist() }
             jsonPath("$.rules.minPlayers") { value(1) }
             jsonPath("$.rules.maxPlayers") { value(4) }
             jsonPath("$.rules.timeControl.modes[0]") { value("NONE") }
@@ -83,15 +81,13 @@ class GameProxyScenariosTest : BaseIntegrationTest() {
     @Test
     fun `game details of a logged in user are proxied with the user id`() {
         val path = "/api/games/nothing"
-        val details = nothingDetails().copy(publishStatus = GamePublishStatus.PUBLISHED)
-        stubGame(HttpMethod.GET, path, 200, json(details))
+        stubGame(HttpMethod.GET, path, 200, json(nothingDetails()))
 
         mockMvc.request(HttpMethod.GET, path) {
             cookie(Cookie("access_token", accessToken()))
         }.andExpect {
             status { isOk() }
             jsonPath("$.code") { value("nothing") }
-            jsonPath("$.publishStatus") { value("PUBLISHED") }
             jsonPath("$.rules.maxPlayers") { value(4) }
         }
         userAuth.verify(1, requestedFor("GET", urlEqualTo(path)).withHeader(QgamesHeaders.USER_ID, equalTo(USER_ID.toString())))
@@ -109,8 +105,8 @@ class GameProxyScenariosTest : BaseIntegrationTest() {
     @ParameterizedTest(name = "{0} {1} {2}")
     @CsvSource(
         "GET, /api/games/nothing, 404, GAME_NOT_FOUND",
-        "POST, /api/games/nothing/rooms, 409, GAME_UNAVAILABLE",
-        "POST, /api/rooms/01990000-0000-7000-8000-0000000000aa/session, 409, GAME_UNAVAILABLE",
+        "POST, /api/games/nothing/rooms, 404, GAME_NOT_FOUND",
+        "POST, /api/rooms/01990000-0000-7000-8000-0000000000aa/session, 404, GAME_NOT_FOUND",
         "GET, /api/rooms/01990000-0000-7000-8000-0000000000aa, 404, GAME_NOT_FOUND",
     )
     fun `game availability errors are forwarded unchanged`(method: HttpMethod, path: String, status: Int, code: String) {
@@ -162,8 +158,8 @@ class GameProxyScenariosTest : BaseIntegrationTest() {
     private companion object {
         fun catalog() = GameListResponse(
             listOf(
-                GameSummaryDto(GameCode.NOTHING, "Игра в ничто", "Тестовая игра", GamePublishStatus.DISABLED),
-                GameSummaryDto(GameCode.CARCASSONNE, "Каркассон", "Города и дороги", GamePublishStatus.PUBLISHED),
+                GameSummaryDto(GameCode.NOTHING, "Игра в ничто", "Тестовая игра"),
+                GameSummaryDto(GameCode.CARCASSONNE, "Каркассон", "Города и дороги"),
             ),
         )
 
@@ -171,7 +167,6 @@ class GameProxyScenariosTest : BaseIntegrationTest() {
             code = GameCode.NOTHING,
             title = "Игра в ничто",
             description = "Тестовая игра",
-            publishStatus = GamePublishStatus.HIDDEN,
             rules = GameRulesDto(
                 minPlayers = 1,
                 maxPlayers = 4,

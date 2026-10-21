@@ -13,53 +13,53 @@ import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 
 /**
- * Принудительное отключение игры: ForceDisabledGameCleanupJob отменяет партии и удаляет комнаты игры, а остальные
- * джобы её комнаты не трогают. Джобы вызываются напрямую (по расписанию в тестах они выключены).
+ * Снятие игры с публикации (NOT_PUBLISHED): NotPublishedGameCleanupJob отменяет партии и удаляет комнаты игры, а
+ * остальные джобы её комнаты не трогают. Джобы вызываются напрямую (по расписанию в тестах они выключены).
  */
-class ForceDisabledGameCleanupJobScenariosTest : BaseIntegrationTest() {
+class NotPublishedGameCleanupJobScenariosTest : BaseIntegrationTest() {
 
     @Autowired
-    private lateinit var forceDisabledGameCleanupJob: ForceDisabledGameCleanupJob
+    private lateinit var notPublishedGameCleanupJob: NotPublishedGameCleanupJob
 
     @Autowired
     private lateinit var moveTimeoutJob: MoveTimeoutJob
 
     @Test
-    fun `rooms of a force disabled game are deleted with their games`() {
+    fun `rooms of a not published game are deleted with their games`() {
         val running = roomWith(ALICE, BOB, started = true)
         pass(ALICE, running)
         roomWith(CAROL)
-        setPublishStatus("nothing", "FORCE_DISABLED")
+        setPublishStatus("nothing", "NOT_PUBLISHED")
 
-        assertThat(forceDisabledGameCleanupJob.run()).isEqualTo(2)
+        assertThat(notPublishedGameCleanupJob.run()).isEqualTo(2)
 
         assertThat(countRows("room")).isZero()
         assertThat(countRows("room_member")).isZero()
         assertThat(countRows("room_session")).isZero()
         assertThat(countRows("room_session_player")).isZero()
         assertThat(countRows("room_session_event")).isZero()
-        assertThat(forceDisabledGameCleanupJob.run()).isZero()
+        assertThat(notPublishedGameCleanupJob.run()).isZero()
     }
 
     @ParameterizedTest(name = "{0}")
-    @CsvSource("PUBLISHED", "HIDDEN", "DISABLED", "NOT_PUBLISHED")
+    @CsvSource("PUBLISHED", "HIDDEN")
     fun `rooms of other games are left alone`(status: String) {
         val roomId = roomWith(ALICE, BOB, started = true)
         setPublishStatus("nothing", status)
 
-        assertThat(forceDisabledGameCleanupJob.run()).isZero()
+        assertThat(notPublishedGameCleanupJob.run()).isZero()
 
         assertThat(countRows("room WHERE id = :id", "id" to roomId)).isEqualTo(1)
         assertThat(countRows("room_session WHERE status = 'IN_PROGRESS'")).isEqualTo(1)
     }
 
     @Test
-    fun `move timeout skips games of a force disabled game`() {
+    fun `move timeout skips games of a not published game`() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
         jdbcClient.sql("UPDATE room_session SET move_deadline = now() - interval '5 seconds' WHERE room_id = :id")
             .param("id", roomId)
             .update()
-        setPublishStatus("nothing", "FORCE_DISABLED")
+        setPublishStatus("nothing", "NOT_PUBLISHED")
 
         assertThat(moveTimeoutJob.run()).isZero()
 
@@ -67,11 +67,11 @@ class ForceDisabledGameCleanupJobScenariosTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `expired owner grace is not processed in a room of a force disabled game`() {
+    fun `expired owner grace is not processed in a room of a not published game`() {
         val roomId = roomWith(ALICE, BOB)
         leave(ALICE, roomId)
         expireOwnerGrace(roomId)
-        setPublishStatus("nothing", "FORCE_DISABLED")
+        setPublishStatus("nothing", "NOT_PUBLISHED")
 
         assertThat(roomOwnerGraceJob.run()).isZero()
 

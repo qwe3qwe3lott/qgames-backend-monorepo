@@ -27,32 +27,27 @@ enum class GameCode(val code: String) {
     }
 }
 
-/** Статус публикации игры: что видно в каталоге и что разрешено делать с игрой. */
+/**
+ * Статус публикации игры: что видно в каталоге и можно ли работать с игрой. PUBLISHED и HIDDEN допустимы только у игры
+ * с модулем правил (проверяет GameCatalogVerifier).
+ */
 enum class GamePublishStatus(
-    /** Игра видна наружу: детальная ручка её отдаёт, с её комнатами можно работать. Иначе — GAME_NOT_FOUND. */
+    /**
+     * Игра видна наружу: детальная ручка её отдаёт, с её комнатами и партиями можно работать (в том числе создавать
+     * комнаты и начинать партии). Иначе — GAME_NOT_FOUND.
+     */
     val exposed: Boolean,
     /** Игра есть в каталоге. */
     val listed: Boolean,
-    /** Можно создавать комнаты и начинать партии. */
-    val playable: Boolean,
 ) {
-    PUBLISHED(exposed = true, listed = true, playable = true),
+    PUBLISHED(exposed = true, listed = true),
 
     /** Скрыта из каталога, но доступна по прямой ссылке. */
-    HIDDEN(exposed = true, listed = false, playable = true),
-
-    /** Временно недоступна: новые комнаты и партии запрещены (GAME_UNAVAILABLE), идущие партии продолжаются. */
-    DISABLED(exposed = true, listed = true, playable = false),
+    HIDDEN(exposed = true, listed = false),
 
     /**
-     * Не опубликована (в разработке): игры как будто нет (GAME_NOT_FOUND), её комнаты при этом не удаляются.
-     * Единственный статус, при котором у игры может не быть модуля правил.
+     * Не опубликована: в разработке или отключена. Игры как будто нет (GAME_NOT_FOUND), NotPublishedGameCleanupJob
+     * отменяет её партии и удаляет комнаты. Единственный статус, при котором у игры может не быть модуля правил.
      */
-    NOT_PUBLISHED(exposed = false, listed = false, playable = false),
-
-    /**
-     * Принудительно отключена: игры как будто нет (GAME_NOT_FOUND), ForceDisabledGameCleanupJob отменяет её партии
-     * и удаляет комнаты.
-     */
-    FORCE_DISABLED(exposed = false, listed = false, playable = false),
+    NOT_PUBLISHED(exposed = false, listed = false),
 }

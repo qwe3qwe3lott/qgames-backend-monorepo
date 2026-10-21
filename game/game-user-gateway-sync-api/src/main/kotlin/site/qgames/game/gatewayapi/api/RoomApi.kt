@@ -41,8 +41,7 @@ interface RoomApi {
         ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
         ApiResponse(
             responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована (GAME_NOT_FOUND)",
         ),
     )
     @GetExchange("/{roomId}")
@@ -60,8 +59,7 @@ interface RoomApi {
         ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
         ApiResponse(
             responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована (GAME_NOT_FOUND)",
         ),
         ApiResponse(
             responseCode = "409",
@@ -74,8 +72,8 @@ interface RoomApi {
     @Operation(
         summary = "Начать партию",
         description = "Стартует партию с текущими игроками комнаты (места — по порядку входа). Только владелец, " +
-            "число игроков должно укладываться в ограничения игры. Игра должна быть доступна (PUBLISHED или HIDDEN). " +
-            "В ответе комната; по session.id клиент подписывается на поток партии.",
+            "число игроков должно укладываться в ограничения игры. Игра должна быть доступна (опубликована или " +
+            "скрыта из каталога). В ответе комната; по session.id клиент подписывается на поток партии.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Партия началась"),
@@ -83,12 +81,11 @@ interface RoomApi {
         ApiResponse(responseCode = "403", description = "Пользователь не владелец (NOT_ROOM_OWNER)"),
         ApiResponse(
             responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована (GAME_NOT_FOUND)",
         ),
         ApiResponse(
             responseCode = "409",
-            description = "Партия уже идёт (ROOM_NOT_WAITING), игра временно недоступна (GAME_UNAVAILABLE), " +
+            description = "Партия уже идёт (ROOM_NOT_WAITING), " +
                 "игроков меньше/больше, чем допускает игра (NOT_ENOUGH_PLAYERS)",
         ),
     )
@@ -107,8 +104,7 @@ interface RoomApi {
         ApiResponse(responseCode = "403", description = "Пользователь не владелец (NOT_ROOM_OWNER)"),
         ApiResponse(
             responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована (GAME_NOT_FOUND)",
         ),
         ApiResponse(responseCode = "409", description = "Партия не идёт (ROOM_NOT_IN_GAME)"),
     )
@@ -132,8 +128,7 @@ interface RoomApi {
         ),
         ApiResponse(
             responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована (GAME_NOT_FOUND)",
         ),
         ApiResponse(
             responseCode = "409",
@@ -159,8 +154,7 @@ interface RoomApi {
         ),
         ApiResponse(
             responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована (GAME_NOT_FOUND)",
         ),
         ApiResponse(
             responseCode = "409",
