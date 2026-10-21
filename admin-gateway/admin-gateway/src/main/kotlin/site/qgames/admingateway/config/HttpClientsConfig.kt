@@ -6,7 +6,7 @@ import org.springframework.web.client.support.RestClientHttpServiceGroupConfigur
 import org.springframework.web.service.registry.ImportHttpServices
 import site.qgames.adminauth.gatewayapi.api.AdminApi
 import site.qgames.adminauth.gatewayapi.api.AuthApi
-import site.qgames.admingateway.interceptor.AdminIdPropagationInterceptor
+import site.qgames.admingateway.interceptor.UserIdPropagationInterceptor
 
 /**
  * Клиенты целевых сервисов строятся по интерфейсам из модулей *-admin-gateway-sync-api.
@@ -17,7 +17,7 @@ import site.qgames.admingateway.interceptor.AdminIdPropagationInterceptor
 class HttpClientsConfig {
 
     @Bean
-    fun adminIdPropagationConfigurer(interceptor: AdminIdPropagationInterceptor) =
+    fun userIdPropagationConfigurer(interceptor: UserIdPropagationInterceptor) =
         RestClientHttpServiceGroupConfigurer { groups ->
             groups.forEachClient { _, builder ->
                 builder.requestInterceptor(interceptor)

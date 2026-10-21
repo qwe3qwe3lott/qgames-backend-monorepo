@@ -1,4 +1,4 @@
-package site.qgames.adminauth.service.admin
+package site.qgames.adminauth.controller.admin
 
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy

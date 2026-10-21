@@ -5,7 +5,7 @@ import site.qgames.adminauth.entity.auth.RefreshTokenEntity
 import site.qgames.adminauth.model.auth.RefreshTokenModel
 
 @Component
-class RefreshTokenEntityMapper {
+class AuthEntityMapper {
 
     fun toModel(entity: RefreshTokenEntity) = RefreshTokenModel(
         id = entity.id!!,

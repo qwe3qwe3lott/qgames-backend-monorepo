@@ -7,7 +7,7 @@ import site.qgames.admingateway.publicapi.api.PublicAdminApi
 import site.qgames.admingateway.publicapi.dto.admin.AdminListResponse
 import site.qgames.admingateway.publicapi.dto.admin.AdminResponse
 
-/** Требует аутентификации. X-User-Id в admin-auth проставляет AdminIdPropagationInterceptor. */
+/** Требует аутентификации. X-User-Id в admin-auth проставляет UserIdPropagationInterceptor. */
 @RestController
 class AdminGatewayController(
     private val adminApi: AdminApi,

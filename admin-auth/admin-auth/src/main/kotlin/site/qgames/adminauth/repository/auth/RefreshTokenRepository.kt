@@ -2,7 +2,7 @@ package site.qgames.adminauth.repository.auth
 
 import org.springframework.stereotype.Repository
 import site.qgames.adminauth.entity.auth.RefreshTokenEntity
-import site.qgames.adminauth.mapper.auth.RefreshTokenEntityMapper
+import site.qgames.adminauth.mapper.auth.AuthEntityMapper
 import site.qgames.adminauth.model.auth.RefreshTokenModel
 import java.time.Instant
 import java.util.UUID
@@ -10,18 +10,18 @@ import java.util.UUID
 @Repository
 class RefreshTokenRepository(
     private val refreshTokenPostgresqlRepository: RefreshTokenPostgresqlRepository,
-    private val refreshTokenEntityMapper: RefreshTokenEntityMapper,
+    private val authEntityMapper: AuthEntityMapper,
 ) {
 
     fun insert(adminId: UUID, familyId: UUID, tokenHash: String, expiresAt: Instant, now: Instant): RefreshTokenModel =
-        refreshTokenEntityMapper.toModel(
+        authEntityMapper.toModel(
             refreshTokenPostgresqlRepository.save(
                 RefreshTokenEntity(adminId = adminId, familyId = familyId, tokenHash = tokenHash, expiresAt = expiresAt, createdAt = now),
             ),
         )
 
     fun findByTokenHash(tokenHash: String): RefreshTokenModel? =
-        refreshTokenPostgresqlRepository.findByTokenHash(tokenHash)?.let(refreshTokenEntityMapper::toModel)
+        refreshTokenPostgresqlRepository.findByTokenHash(tokenHash)?.let(authEntityMapper::toModel)
 
     /** Отзывает токен как заменённый новым. Возвращает 0, если токен уже отозван, в том числе параллельным запросом. */
     fun rotate(id: UUID, now: Instant): Int = refreshTokenPostgresqlRepository.rotate(id, now)

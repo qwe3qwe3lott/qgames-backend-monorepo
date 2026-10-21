@@ -15,7 +15,7 @@ import site.qgames.common.web.header.QgamesHeaders
  * заголовки входящего запроса никогда не пробрасываются.
  */
 @Component
-class AdminIdPropagationInterceptor : ClientHttpRequestInterceptor {
+class UserIdPropagationInterceptor : ClientHttpRequestInterceptor {
 
     override fun intercept(
         request: HttpRequest,

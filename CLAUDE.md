@@ -23,20 +23,18 @@
 | `user-gateway` | Публичная точка входа для пользователей портала. Аутентификация по JWT из куки, проксирование в сервисы, SSE для игр (в будущем) | 8080 |
 | `user-auth` | Аккаунты, способы входа (email+пароль, Google), выпуск JWT, JWKS | 8081 |
 | `game` | Единый игровой сервис: комнаты, партии **всех** игр, реплика профилей игроков (CDC из user-auth). Правила конкретных игр подключаются модулями `games/*` | 8082 |
+| `admin-gateway` | Публичная точка входа админ-панели. Аутентификация по JWT admin-auth из куки, проксирование в сервисы | 8083 |
+| `admin-auth` | Аккаунты администраторов (логин и пароль, без регистрации), выпуск JWT, JWKS | 8084 |
 
 Отдельный сервис на каждую игру **не заводим**. Новая игра — новый модуль в `games/` (см. §2).
 
-**Планируются** (для админ-панели):
-- `admin-gateway` — точка входа админ-панели, аналог `user-gateway` для администраторов;
-- `admin-auth` — аутентификация администраторов, аналог `user-auth`.
-
-Их устройство — способы входа, роли и права, связь с `user-auth`, какие сервисы проксируются, порты — решить при реализации, по согласованию.
-
-Требования фронта к admin-gateway (вход в это планирование, не реализовано):
-- админка — CSR SPA на `http://localhost:3001`, в проде — отдельный поддомен того же домена (same-site). Браузер ходит в admin-gateway напрямую: CORS с `allowCredentials` и точным origin админки;
-- те же соглашения, что у user-gateway (§3): REST/JSON, ошибки — ProblemDetail с `code`, Swagger на русском, собственные DTO в `admin-gateway-public-sync-api`, OpenAPI на `/v3/api-docs` (permitAll), `required`/nullable и `application/json` — общими механизмами `libs/common-web`. Фронт генерирует для него отдельный клиент Orval;
-- сессия в HttpOnly-куках с отдельным refresh-эндпоинтом. **Имена кук свои** (например, `admin_access_token`/`admin_refresh_token`): куки не изолируются по порту, и локально (оба gateway на `localhost`) одноимённые куки перетрут друг друга. Настраивается через `GatewayProperties.Cookies`;
-- аналог `GET /api/users/me` для текущего администратора — по нему фронт определяет, залогинен ли админ, а по ролям/правам — какие разделы показывать.
+**Админ-панель** (`admin-gateway` + `admin-auth`):
+- админка — CSR SPA на `http://localhost:3001`, в проде — отдельный поддомен того же домена (same-site). Браузер ходит в admin-gateway напрямую: CORS с `allowCredentials` и точным origin админки (§5);
+- соглашения те же, что у user-gateway (§3): REST/JSON, ошибки — ProblemDetail с `code`, Swagger на русском, собственные DTO в `admin-gateway-public-sync-api`, OpenAPI на `/v3/api-docs` (permitAll). Фронт генерирует по нему отдельный клиент Orval;
+- пути `/api/auth/*` (`login`, `refresh`, `logout`) и 401 `UNAUTHENTICATED` совпадают с user-gateway: на этом держится общий fetch-mutator фронта;
+- текущий админ — `GET /api/admins/me` (по нему фронт определяет, вошёл ли админ), список админов — `GET /api/admins`;
+- ролей нет, все админы равны;
+- admin-auth и admin-gateway — упрощённая копия user-auth и user-gateway (без email, Google, CDC и Redis): имена классов и раскладка те же.
 
 gRPC-порты появятся вместе с первым internal API (план: 90xx, отдельный от HTTP порт).
 
@@ -86,14 +84,14 @@ docker/                        Dockerfile, init-скрипты, dev-ключи, 
 | Модуль | Содержимое | Когда создаётся |
 |---|---|---|
 | `<svc>/<svc>` | само приложение | всегда |
-| `<svc>/<svc>-public-sync-api` | `@HttpExchange`-интерфейсы и **собственные DTO** ручек, открытых наружу (фронт, внешние клиенты) | когда у сервиса появляются внешние ручки (сейчас только user-gateway) |
-| `<svc>/<svc>-user-gateway-sync-api` | HTTP-интерфейсы (`@HttpExchange`) + DTO для gateway. Для будущего admin-gateway по той же схеме — `<svc>-admin-gateway-sync-api` (общий шаблон `<svc>-<gateway>-sync-api`) | когда gateway начинает проксировать в сервис |
+| `<svc>/<svc>-public-sync-api` | `@HttpExchange`-интерфейсы и **собственные DTO** ручек, открытых наружу (фронт, внешние клиенты) | когда у сервиса появляются внешние ручки (сейчас только gateway'и) |
+| `<svc>/<svc>-<gateway>-sync-api` | HTTP-интерфейсы (`@HttpExchange`) + DTO для gateway: `<svc>-user-gateway-sync-api` для user-gateway, `<svc>-admin-gateway-sync-api` для admin-gateway | когда gateway начинает проксировать в сервис |
 | `<svc>/<svc>-internal-sync-api` | gRPC: `.proto` + стабы (без авторизации, защищает mesh) | при первом gRPC-методе |
 | `<svc>/<svc>-internal-async-api` | Protobuf-контракты Kafka-событий и Redis pub/sub-каналов | при первом событии/канале |
 
 - **Пустые модули «на вырост» не заводим.** Модуль появляется вместе с первым содержимым и удаляется, если опустел.
 - Модули явно перечисляются в `settings.gradle.kts`.
-- Сейчас есть: `user-auth/{user-auth, user-auth-user-gateway-sync-api, user-auth-internal-async-api}`, `user-gateway/{user-gateway, user-gateway-public-sync-api}`, `game/{game, game-user-gateway-sync-api}`.
+- Сейчас есть: `user-auth/{user-auth, user-auth-user-gateway-sync-api, user-auth-internal-async-api}`, `user-gateway/{user-gateway, user-gateway-public-sync-api}`, `game/{game, game-user-gateway-sync-api}`, `admin-auth/{admin-auth, admin-auth-admin-gateway-sync-api}`, `admin-gateway/{admin-gateway, admin-gateway-public-sync-api}`.
 - Контроллеры реализуют интерфейсы своего `*-sync-api` модуля, маршруты объявляются только в интерфейсе. Если контроллеру нужны `HttpServletRequest`/`HttpServletResponse`, они внедряются в конструктор (request-scoped прокси), а не попадают в сигнатуру контракта.
 - Proto-модули собираются convention-плагином `qgames.proto-api` (protobuf-gradle-plugin, Java + Kotlin DSL; версия protoc — как protobuf-java в Spring Boot BOM). gRPC-генерация добавится в него вместе с первым gRPC-методом.
 - CDC вынесен в два модуля: `libs/common-cdc-source` (outbox у источника) и `libs/common-cdc-consumer` (приём у потребителя).
@@ -151,14 +149,14 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 
 ## 3. Взаимодействие
 
-- **Фронт ↔ gateway:** REST/JSON. Ошибки — `ProblemDetail` с машиночитаемым полем `code`. Контракт — `user-gateway-public-sync-api` с собственными DTO; gateway маппит их в DTO сервисов и обратно (`mapper/<feature>/`), внутренние DTO наружу не протекают. Gateway валидирует публичные запросы сам и не вызывает сервисы на заведомо невалидных данных.
+- **Фронт ↔ gateway:** REST/JSON. Ошибки — `ProblemDetail` с машиночитаемым полем `code`. Контракт — `<gateway>-public-sync-api` (`user-gateway-public-sync-api`, `admin-gateway-public-sync-api`) с собственными DTO; gateway маппит их в DTO сервисов и обратно (`mapper/<feature>/`), внутренние DTO наружу не протекают. Gateway валидирует публичные запросы сам и не вызывает сервисы на заведомо невалидных данных.
 - **Документация API (Swagger):** у каждой ручки в `*-sync-api` интерфейсе обязательно есть:
   - `@Operation(summary, description)` на русском: что делает метод, зачем он нужен и какие у него особенности;
   - `@ApiResponses` со всеми реально возможными статусами (200, 400, 401, …). Описания на русском, у ошибок в описании указаны значения `code` (например, «Неверный email или пароль (INVALID_CREDENTIALS)»);
   - у интерфейса — `@Tag(name, description)` на русском.
 
   Тело ошибок (`ProblemDetail` с полем `code`) в аннотациях не указываем: его всем ответам 4xx/5xx подставляет `ProblemDetailResponsesCustomizer` из `libs/common-web`. Коды ошибок в `description` метода не перечисляем, они описываются в `@ApiResponse`. Ручки без интерфейса (например, JWKS) аннотируются прямо на контроллере. Зависимость `swagger-annotations-jakarta` подключается в `*-sync-api` модули, её версия должна совпадать с той, что тянет springdoc.
-- **OpenAPI для генераторов клиентов** (фронт строит клиент через Orval по `/v3/api-docs` user-gateway):
+- **OpenAPI для генераторов клиентов** (фронт строит клиенты через Orval по `/v3/api-docs` каждого gateway):
   - `required` проставляется автоматически (`KotlinRequiredPropertiesConverter` в `libs/common-web`): обязательны параметры конструктора DTO, которые не nullable и без значения по умолчанию. `@Schema(requiredMode)` на полях не пишем; необязательное поле — nullable или со значением по умолчанию;
   - обязательные строки запросов дополнительно помечаются `@NotBlank` (серверная проверка, 400 `VALIDATION_ERROR`). `@Size(max)` перебивает `minLength` от `@NotBlank` до 0, поэтому вместе с ним — `@Size(min = 1, max = …)`;
   - успешные ответы — `application/json` (`springdoc.default-produces-media-type` по умолчанию в `libs/common-web`), ошибки — `application/problem+json`;
@@ -182,8 +180,8 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 
   `{gameCode}` — строка с `allowableValues`. Код игры в теле запроса не передаётся. Неизвестный код gateway отклоняет сам (404 `GAME_NOT_FOUND`). Если код не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`. Ручкам без привязки к игре (комната, вход, роль, партия) код не нужен.
 - **Каталог игр доступен гостям:** `GET /api/games` и `GET /api/games/{gameCode}` в user-gateway — permitAll (только GET и только сами игры, комнаты требуют входа). Сервис game отдаёт каталог без `X-User-Id`. Гость с протухшей access-кукой получает на этих ручках 401 (Bearer-фильтр проверяет токен и на permitAll) — принято осознанно, 401 описан в `@ApiResponses`.
-- **Gateway → сервисы:** Spring HTTP Interfaces (`@ImportHttpServices`), **не Feign**. Интерфейсы лежат в `<svc>-user-gateway-sync-api`; сервис реализует их контроллером (`class AuthController : AuthApi`), gateway строит по ним клиент. Базовый URL: `spring.http.serviceclient.<группа>.base-url`.
-- **X-User-Id:** проставляет только `UserIdPropagationInterceptor` gateway из проверенного JWT. В сигнатурах `*-user-gateway-sync-api` userId нет — сервис берёт его через `RequestUserContext.userId()`.
+- **Gateway → сервисы:** Spring HTTP Interfaces (`@ImportHttpServices`), **не Feign**. Интерфейсы лежат в `<svc>-<gateway>-sync-api`; сервис реализует их контроллером (`class AuthController : AuthApi`), gateway строит по ним клиент. Базовый URL: `spring.http.serviceclient.<группа>.base-url`.
+- **X-User-Id:** проставляет только `UserIdPropagationInterceptor` gateway из проверенного JWT (в admin-gateway это id админа). В сигнатурах `*-<gateway>-sync-api` userId нет — сервис берёт его через `RequestUserContext.userId()`.
 - **Сервис ↔ сервис (синхронно):** gRPC через стартеры Spring Boot 4.1 (`spring-boot-starter-grpc-server/client`). Контракты — в `<svc>-internal-sync-api`.
 - **Асинхронно:** брокер **Redpanda** (протокол Kafka, в коде обычный Kafka-клиент), сообщения в Protobuf из `<svc>-internal-async-api`. Консьюмеры идемпотентны.
   - Топики создаёт `redpanda-init` в docker-compose, автосоздание топиков выключено, чтобы их настройки были явными.
@@ -240,7 +238,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 
 - Доступность игры проверяет `GameService`: `checkPlayable` — при создании комнаты (до проверки настроек) и старте партии, `checkAccessible` — во всех остальных операциях с комнатой, по игре комнаты под её блокировкой.
 - **`ForceDisabledGameCleanupJob`** (ShedLock, `qgames.game.catalog.force-disabled-cleanup-enabled`, интервал 1m): пачкой находит комнаты `FORCE_DISABLED`-игр, каждую — `room FOR UPDATE SKIP LOCKED` с перепроверкой статуса, отменяет идущую партию и удаляет комнату (участники и партии — каскадно). `MoveTimeoutJob` и `RoomLeaveJob` комнаты `FORCE_DISABLED`-игр пропускают (фильтр в SQL), комнаты `NOT_PUBLISHED`-игр — нет.
-- Решить при реализации admin-gateway:
+- Решить при реализации управления каталогом игр в админке:
   - запрет перевода игры обратно в `NOT_PUBLISHED`;
   - запрет публикации (любой статус, кроме `NOT_PUBLISHED`) игры без модуля правил — сейчас такая игра наружу не выдаётся (404), но статус это не запрещает;
   - завершение партий и удаление комнат при смене статуса вызовом из админки и судьба периодического `ForceDisabledGameCleanupJob`.
@@ -350,11 +348,21 @@ src/main/resources/db/changelog/
   - **Окно терпимости 10 с** (`qgames.auth.refresh-reuse-grace`). Повтор уже ротированного токена в течение окна, если в семье есть активный токен, выдаёт ещё одну пару той же сессии. Так обновляют сессию параллельные вкладки.
   - Повтор позже окна, после logout или после обнаружения кражи отзывает всё семейство (`family_id`) с ошибкой `REFRESH_TOKEN_REUSED`.
   - Ротацию от прочих отзывов отличает `refresh_token.rotated_at`.
-- **Куки ставит и читает только user-gateway:** `HttpOnly; Secure; SameSite=Lax`; access — `Path=/`, refresh — `Path=/api/auth`. Сервисы за gateway о куках не знают — токены ходят в теле ответа.
+- **Сессия админа (`admin-auth`):**
+  - свой ключ подписи ES256 и issuer `qgames-admin-auth`, JWKS — на `/.well-known/jwks.json` admin-auth. Токен игрока admin-gateway не принимает, токен админа user-gateway — тоже;
+  - access — 5 мин, refresh — 15 мин. Refresh скользящий: каждая ротация даёт полный TTL. Окно терпимости 10 с (`qgames.admin-auth.refresh-reuse-grace`), ротация и отзыв семьи — как у user-auth;
+  - логин сравнивается точно, без lowercase и trim. При неизвестном логине проверяется dummy-хеш, чтобы время ответа не выдавало существующие логины.
+- **Первый админ:** регистрации нет. При старте admin-auth `AdminBootstrapService` создаёт админа из `ADMIN_BOOTSTRAP_LOGIN` / `ADMIN_BOOTSTRAP_PASSWORD`, только если таблица `admin` пуста.
+  - Вставка — одна команда `INSERT … WHERE NOT EXISTS (SELECT 1 FROM admin) ON CONFLICT (login) DO NOTHING`, поэтому безопасна при нескольких инстансах. Если админ создан, пишется лог WARN.
+  - Значений по умолчанию в `application.yml` нет: без env бутстрап выключен, а если задано только одно из двух, сервис не стартует. docker-compose задаёт `admin` / `admin`.
+- **Куки ставят и читают только gateway'и:** `HttpOnly; Secure; SameSite=Lax`; access — `Path=/`, refresh — `Path=/api/auth`. Сервисы за gateway о куках не знают — токены ходят в теле ответа.
+  - Имена у каждого gateway свои: user-gateway — `access_token` / `refresh_token`, admin-gateway — `admin_access_token` / `admin_refresh_token` (`GatewayProperties.Cookies`). Куки не изолируются по порту, и локально одноимённые куки двух gateway перетёрли бы друг друга.
 - CSRF-токены не используются (SameSite=Lax + только JSON). Сессий нет (stateless).
 - **Домены:** фронт и API — поддомены одного домена (например, `qgames.site` и `api.qgames.site`). Для браузера это same-site, поэтому Lax-куки доходят до API и защита от CSRF без токенов остаётся валидной. Если фронт окажется на другом домене, это пересмотр модели CSRF, только по согласованию.
-- **CORS** настраивается только в user-gateway, для `/api/**`:
-  - явный список origin из `CORS_ALLOWED_ORIGINS` — только портал (локально по умолчанию `http://localhost:3000`, в проде — домен портала); wildcard запрещён и проверяется при старте. Админка (`http://localhost:3001`) сюда не добавляется: она ходит только в admin-gateway;
+- **CORS** настраивается только в gateway'ях, для `/api/**`:
+  - явный список origin из `CORS_ALLOWED_ORIGINS`, у каждого gateway — только свой фронт; wildcard запрещён и проверяется при старте:
+    - user-gateway — портал (локально по умолчанию `http://localhost:3000`, в проде — домен портала). Админка (`http://localhost:3001`) сюда не добавляется: она ходит только в admin-gateway;
+    - admin-gateway — админка (локально по умолчанию `http://localhost:3001`, в compose — из `ADMIN_CORS_ALLOWED_ORIGINS`), портал — нет;
   - `allowCredentials = true`;
   - запросы с чужого origin отклоняются с 403.
 - **Пароли:** Argon2id (`Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8`), соль внутри хеша.
@@ -368,7 +376,7 @@ src/main/resources/db/changelog/
   - меняются через `PATCH /api/users/me/profile` (только переданные поля);
   - каждое изменение публикуется событием `UserProfileChanged` (CDC).
 - **Способы входа:** `user_identity(provider, subject)`, к одному аккаунту можно привязать несколько. Привязка явная (из залогиненной сессии, `/api/users/me/login-methods/*`) или автоматическая при входе через Google — **только** если email подтверждён и у нас, и в Google.
-- Ключи подписи — из конфигурации/секретов, никогда не генерируются при старте. `docker/dev-keys` — только для локальной разработки.
+- Ключи подписи — из конфигурации/секретов, никогда не генерируются при старте. `docker/dev-keys` — только для локальной разработки: `jwt-*.pem` у user-auth, `admin-jwt-*.pem` (kid `admin-dev-key-1`) у admin-auth.
 
 ## 6. Многоинстансность (у каждого сервиса может быть N инстансов)
 
@@ -387,8 +395,8 @@ src/main/resources/db/changelog/
 
 Внутренние API (`*-internal-sync-api`, REST-эндпоинты сервисов для gateway) не требуют авторизации и **доверяют** заголовку `X-User-Id`. Это безопасно только при закрытой сети:
 
-- **Локально (compose):** mesh нет; сервисы в отдельной docker-сети, наружу HTTP-порты 8081–8082 открыты только для Swagger при разработке.
-- **В Kubernetes:** внедряем service mesh (Linkerd или Istio — выбрать при переходе на k8s). Рядом с каждым подом sidecar-прокси, весь трафик между сервисами шифруется mTLS автоматически, а политики (`AuthorizationPolicy` / `Server`+`AuthorizationPolicy` в Linkerd) разрешают: REST-порт сервиса — только для gateway'ев, которым он нужен, gRPC-порт — только сервисам внутри mesh. Ingress публикует наружу только gateway'и (`user-gateway`, позже `admin-gateway`). Код сервисов про mesh ничего не знает.
+- **Локально (compose):** mesh нет; сервисы в отдельной docker-сети, наружу HTTP-порты сервисов (8081, 8082, 8084) открыты только для Swagger при разработке.
+- **В Kubernetes:** внедряем service mesh (Linkerd или Istio — выбрать при переходе на k8s). Рядом с каждым подом sidecar-прокси, весь трафик между сервисами шифруется mTLS автоматически, а политики (`AuthorizationPolicy` / `Server`+`AuthorizationPolicy` в Linkerd) разрешают: REST-порт сервиса — только для gateway'ев, которым он нужен, gRPC-порт — только сервисам внутри mesh. Ingress публикует наружу только gateway'и (`user-gateway`, `admin-gateway`). Код сервисов про mesh ничего не знает.
 
 ## 8. Тесты
 
@@ -413,7 +421,8 @@ docker compose up --build -d --wait   # весь проект
 docker compose down -v                # остановить и удалить данные
 ```
 
-- Gateway / Swagger: http://localhost:8080/swagger-ui.html (сервисы: 8081–8082)
+- Swagger gateway'ев: user-gateway — http://localhost:8080/swagger-ui.html, admin-gateway — http://localhost:8083/swagger-ui.html (сервисы: 8081, 8082, 8084).
+- Вход в админку на стенде: `admin` / `admin`. БД `admin_auth` создаёт init-скрипт postgres, а он выполняется только на пустом томе: на старом стенде сначала `docker compose down -v`.
 - Mailpit (письма с кодами): http://localhost:8025
 - Google-вход: заполнить `GOOGLE_CLIENT_IDS` в `.env` (см. `.env.example`).
 - Запуск сервиса из IDE: нужны `docker compose up -d postgres mailpit redpanda redpanda-init` (и `debezium-user-auth`, если нужен CDC); значения по умолчанию в `application.yml` смотрят на localhost, Redpanda снаружи — `localhost:19092`.
@@ -433,12 +442,12 @@ docker compose down -v                # остановить и удалить �
 - **Память:** у каждого JVM-сервиса задан лимит памяти контейнера (`mem_limit`). Heap считается от него через `-XX:MaxRAMPercentage` (уже в `docker/service.Dockerfile`), без лимита JVM ориентируется на всю память хоста.
 - **Бэкапы PostgreSQL:** `pg_dump` по расписанию, копии хранятся вне VPS.
 - **Несколько инстансов:** `docker compose up --scale <svc>=N`, балансировка — reverse proxy через Docker DNS.
-- **Оценка ресурсов.** Замер локального стенда в простое — ~1,9 ГБ: JVM-сервисы по 390–480 МБ, Debezium Server ~380 МБ, Redpanda ~105 МБ, PostgreSQL ~90 МБ, Redis ~5 МБ. Под нагрузкой heap растёт.
+- **Оценка ресурсов.** Замер локального стенда в простое без admin-сервисов (3 JVM-сервиса) — ~1,9 ГБ: JVM-сервисы по 390–480 МБ, Debezium Server ~380 МБ, Redpanda ~105 МБ, PostgreSQL ~90 МБ, Redis ~5 МБ. admin-gateway и admin-auth добавляют вместе ~1 ГБ. Под нагрузкой heap растёт.
 
   | Конфигурация | RAM | VPS |
   |---|---|---|
-  | 3 сервиса + PostgreSQL + Redis + Redpanda + 1 Debezium | ~3–3,5 ГБ | 2 vCPU / 4 ГБ (впритык) |
-  | + admin-сервисы и ещё источники CDC | ~5–6 ГБ | 4 vCPU / 8 ГБ |
+  | user-gateway, user-auth, game + PostgreSQL + Redis + Redpanda + 1 Debezium | ~3–3,5 ГБ | 2 vCPU / 4 ГБ (впритык) |
+  | + admin-gateway и admin-auth (текущий состав) и ещё источники CDC | ~5–6 ГБ | 4 vCPU / 8 ГБ |
 
   Каждая новая БД-источник CDC — это ещё один Debezium Server (~0,3–0,4 ГБ). Когда источников станет много, переход на Kafka Connect (один процесс на все коннекторы) — решить тогда.
 
@@ -499,7 +508,7 @@ docker compose down -v                # остановить и удалить �
 | `ApiException(HttpStatus, …)` из сервисов | Сервисный слой знает про HTTP | Иерархия классов ошибок в `libs/common-exception` |
 | Плоская иерархия ошибок | Нельзя одной веткой отличить ошибки клиента от ошибок сервера | `ClientException` / `ServerException` |
 | Класс на каждую бизнес-ошибку | Десятки мелких классов без пользы | Каталоги-фабрики `<Фича>Errors` |
-| Обработчик ошибок downstream-сервисов в `libs/common-exception` | Проброс ответа целевого сервиса — логика прокси, нужна только gateway | `DownstreamExceptionHandler` в user-gateway |
+| Обработчик ошибок downstream-сервисов в `libs/common-exception` | Проброс ответа целевого сервиса — логика прокси, нужна только gateway | `DownstreamExceptionHandler` в каждом gateway |
 | Отдельный контейнер postgres на сервис локально | Лишние ресурсы на локальном стенде | Один контейнер, БД на сервис |
 | Сырой CDC таблиц через Debezium | Схема таблиц становится публичным контрактом | Outbox + Debezium |
 | Outbox с поллингом из сервиса | Нагрузка на БД и больше кода | Debezium читает WAL |
