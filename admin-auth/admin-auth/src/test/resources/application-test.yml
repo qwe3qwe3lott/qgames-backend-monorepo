@@ -1,0 +1,10 @@
+qgames:
+  admin-auth:
+    jwt:
+      key-id: admin-test-key
+      private-key: classpath:keys/jwt-private.pem
+      public-key: classpath:keys/jwt-public.pem
+    # Бутстрап при старте выключен независимо от env: тесты вызывают AdminBootstrapService.bootstrap напрямую.
+    bootstrap:
+      login: ""
+      password: ""
