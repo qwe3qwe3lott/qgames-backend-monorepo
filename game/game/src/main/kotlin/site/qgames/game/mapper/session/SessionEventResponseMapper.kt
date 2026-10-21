@@ -2,113 +2,82 @@ package site.qgames.game.mapper.session
 
 import org.springframework.stereotype.Component
 import site.qgames.game.gatewayapi.dto.game.GameCode
-import site.qgames.game.gatewayapi.dto.room.EmptyEventDataDto
 import site.qgames.game.gatewayapi.dto.room.SessionStatus
-import site.qgames.game.gatewayapi.dto.session.MoveOptionDto
-import site.qgames.game.gatewayapi.dto.session.NothingMovedDto
+import site.qgames.game.gatewayapi.dto.session.DeleteData
 import site.qgames.game.gatewayapi.dto.session.NothingSessionStateDto
-import site.qgames.game.gatewayapi.dto.session.SessionEndedFrame
-import site.qgames.game.gatewayapi.dto.session.SessionGameDto
+import site.qgames.game.gatewayapi.dto.session.PatchData
+import site.qgames.game.gatewayapi.dto.session.PutData
+import site.qgames.game.gatewayapi.dto.session.SessionEventDelete
+import site.qgames.game.gatewayapi.dto.session.SessionEventInfo
+import site.qgames.game.gatewayapi.dto.session.SessionEventMethod
+import site.qgames.game.gatewayapi.dto.session.SessionEventPatch
+import site.qgames.game.gatewayapi.dto.session.SessionEventPut
 import site.qgames.game.gatewayapi.dto.session.SessionMetaDto
-import site.qgames.game.gatewayapi.dto.session.SessionMovedDto
-import site.qgames.game.gatewayapi.dto.session.SessionMovedFrame
-import site.qgames.game.gatewayapi.dto.session.SessionPlayerChangedFrame
-import site.qgames.game.gatewayapi.dto.session.SessionPlayerDto
+import site.qgames.game.gatewayapi.dto.session.SessionPatchEvent
 import site.qgames.game.gatewayapi.dto.session.SessionSnapshotDto
-import site.qgames.game.gatewayapi.dto.session.SessionStartedDto
-import site.qgames.game.gatewayapi.dto.session.SessionStartedFrame
 import site.qgames.game.gatewayapi.dto.session.SessionStateDto
-import site.qgames.game.gatewayapi.dto.session.SessionTimerChangedFrame
-import site.qgames.game.gatewayapi.dto.session.SessionTimerDto
-import site.qgames.game.gatewayapi.dto.session.SessionTimerStatus
-import site.qgames.game.gatewayapi.dto.session.SessionTurnsChangedFrame
-import site.qgames.game.gatewayapi.dto.session.SessionTurnsDto
-import site.qgames.game.mapper.room.RoomSettingsResponseMapper
-import site.qgames.game.model.room.RoomSettingsModel
-import site.qgames.game.model.room.RoomTimeControlMode
-import site.qgames.game.model.room.RoomTimeControlModel
+import site.qgames.game.gatewayapi.dto.session.SessionStreamEventType
 import site.qgames.game.model.session.SessionSnapshotModel
-import site.qgames.games.api.core.PlayerState
+import site.qgames.games.api.session.SessionEngine
 import site.qgames.games.api.session.SessionEvent
 import site.qgames.games.api.session.SessionEvents
-import site.qgames.games.api.session.SessionMeta
-import site.qgames.games.api.session.SessionStarted
-import site.qgames.games.api.session.SessionState
-import site.qgames.games.api.timer.TimerState
-import site.qgames.games.api.turns.TurnsState
-import site.qgames.game.gatewayapi.dto.session.SessionStreamEventTypes
-import site.qgames.games.nothing.NothingGameState
-import site.qgames.games.nothing.NothingMoved
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.json.JsonMapper
 import java.time.Instant
 
 /**
  * Данные потока партии (поле `data:` SSE) → DTO контракта game-user-gateway-sync-api (SessionStreamEvent). Только
- * преобразование, без обращений к данным. Состояние и игровые события — классы модуля игры, поэтому новая игра
- * добавляет сюда свои ветки (как и свои DTO в контракт).
+ * преобразование, без обращений к данным.
+ *
+ * Снапшот — документ партии `{status, meta, state}` зрителя, разобранный строго (лишние поля — ошибка) в схему
+ * конкретной игры: так документ, к которому клиент применяет события, всегда совпадает с контрактом. Новая игра
+ * добавляет сюда ветку своего DTO состояния. Событие — патч документа: путь и значение уходят как есть.
  */
 @Component
 class SessionEventResponseMapper(
-    private val roomSettingsResponseMapper: RoomSettingsResponseMapper,
+    private val jsonMapper: JsonMapper,
+    private val sessionEventJsonMapper: SessionEventJsonMapper,
 ) {
 
     fun toSnapshot(snapshot: SessionSnapshotModel): SessionSnapshotDto {
-        val session = snapshot.state.session
+        val document = snapshot.state.document
+        val meta = strict(document[SessionEngine.META], SessionMetaDto::class.java)
         return SessionSnapshotDto(
             seq = snapshot.state.seq,
-            status = SessionStatus.valueOf(session.status.name),
+            status = SessionStatus.valueOf(document[SessionEngine.STATUS] as String),
             serverTime = snapshot.serverTime,
-            meta = toResponse(session.meta),
-            state = toResponse(session.meta.game.code, session.state),
+            meta = meta,
+            state = strict(document[SessionEvents.STATE], stateClass(meta.game.code)),
         )
     }
 
-    /** Кадр события журнала `{seq, at, data}`; [event] уже замаскирован для зрителя. */
-    fun toFrame(seq: Long, at: Instant, event: SessionEvent): Any = when (event.type) {
-        SessionEvents.STARTED -> {
-            val started = event.data as SessionStarted
-            SessionStartedFrame(seq, at, SessionStartedDto(toResponse(started.meta), toResponse(started.meta.game.code, started.state)))
+    /** Тип сообщения SSE для события: метод в нижнем регистре. */
+    fun toType(event: SessionEvent): String = SessionStreamEventType.valueOf(event.method.name).code
+
+    /** Кадр события журнала `{seq, at, method, code, data}`; [event] уже замаскирован для зрителя. */
+    fun toFrame(seq: Long, at: Instant, event: SessionEvent): SessionPatchEvent {
+        val method = SessionEventMethod.valueOf(event.method.name)
+        val path = sessionEventJsonMapper.path(event.path)
+        return when (method) {
+            SessionEventMethod.PUT -> SessionEventPut(seq, at, method, event.code, PutData(path, event.value))
+            SessionEventMethod.PATCH -> SessionEventPatch(seq, at, method, event.code, PatchData(path, objectOf(event)))
+            SessionEventMethod.DELETE -> SessionEventDelete(seq, at, method, event.code, DeleteData(path))
+            SessionEventMethod.INFO -> SessionEventInfo(seq, at, method, event.code, objectOf(event))
         }
-        SessionEvents.FINISHED, SessionEvents.CANCELLED -> SessionEndedFrame(seq, at, EmptyEventDataDto())
-        SessionEvents.PLAYER_CHANGED -> SessionPlayerChangedFrame(seq, at, toResponse(event.data as PlayerState))
-        SessionEvents.TURNS_CHANGED -> SessionTurnsChangedFrame(seq, at, toResponse(event.data as TurnsState))
-        SessionEvents.TIMER_CHANGED -> SessionTimerChangedFrame(seq, at, toResponse(event.data as TimerState))
-        SessionStreamEventTypes.MOVED -> SessionMovedFrame(seq, at, toMoved(event.data))
-        else -> error("No DTO for session event ${event.type}")
     }
 
-    private fun toResponse(meta: SessionMeta): SessionMetaDto {
-        val rules = meta.game.rules
-        val timeControl = RoomTimeControlModel(RoomTimeControlMode.valueOf(rules.timeControl.mode.name), rules.timeControl.moveSeconds)
-        return SessionMetaDto(
-            SessionGameDto(
-                code = GameCode.fromCode(meta.game.code) ?: error("Unknown game code ${meta.game.code}"),
-                rules = roomSettingsResponseMapper.toResponse(RoomSettingsModel(timeControl, rules.settings)),
-            ),
-        )
-    }
-
-    private fun toResponse(gameCode: String, state: SessionState<Any>): SessionStateDto = when (val game = state.game) {
-        is NothingGameState -> NothingSessionStateDto(
-            players = state.players.map(::toResponse),
-            timer = state.timer?.let(::toResponse),
-            turns = toResponse(state.turns),
-            moves = game.moves,
-        )
+    private fun stateClass(gameCode: GameCode): Class<out SessionStateDto> = when (gameCode) {
+        GameCode.NOTHING -> NothingSessionStateDto::class.java
         else -> error("No DTO for the state of game $gameCode")
     }
 
-    private fun toMoved(data: Any): SessionMovedDto = when (data) {
-        is NothingMoved -> NothingMovedDto(playerId = data.playerId, type = data.type, timeout = data.timeout)
-        else -> error("No DTO for moved ${data::class.qualifiedName}")
-    }
+    private fun <T : Any> strict(tree: Any?, type: Class<T>): T =
+        jsonMapper.readerFor(type)
+            .with(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+            .readValue(jsonMapper.valueToTree<JsonNode>(tree))
 
-    private fun toResponse(player: PlayerState) = SessionPlayerDto(
-        id = player.id,
-        moveOptions = player.moveOptions.map { MoveOptionDto(it.type, it.data) },
-    )
-
-    private fun toResponse(turns: TurnsState) = SessionTurnsDto(turns.currentPlayerId, turns.round, turns.rounds)
-
-    private fun toResponse(timer: TimerState) =
-        SessionTimerDto(SessionTimerStatus.valueOf(timer.status.name), timer.deadline, timer.pausedAt)
+    @Suppress("UNCHECKED_CAST")
+    private fun objectOf(event: SessionEvent): Map<String, Any?> =
+        event.value as? Map<String, Any?> ?: error("Value of ${event.method} ${event.code} must be an object")
 }

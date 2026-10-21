@@ -22,7 +22,7 @@ import site.qgames.game.service.room.RoomDetailsService
 import site.qgames.games.api.TimeControl
 import site.qgames.games.api.TimeControlMode
 import site.qgames.games.api.session.MoveOutcome
-import site.qgames.games.api.session.Session
+import site.qgames.games.api.session.SessionDocument
 import site.qgames.games.api.session.SessionEngine
 import site.qgames.games.api.session.SessionStatus
 import site.qgames.games.api.session.TimerOutcome
@@ -51,6 +51,7 @@ class RoomSessionService(
     private val roomDetailsService: RoomDetailsService,
     private val roomEventPublisher: RoomEventPublisher,
     private val jsonMapper: JsonMapper,
+    private val sessionEngine: SessionEngine,
     private val clock: Clock,
 ) {
 
@@ -58,7 +59,7 @@ class RoomSessionService(
 
     /**
      * Игроки — участники с ролью PLAYER, места — по порядку входа в комнату. Партия получает снимок настроек
-     * комнаты, первое событие журнала — started. Игра должна быть доступна для новых партий.
+     * комнаты, первое событие журнала — session-started. Игра должна быть доступна для новых партий.
      */
     @Transactional
     fun start(userId: UUID, roomId: UUID): RoomDetailsModel {
@@ -85,7 +86,7 @@ class RoomSessionService(
             now = now,
         )
         val settings = jsonMapper.readValue(room.gameSettings, rules.settingsClass)
-        val events = SessionEngine.start(rules, players, seed, settings, timeControl(room.timeControl), now)
+        val events = sessionEngine.start(rules, players, seed, settings, timeControl(room.timeControl), now)
         sessionJournalService.record(session, before = null, events, now)
         val updated = room.copy(status = RoomStatus.IN_GAME, currentSessionId = session.id)
         roomRepository.update(updated)
@@ -98,8 +99,7 @@ class RoomSessionService(
     fun cancel(userId: UUID, roomId: UUID) {
         val room = lockAsOwner(userId, roomId)
         val session = currentSession(room)
-        val full = sessionJournalService.full(session)
-        sessionJournalService.record(session, full, SessionEngine.cancel(full), clock.instant())
+        sessionJournalService.cancel(session, clock.instant())
         endInRoom(room)
     }
 
@@ -112,7 +112,7 @@ class RoomSessionService(
         val session = lockRunningSessionAsOwner(userId, roomId)
         val now = clock.instant()
         val full = sessionJournalService.full(session)
-        applyTimer(session, full, SessionEngine.pause(full, now))
+        applyTimer(session, full, sessionEngine.pause(full, now))
     }
 
     /**
@@ -124,9 +124,9 @@ class RoomSessionService(
         val session = lockRunningSessionAsOwner(userId, roomId)
         val now = clock.instant()
         val full = sessionJournalService.full(session)
-        val outcome = SessionEngine.resume(full, now)
+        val outcome = sessionEngine.resume(full, now)
         if (outcome is TimerOutcome.Changed) {
-            val shift = TimerModule.pauseLength(full.state.timer!!, now)
+            val shift = TimerModule.pauseLength(full.session.state.timer!!, now)
             roomMemberRepository.shiftLeaveDeadlines(session.roomId, roomSessionRepository.findPlayers(session.id), shift)
         }
         applyTimer(session, full, outcome)
@@ -161,7 +161,7 @@ class RoomSessionService(
         }
         val now = clock.instant()
         val full = sessionJournalService.full(session)
-        when (val outcome = SessionEngine.move(rules, full, userId, move, now)) {
+        when (val outcome = sessionEngine.move(rules, full, userId, move, now)) {
             MoveOutcome.Paused -> throw RoomErrors.sessionPaused()
             MoveOutcome.NotInProgress -> throw RoomErrors.roomNotInGame()
             is MoveOutcome.Rejected -> throw RoomErrors.moveRejected(outcome.code, outcome.message)
@@ -185,7 +185,7 @@ class RoomSessionService(
             return false
         }
         val full = sessionJournalService.full(session)
-        val events = SessionEngine.timeout(gameRegistry.rules(session.gameCode), full, now)
+        val events = sessionEngine.timeout(gameRegistry.rules(session.gameCode), full, now)
         if (events.isEmpty()) {
             log.warn("Move deadline expired in session {}, but the game has nothing to do; timer is removed", sessionId)
             sessionJournalService.clearMoveDeadline(session)
@@ -195,7 +195,7 @@ class RoomSessionService(
         return true
     }
 
-    private fun applyTimer(session: RoomSessionModel, full: Session, outcome: TimerOutcome) {
+    private fun applyTimer(session: RoomSessionModel, full: SessionDocument, outcome: TimerOutcome) {
         when (outcome) {
             TimerOutcome.NotPausable -> throw RoomErrors.sessionNotPausable()
             TimerOutcome.Unchanged -> Unit
@@ -204,8 +204,8 @@ class RoomSessionService(
     }
 
     /** Партия закончилась — комната возвращается в ожидание, а партия остаётся видна как последняя. */
-    private fun afterChange(room: RoomModel, after: Session?) {
-        if (after != null && after.status != SessionStatus.IN_PROGRESS) {
+    private fun afterChange(room: RoomModel, after: SessionDocument?) {
+        if (after != null && after.session.status != SessionStatus.IN_PROGRESS) {
             endInRoom(room)
         }
     }

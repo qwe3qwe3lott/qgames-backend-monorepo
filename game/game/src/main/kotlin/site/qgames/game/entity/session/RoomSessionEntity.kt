@@ -25,8 +25,9 @@ data class RoomSessionEntity(
 data class RoomSessionEventEntity(
     val sessionId: UUID,
     val seq: Long,
-    val type: String,
-    /** JSON (jsonb) данных события. */
+    val method: String,
+    val code: String,
+    /** JSON (jsonb) данных события: PUT и PATCH — {path, value}, DELETE — {path}, INFO — объект. */
     val data: String,
     val createdAt: Instant,
 )

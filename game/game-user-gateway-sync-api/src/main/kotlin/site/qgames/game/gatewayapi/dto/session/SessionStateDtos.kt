@@ -11,14 +11,14 @@ data class SessionMetaDto(
     val game: SessionGameDto,
 )
 
-/** Игра партии: по [code] клиент выбирает схемы состояния и игровых событий. */
+/** Игра партии: по [code] клиент выбирает схему состояния. */
 data class SessionGameDto(
     val code: GameCode,
     /** Правила (настройки) партии на момент старта: время и настройки игры. */
     val rules: RoomSettingsDto,
 )
 
-/** Игрок партии (модуль core). PUT по id: событие player-changed несёт игрока целиком. */
+/** Игрок партии (модуль core): элемент массива `state.players`, адресуется по id. */
 data class SessionPlayerDto(
     val id: UUID,
     /** Что игрок может сделать сейчас. Видит только сам игрок, остальным — пустой список. */
@@ -61,12 +61,12 @@ data class SessionTimerDto(
 )
 
 /**
- * Состояние партии конкретной игры: блоки модулей (players, timer, turns) и поля игры. Игра — meta.game.code из
- * снапшота или события started; клиент сужает тип по нему.
+ * Состояние партии конкретной игры: блоки модулей (players, timer, turns) и поля игры. Игра — meta.game.code
+ * снапшота; клиент сужает тип по нему и проверяет этой схемой состояние после применения каждого события.
  */
 @Schema(
     description = "Состояние партии конкретной игры: блоки модулей (players, timer, turns) и поля игры. " +
-        "Игра — meta.game.code снапшота или started",
+        "Игра — meta.game.code снапшота; этой схемой клиент проверяет состояние после каждого события",
     oneOf = [NothingSessionStateDto::class],
 )
 sealed interface SessionStateDto
@@ -78,22 +78,6 @@ data class NothingSessionStateDto(
     /** null — партия без таймера. */
     val timer: SessionTimerDto?,
     val turns: SessionTurnsDto,
-    /** Сколько ходов сделано (включая пропущенные по времени). */
+    /** Сколько ходов сделали игроки; пропуски по истечении времени не считаются. */
     val moves: Int,
 ) : SessionStateDto
-
-/** Данные события moved конкретной игры (игра — meta.game.code). */
-@Schema(
-    description = "Данные события moved конкретной игры (игра — meta.game.code)",
-    oneOf = [NothingMovedDto::class],
-)
-sealed interface SessionMovedDto
-
-/** Ход в «игре в ничто». */
-data class NothingMovedDto(
-    val playerId: UUID,
-    /** Вид хода; у «ничто» всегда PASS. */
-    val type: String,
-    /** Ход сделан автоматически: время хода истекло. */
-    val timeout: Boolean,
-) : SessionMovedDto

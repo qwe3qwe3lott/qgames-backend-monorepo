@@ -16,13 +16,14 @@ class RoomSessionEventPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun insert(event: RoomSessionEventEntity) {
         jdbcClient.sql(
             """
-            INSERT INTO room_session_event (session_id, seq, type, data, created_at)
-            VALUES (:sessionId, :seq, :type, CAST(:data AS jsonb), :createdAt)
+            INSERT INTO room_session_event (session_id, seq, method, code, data, created_at)
+            VALUES (:sessionId, :seq, :method, :code, CAST(:data AS jsonb), :createdAt)
             """,
         )
             .param("sessionId", event.sessionId)
             .param("seq", event.seq)
-            .param("type", event.type)
+            .param("method", event.method)
+            .param("code", event.code)
             .param("data", event.data)
             .param("createdAt", event.createdAt.toTimestamp())
             .update()
@@ -31,7 +32,7 @@ class RoomSessionEventPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun findRange(sessionId: UUID, fromSeq: Long, toSeq: Long): List<RoomSessionEventEntity> =
         jdbcClient.sql(
             """
-            SELECT session_id, seq, type, data::text AS data, created_at
+            SELECT session_id, seq, method, code, data::text AS data, created_at
             FROM room_session_event
             WHERE session_id = :sessionId AND seq BETWEEN :fromSeq AND :toSeq
             ORDER BY seq
@@ -47,7 +48,8 @@ class RoomSessionEventPostgresqlRepository(private val jdbcClient: JdbcClient) {
         RoomSessionEventEntity(
             sessionId = rs.getUuid("session_id")!!,
             seq = rs.getLong("seq"),
-            type = rs.getString("type"),
+            method = rs.getString("method"),
+            code = rs.getString("code"),
             data = rs.getString("data"),
             createdAt = rs.getInstant("created_at")!!,
         )

@@ -20,8 +20,9 @@ import java.util.UUID
  * без победителя. Нужна, чтобы проверить движок целиком: очерёдность, журнал, таймеры, конец партии.
  *
  * Модули: core (варианты ходов — PASS у того, чей ход), turns (ход по кругу, раунды из настроек), timer.
- * Собственное событие одно — `moved {playerId, type, timeout}`; скрытой информации нет, маски не нужны.
- * Истечение времени — автоматический PASS игрока, чьё время вышло (`moved` с `timeout = true`).
+ * Собственный код события один — `player-passed`: ход игрока — `PATCH ["state"] {moves}` (счётчик ходов), пропуск по
+ * истечении времени — `INFO {playerId, timeout: true}` (состояние игры не меняется). Скрытой информации нет, маски не
+ * нужны.
  */
 class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSettings> {
 
@@ -31,9 +32,7 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
     override val gameStateClass = NothingGameState::class.java
     override val moveClass = NothingMove::class.java
     override val settingsClass = NothingSettings::class.java
-    override val stateSchemaVersion = 2
-
-    override val eventClasses: Map<String, Class<*>> = mapOf(MOVED to NothingMoved::class.java)
+    override val stateSchemaVersion = 3
 
     override val timeControl = TimeControlRules(
         modes = setOf(TimeControlMode.NONE, TimeControlMode.PER_MOVE),
@@ -63,30 +62,26 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
             current == null -> Decision.Rejected("GAME_FINISHED", "The game is already finished")
             move.type != PASS -> Decision.Rejected("UNKNOWN_MOVE", "Only $PASS is allowed")
             current != playerId -> Decision.Rejected("NOT_YOUR_TURN", "It is not your turn")
-            else -> Decision.Accepted(pass(state, playerId, timeout = false))
+            else -> Decision.Accepted(
+                pass(state, SessionEvents.patch(PLAYER_PASSED, SessionEvents.path(SessionEvents.STATE), mapOf(MOVES to state.game.moves + 1))),
+            )
         }
     }
 
-    /** Время вышло — ход пропускается, как будто игрок сделал PASS. */
+    /** Время вышло — ход пропускается: очередь переходит дальше, счётчик ходов не меняется. */
     override fun onTimeout(state: SessionState<NothingGameState>): List<SessionEvent> {
         val current = state.turns.currentPlayerId ?: return emptyList()
-        return pass(state, current, timeout = true)
+        return pass(state, SessionEvents.info(PLAYER_PASSED, mapOf("playerId" to current, "timeout" to true)))
     }
 
     override fun moveOptions(state: SessionState<NothingGameState>, playerId: UUID): List<MoveOption> =
         if (state.turns.currentPlayerId == playerId) listOf(MoveOption(PASS)) else emptyList()
 
-    override fun evolve(state: SessionState<NothingGameState>, event: SessionEvent): SessionState<NothingGameState> =
-        when (event.type) {
-            MOVED -> state.copy(game = state.game.copy(moves = state.game.moves + 1))
-            else -> error("Unknown event ${event.type} of game $CODE")
-        }
-
-    private fun pass(state: SessionState<NothingGameState>, playerId: UUID, timeout: Boolean): List<SessionEvent> {
+    private fun pass(state: SessionState<NothingGameState>, passed: SessionEvent): List<SessionEvent> {
         val turns = TurnsModule.next(state.turns, state.players.map { it.id })
         return buildList {
-            add(SessionEvent(MOVED, NothingMoved(playerId, PASS, timeout)))
-            add(SessionEvents.turnsChanged(turns))
+            add(passed)
+            add(TurnsModule.changed(turns))
             if (turns.currentPlayerId == null) add(SessionEvents.finished())
         }
     }
@@ -95,8 +90,10 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
         const val CODE = "nothing"
         const val PASS = "PASS"
 
-        /** Событие игры: игрок сделал ход. */
-        const val MOVED = "moved"
+        /** Событие игры: игрок пропустил ход (сам или по истечении времени). */
+        const val PLAYER_PASSED = "player-passed"
+
+        private const val MOVES = "moves"
         private val ROUNDS = 1..50
     }
 }
@@ -111,21 +108,12 @@ data class NothingSettingsLimits(
     val rounds: IntRange,
 )
 
-/** Игровая часть состояния. */
+/** Игровая часть состояния (в документе — поле `state.moves`). */
 data class NothingGameState(
-    /** Сколько ходов сделано (включая пропущенные по времени). */
+    /** Сколько ходов сделали игроки; пропуски по истечении времени не считаются. */
     val moves: Int,
 )
 
 data class NothingMove(
     val type: String,
-)
-
-/** Данные события `moved`. */
-data class NothingMoved(
-    val playerId: UUID,
-    /** Вид хода; у «ничто» всегда PASS. */
-    val type: String,
-    /** Ход сделан автоматически: время хода истекло. */
-    val timeout: Boolean,
 )

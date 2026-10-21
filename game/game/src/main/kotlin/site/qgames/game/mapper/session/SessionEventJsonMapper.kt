@@ -1,72 +1,58 @@
 package site.qgames.game.mapper.session
 
 import org.springframework.stereotype.Component
-import site.qgames.game.model.game.GameCode
-import site.qgames.game.service.game.GameRegistry
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.core.PlayerState
-import site.qgames.games.api.session.GameMeta
+import site.qgames.games.api.session.PathSegment
 import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEvents
-import site.qgames.games.api.session.SessionMeta
-import site.qgames.games.api.session.SessionRules
-import site.qgames.games.api.session.SessionStarted
-import site.qgames.games.api.session.SessionState
-import site.qgames.games.api.timer.TimerState
-import site.qgames.games.api.turns.TurnsState
-import tools.jackson.core.type.TypeReference
-import tools.jackson.databind.JsonNode
+import site.qgames.games.api.session.SessionEventMethod
 import tools.jackson.databind.json.JsonMapper
 
 /**
- * Данные событий журнала партии ↔ JSON (колонка room_session_event.data). Класс данных определяется по типу события:
- * платформа и модули — [SessionEvents.dataClasses], игра — GameRules.eventClasses. В `started` части игры (настройки и
- * игровое состояние) разбираются классами модуля игры.
+ * Данные событий журнала партии ↔ JSON (колонка room_session_event.data) в том же виде, что `data` кадра потока:
+ * PUT и PATCH — `{path, value}`, DELETE — `{path}`, INFO — объект значения. Сегмент пути — строка (ключ) или
+ * `{"id": "…"}` (элемент массива по id). Значение — JSON-дерево как есть: формат задаёт платформа, модуль или игра.
  */
 @Component
 class SessionEventJsonMapper(
-    private val gameRegistry: GameRegistry,
     private val jsonMapper: JsonMapper,
 ) {
 
-    fun write(event: SessionEvent): String = jsonMapper.writeValueAsString(event.data)
+    fun write(event: SessionEvent): String = jsonMapper.writeValueAsString(data(event))
 
-    fun read(gameCode: GameCode, type: String, json: String): SessionEvent {
-        val rules = gameRegistry.rules(gameCode)
-        val data: Any = when (type) {
-            SessionEvents.STARTED -> readStarted(gameCode, jsonMapper.readTree(json))
-            in SessionEvents.dataClasses -> jsonMapper.readValue(json, SessionEvents.dataClasses.getValue(type))
-            else -> jsonMapper.readValue(json, rules.eventClasses[type] ?: error("Unknown event '$type' of game $gameCode"))
+    fun read(method: String, code: String, json: String): SessionEvent {
+        val sessionMethod = SessionEventMethod.valueOf(method)
+        val data = jsonMapper.readValue(json, Any::class.java)
+        if (sessionMethod == SessionEventMethod.INFO) {
+            return SessionEvent(code, sessionMethod, emptyList(), data)
         }
-        return SessionEvent(type, data)
+        val fields = data as? Map<*, *> ?: error("Data of a $method event $code must be an object")
+        val path = (fields[PATH] as? List<*> ?: error("Data of a $method event $code has no path")).map(::segment)
+        return SessionEvent(code, sessionMethod, path, fields[VALUE])
     }
 
-    private fun readStarted(gameCode: GameCode, node: JsonNode): SessionStarted {
-        val rules = gameRegistry.rules(gameCode)
-        val game = node.path("meta").path("game")
-        val sessionRules = game.path("rules")
-        val state = node.path("state")
-        return SessionStarted(
-            meta = SessionMeta(
-                GameMeta(
-                    code = game.path("code").asString(),
-                    rules = SessionRules(
-                        timeControl = jsonMapper.treeToValue(sessionRules.path("timeControl"), TimeControl::class.java),
-                        settings = jsonMapper.treeToValue(sessionRules.path("settings"), rules.settingsClass),
-                    ),
-                ),
-            ),
-            state = SessionState(
-                players = jsonMapper.readValue(jsonMapper.writeValueAsString(state.path("players")), PLAYERS),
-                timer = state.path("timer").takeUnless { it.isNull || it.isMissingNode }
-                    ?.let { jsonMapper.treeToValue(it, TimerState::class.java) },
-                turns = jsonMapper.treeToValue(state.path("turns"), TurnsState::class.java),
-                game = jsonMapper.treeToValue(state.path("game"), rules.gameStateClass),
-            ),
-        )
+    /** `data` кадра и журнала: PUT и PATCH — `{path, value}`, DELETE — `{path}`, INFO — значение. */
+    fun data(event: SessionEvent): Any? = when (event.method) {
+        SessionEventMethod.PUT, SessionEventMethod.PATCH -> linkedMapOf(PATH to path(event.path), VALUE to event.value)
+        SessionEventMethod.DELETE -> linkedMapOf(PATH to path(event.path))
+        SessionEventMethod.INFO -> event.value
+    }
+
+    /** Путь в JSON: ключ — строка, элемент массива — `{"id": "…"}`. */
+    fun path(path: List<PathSegment>): List<Any> = path.map {
+        when (it) {
+            is PathSegment.Key -> it.name
+            is PathSegment.Id -> mapOf(ID to it.id)
+        }
+    }
+
+    private fun segment(json: Any?): PathSegment = when (json) {
+        is String -> PathSegment.Key(json)
+        is Map<*, *> -> PathSegment.Id(json[ID] as? String ?: error("Path segment $json has no string id"))
+        else -> error("Unknown path segment $json")
     }
 
     companion object {
-        private val PLAYERS = object : TypeReference<List<PlayerState>>() {}
+        private const val PATH = "path"
+        private const val VALUE = "value"
+        private const val ID = "id"
     }
 }

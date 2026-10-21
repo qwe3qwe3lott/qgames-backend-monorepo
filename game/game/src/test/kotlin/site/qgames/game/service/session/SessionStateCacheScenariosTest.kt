@@ -10,13 +10,12 @@ import site.qgames.game.BaseIntegrationTest
 import site.qgames.game.cache.session.CaffeineSessionStateCache
 import site.qgames.game.cache.session.SessionStateCache
 import site.qgames.game.config.GameProperties
-import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.SessionStateModel
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
-import site.qgames.games.api.session.Session
+import site.qgames.games.api.session.SessionEngine
 import site.qgames.games.api.session.ViewerKey
 import java.util.UUID
 import java.util.stream.Stream
@@ -33,6 +32,9 @@ class SessionStateCacheScenariosTest : BaseIntegrationTest() {
     @Autowired
     private lateinit var properties: GameProperties
 
+    @Autowired
+    private lateinit var sessionEngine: SessionEngine
+
     @Test
     fun `cache miss folds the journal from scratch and stores the result`() {
         val session = sessionWith33Events()
@@ -41,8 +43,8 @@ class SessionStateCacheScenariosTest : BaseIntegrationTest() {
         val state = service(cache).state(session, ViewerKey.Full)
 
         assertThat(state.seq).isEqualTo(33)
-        assertThat(state.session).isEqualTo(fullState(session.roomId))
-        verify(exactly = 1) { roomSessionEventRepository.findRange(session.id, GameCode.NOTHING, 1, 33) }
+        assertThat(state.document).isEqualTo(fullDocument(session.roomId))
+        verify(exactly = 1) { roomSessionEventRepository.findRange(session.id, 1, 33) }
         assertThat(cache.get(session.id, ViewerKey.Full)).isEqualTo(state)
     }
 
@@ -54,10 +56,10 @@ class SessionStateCacheScenariosTest : BaseIntegrationTest() {
 
         val state = service(cache).state(session, ViewerKey.Player(BOB))
 
-        verify(exactly = 1) { roomSessionEventRepository.findRange(session.id, GameCode.NOTHING, 8, 33) }
+        verify(exactly = 1) { roomSessionEventRepository.findRange(session.id, 8, 33) }
         assertThat(atSeven.seq).isEqualTo(7)
         assertThat(state.seq).isEqualTo(33)
-        assertThat(state.session).isEqualTo(service(CaffeineSessionStateCache(properties)).state(session, ViewerKey.Player(BOB)).session)
+        assertThat(state.document).isEqualTo(service(CaffeineSessionStateCache(properties)).state(session, ViewerKey.Player(BOB)).document)
         assertThat(cache.get(session.id, ViewerKey.Player(BOB))!!.seq).isEqualTo(33)
     }
 
@@ -67,7 +69,7 @@ class SessionStateCacheScenariosTest : BaseIntegrationTest() {
         val cache = CaffeineSessionStateCache(properties)
         val latest = service(cache).state(session, ViewerKey.Public)
 
-        cache.put(session.id, ViewerKey.Public, SessionStateModel(7, latest.session))
+        cache.put(session.id, ViewerKey.Public, SessionStateModel(7, latest.document))
 
         assertThat(cache.get(session.id, ViewerKey.Public)).isEqualTo(latest)
     }
@@ -78,13 +80,13 @@ class SessionStateCacheScenariosTest : BaseIntegrationTest() {
     fun `fold of masked events equals masked full fold`(viewer: ViewerKey) {
         val session = sessionWith33Events()
 
-        val ofMasked = service(CaffeineSessionStateCache(properties)).state(session, viewer).session
-        val full = fullState(session.roomId)
+        val ofMasked = service(CaffeineSessionStateCache(properties)).state(session, viewer).document
+        val full = fullDocument(session.roomId)
 
         assertThat(ofMasked).isEqualTo(mask(full, viewer))
     }
 
-    /** Партия двоих без таймера: started + 8 ходов по 4 события = 33 события. */
+    /** Партия двоих без таймера: session-started + 8 ходов по 4 события = 33 события. */
     private fun sessionWith33Events(): RoomSessionModel {
         val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(rounds = 10))
         repeat(4) {
@@ -96,11 +98,16 @@ class SessionStateCacheScenariosTest : BaseIntegrationTest() {
         return session
     }
 
-    private fun service(cache: SessionStateCache) = SessionStateService(cache, roomSessionEventRepository, gameRegistry)
+    private fun service(cache: SessionStateCache) = SessionStateService(cache, roomSessionEventRepository, gameRegistry, sessionEngine)
 
-    private fun mask(full: Session, viewer: ViewerKey): Session = full.copy(
-        state = full.state.copy(players = full.state.players.map { if (viewer.sees(it.id)) it else it.copy(moveOptions = emptyList()) }),
-    )
+    /** Маска полного документа: чужие варианты ходов — пустой список. */
+    @Suppress("UNCHECKED_CAST")
+    private fun mask(full: Map<String, Any?>, viewer: ViewerKey): Map<String, Any?> {
+        val state = full.getValue("state") as Map<String, Any?>
+        val players = (state.getValue("players") as List<Map<String, Any?>>)
+            .map { if (viewer.sees(UUID.fromString(it["id"] as String))) it else it + ("moveOptions" to emptyList<Any>()) }
+        return full + ("state" to state + ("players" to players))
+    }
 
     companion object {
         @JvmStatic

@@ -35,8 +35,9 @@ class SessionStreamDispatcher(
                 batch.events.forEach { stored ->
                     val event = sessionStreamService.mask(batch.session, stored.event, viewer)
                     val frame = sessionEventResponseMapper.toFrame(stored.seq, stored.createdAt, event)
-                    val last = event.type == SessionEvents.FINISHED || event.type == SessionEvents.CANCELLED
-                    group.forEach { it.event(stored.seq, event.type, frame, last) }
+                    val last = event.code in SessionEvents.ENDING
+                    val type = sessionEventResponseMapper.toType(event)
+                    group.forEach { it.event(stored.seq, type, frame, last) }
                 }
             }
         } catch (e: RuntimeException) {

@@ -2,7 +2,6 @@ package site.qgames.game.repository.session
 
 import org.springframework.stereotype.Repository
 import site.qgames.game.mapper.session.RoomSessionEntityMapper
-import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.session.RoomSessionEventModel
 import site.qgames.games.api.session.SessionEvent
 import java.time.Instant
@@ -22,12 +21,11 @@ class RoomSessionEventRepository(
         }
     }
 
-    /** События партии игры [gameCode] с seq от [fromSeq] до [toSeq] включительно, по порядку. */
-    fun findRange(sessionId: UUID, gameCode: GameCode, fromSeq: Long, toSeq: Long): List<RoomSessionEventModel> =
+    /** События партии с seq от [fromSeq] до [toSeq] включительно, по порядку. */
+    fun findRange(sessionId: UUID, fromSeq: Long, toSeq: Long): List<RoomSessionEventModel> =
         if (fromSeq > toSeq) {
             emptyList()
         } else {
-            roomSessionEventPostgresqlRepository.findRange(sessionId, fromSeq, toSeq)
-                .map { roomSessionEntityMapper.toModel(it, gameCode) }
+            roomSessionEventPostgresqlRepository.findRange(sessionId, fromSeq, toSeq).map(roomSessionEntityMapper::toModel)
         }
 }

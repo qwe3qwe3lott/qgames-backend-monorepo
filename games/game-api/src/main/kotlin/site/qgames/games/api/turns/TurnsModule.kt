@@ -1,5 +1,7 @@
 package site.qgames.games.api.turns
 
+import site.qgames.games.api.session.SessionEvent
+import site.qgames.games.api.session.SessionEvents
 import java.util.UUID
 
 /** Очерёдность (модуль turns): чей ход, текущий раунд и сколько их всего. */
@@ -13,10 +15,16 @@ data class TurnsState(
 )
 
 /**
- * Модуль turns: ходы по кругу в порядке мест. Когда передать ход, решает игра: она вызывает [next] и выдаёт событие
- * `turns-changed` (блок целиком).
+ * Модуль turns (`state.turns`): ходы по кругу в порядке мест. Когда передать ход, решает игра: она вызывает [next] и
+ * выдаёт [changed] — событие `turn-changed` (`PUT ["state", "turns"]`, блок целиком).
  */
 object TurnsModule {
+
+    /** Сменился текущий игрок или раунд. */
+    const val TURN_CHANGED = "turn-changed"
+
+    /** Ключ блока в состоянии. */
+    const val TURNS = "turns"
 
     /** Первый ход — у первого игрока. */
     fun initial(players: List<UUID>, rounds: Int?) = TurnsState(players.first(), round = 1, rounds = rounds)
@@ -38,4 +46,6 @@ object TurnsModule {
             turns.copy(currentPlayerId = players.first(), round = turns.round + 1)
         }
     }
+
+    fun changed(turns: TurnsState): SessionEvent = SessionEvents.put(TURN_CHANGED, SessionEvents.path(SessionEvents.STATE, TURNS), turns)
 }

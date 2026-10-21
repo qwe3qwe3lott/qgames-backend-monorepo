@@ -9,13 +9,14 @@ import site.qgames.game.gatewayapi.dto.room.SessionStatus
 import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
+import site.qgames.games.nothing.NothingGameState
 import java.time.Instant
 import java.util.UUID
 
 /**
  * Истечение времени хода: дедлайн-проекция сдвигается в прошлое через SQL, джоб вызывается напрямую (по расписанию он в
  * тестах выключен). В «игре в ничто» истечение времени — автоматический PASS игрока, чьё время вышло; события идут в
- * журнал тем же путём, что ход.
+ * журнал тем же путём, что ход (пропуск — INFO player-passed, счётчик ходов не меняется).
  */
 class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
 
@@ -37,10 +38,15 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
         assertThat(state.turns.currentPlayerId).isEqualTo(BOB)
         assertThat(state.timer!!.deadline).isBetween(before.plusSeconds(30).minusMillis(1), after.plusSeconds(30))
         assertThat(journal(roomId).map { it.second })
-            .containsExactly("started", "moved", "turns-changed", "player-changed", "player-changed", "timer-changed")
-        val moved = jdbcClient.sql("SELECT data::text FROM room_session_event WHERE type = 'moved'").query(String::class.java).single()
-        assertThat(jsonMapper.readTree(moved)).isEqualTo(
-            jsonMapper.readTree("""{"playerId": "$ALICE", "type": "PASS", "timeout": true}"""),
+            .containsExactly("session-started", "player-passed", "turn-changed", "move-options-changed", "move-options-changed", "timer-started")
+        // Пропуск по времени — INFO: в журнале, но счётчик ходов игры не меняется.
+        val passed = jdbcClient.sql("SELECT method, data::text AS data FROM room_session_event WHERE code = 'player-passed'")
+            .query { rs, _ -> rs.getString("method") to rs.getString("data") }
+            .single()
+        assertThat(passed.first).isEqualTo("INFO")
+        assertThat(state.game).isEqualTo(NothingGameState(moves = 0))
+        assertThat(jsonMapper.readTree(passed.second)).isEqualTo(
+            jsonMapper.readTree("""{"playerId": "$ALICE", "timeout": true}"""),
         )
 
         // Следующий ход — уже обычный ход Боба.
@@ -74,7 +80,7 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
 
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_event WHERE type = 'moved'")).isZero()
+        assertThat(countRows("room_session_event WHERE code = 'player-passed'")).isZero()
         assertThat(fullState(withoutTimer).state.timer).isNull()
         assertThat(journal(notExpired)).hasSize(1)
     }
@@ -87,7 +93,7 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
         assertThat(moveTimeoutJob.run()).isEqualTo(1)
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_event WHERE type = 'moved'")).isEqualTo(1)
+        assertThat(countRows("room_session_event WHERE code = 'player-passed'")).isEqualTo(1)
     }
 
     private fun perMove(seconds: Int, rounds: Int = 3) =

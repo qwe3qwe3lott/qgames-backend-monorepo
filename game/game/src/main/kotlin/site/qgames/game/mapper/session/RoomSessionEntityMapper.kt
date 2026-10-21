@@ -33,17 +33,18 @@ class RoomSessionEntityMapper(
         finishedAt = entity.finishedAt,
     )
 
-    /** Событие журнала партии игры [gameCode]: данные разбираются в классы платформы, модулей и игры. */
-    fun toModel(entity: RoomSessionEventEntity, gameCode: GameCode) = RoomSessionEventModel(
+    /** Событие журнала партии: метод, код и данные (путь и значение — JSON-дерево). */
+    fun toModel(entity: RoomSessionEventEntity) = RoomSessionEventModel(
         seq = entity.seq,
         createdAt = entity.createdAt,
-        event = sessionEventJsonMapper.read(gameCode, entity.type, entity.data),
+        event = sessionEventJsonMapper.read(entity.method, entity.code, entity.data),
     )
 
     fun toEntity(sessionId: UUID, seq: Long, event: SessionEvent, createdAt: Instant) = RoomSessionEventEntity(
         sessionId = sessionId,
         seq = seq,
-        type = event.type,
+        method = event.method.name,
+        code = event.code,
         data = sessionEventJsonMapper.write(event),
         createdAt = createdAt,
     )

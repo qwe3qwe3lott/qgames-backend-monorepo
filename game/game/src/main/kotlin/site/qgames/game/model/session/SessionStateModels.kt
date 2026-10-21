@@ -1,13 +1,15 @@
 package site.qgames.game.model.session
 
-import site.qgames.games.api.session.Session
 import site.qgames.games.api.session.ViewerKey
 import java.time.Instant
 
-/** Партия для одного зрителя после события [seq]: свёртка его маскированных событий 1..[seq]. */
+/**
+ * Документ партии `{status, meta, state}` для одного зрителя после события [seq]: свёртка его маскированных событий
+ * 1..[seq] (JSON-дерево, как его видит клиент).
+ */
 data class SessionStateModel(
     val seq: Long,
-    val session: Session,
+    val document: Map<String, Any?>,
 )
 
 /** Кто подписался на поток партии и какую проекцию ему собирать. */
@@ -16,7 +18,7 @@ data class SessionSubscriptionModel(
     val viewer: ViewerKey,
 )
 
-/** Снапшот потока партии: состояние зрителя на seq и время сервера. */
+/** Снапшот потока партии: документ зрителя на seq и время сервера. */
 data class SessionSnapshotModel(
     val state: SessionStateModel,
     val serverTime: Instant,

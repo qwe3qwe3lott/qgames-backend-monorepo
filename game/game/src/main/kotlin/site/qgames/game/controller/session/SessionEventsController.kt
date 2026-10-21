@@ -22,6 +22,7 @@ import site.qgames.game.mapper.session.SessionEventResponseMapper
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.service.session.SessionStreamService
 import site.qgames.game.stream.session.SessionStreamRegistry
+import site.qgames.games.api.session.SessionEngine
 import site.qgames.games.api.session.SessionStatus
 import java.util.UUID
 
@@ -45,10 +46,11 @@ class SessionEventsController(
     @Operation(
         summary = "Поток событий партии",
         description = "Server-Sent Events: `event: <тип>`, `data: <json>`, раз в ~5 с комментарий `: ping`. Первое " +
-            "сообщение — snapshot: состояние партии для этого зрителя на seq ({seq, status, serverTime, meta, state}). " +
-            "Дальше события журнала в кадре {seq, at, data} с непрерывным seq, замаскированные под зрителя: игрок видит " +
-            "свои варианты ходов, остальные — пустой список. Конец или отмена партии закрывают поток. На завершённую " +
-            "партию приходит полный снапшот, и поток закрывается. Подписаться может участник комнаты.",
+            "сообщение — snapshot: документ партии для этого зрителя на seq ({seq, status, serverTime, meta, state}). " +
+            "Дальше события журнала {seq, at, method, code, data} с непрерывным seq (тип сообщения — method в нижнем " +
+            "регистре): патчи документа {status, meta, state}, замаскированные под зрителя: игрок видит свои варианты " +
+            "ходов, остальные — пустой список. Конец или отмена партии закрывают поток. На завершённую партию приходит " +
+            "полный снапшот, и поток закрывается. Подписаться может участник комнаты.",
     )
     @ApiResponses(
         ApiResponse(
@@ -81,7 +83,7 @@ class SessionEventsController(
                 seq = snapshot.state.seq,
                 type = SessionStreamEventTypes.SNAPSHOT,
                 data = sessionEventResponseMapper.toSnapshot(snapshot),
-                last = snapshot.state.session.status != SessionStatus.IN_PROGRESS,
+                last = snapshot.state.document[SessionEngine.STATUS] != SessionStatus.IN_PROGRESS.name,
             )
         } catch (e: Exception) {
             subscriber.close()

@@ -63,7 +63,7 @@ class ForceDisabledGameCleanupJobScenariosTest : BaseIntegrationTest() {
 
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_event WHERE type = 'moved'")).isZero()
+        assertThat(countRows("room_session_event WHERE code = 'player-passed'")).isZero()
     }
 
     @Test

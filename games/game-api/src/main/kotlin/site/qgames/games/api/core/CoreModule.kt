@@ -1,5 +1,6 @@
 package site.qgames.games.api.core
 
+import site.qgames.games.api.session.PathSegment
 import site.qgames.games.api.session.SessionEvent
 import site.qgames.games.api.session.SessionEvents
 import site.qgames.games.api.session.SessionState
@@ -20,23 +21,45 @@ data class MoveOption(
 )
 
 /**
- * Модуль core: игроки и их варианты ходов. Варианты считает игра, а модуль после каждого изменения выдаёт
- * `player-changed` тем игрокам, у которых набор изменился. Варианты хода видит только сам игрок.
+ * Модуль core: игроки (`state.players`) и их варианты ходов. Варианты считает игра, а модуль после каждого изменения
+ * выдаёт `move-options-changed` (`PUT ["state", "players", {id}, "moveOptions"]`) тем игрокам, у которых набор
+ * изменился. Варианты хода видит только сам игрок, остальным значение маскируется в `[]`.
  */
 object CoreModule {
 
+    /** Варианты ходов игрока изменились. */
+    const val MOVE_OPTIONS_CHANGED = "move-options-changed"
+
+    /** Ключ блока в состоянии. */
+    const val PLAYERS = "players"
+
+    private const val MOVE_OPTIONS = "moveOptions"
+
     fun initialPlayers(players: List<UUID>): List<PlayerState> = players.map { PlayerState(it, emptyList()) }
 
-    /** События `player-changed` для игроков, у которых варианты ходов в [state] отличаются от [options]. */
+    /** События `move-options-changed` для игроков, у которых варианты ходов в [state] отличаются от [options]. */
     fun <G : Any> changes(state: SessionState<G>, options: (UUID) -> List<MoveOption>): List<SessionEvent> =
         state.players.mapNotNull { player ->
             val actual = options(player.id)
-            if (actual == player.moveOptions) null else SessionEvent(SessionEvents.PLAYER_CHANGED, player.copy(moveOptions = actual))
+            if (actual == player.moveOptions) null else moveOptionsChanged(player.id, actual)
         }
 
-    fun <G : Any> evolve(state: SessionState<G>, player: PlayerState): SessionState<G> =
-        state.copy(players = state.players.map { if (it.id == player.id) player else it })
+    fun moveOptionsChanged(playerId: UUID, options: List<MoveOption>): SessionEvent =
+        SessionEvents.put(
+            MOVE_OPTIONS_CHANGED,
+            SessionEvents.path(SessionEvents.STATE, PLAYERS, SessionEvents.id(playerId), MOVE_OPTIONS),
+            options,
+        )
 
+    /** Маска события модуля для [viewer]; null — событие не модуля core. */
+    fun mask(event: SessionEvent, viewer: ViewerKey): SessionEvent? {
+        if (event.code != MOVE_OPTIONS_CHANGED) return null
+        val playerId = (event.path.getOrNull(2) as? PathSegment.Id)?.id?.let(UUID::fromString)
+            ?: error("$MOVE_OPTIONS_CHANGED without a player id in the path: ${event.path}")
+        return if (viewer.sees(playerId)) event else event.copy(value = emptyList<Any?>())
+    }
+
+    /** Игрок в начальном состоянии для [viewer]: чужие варианты ходов скрыты. */
     fun mask(player: PlayerState, viewer: ViewerKey): PlayerState =
         if (viewer.sees(player.id)) player else player.copy(moveOptions = emptyList())
 }

@@ -51,7 +51,7 @@ class RoomPauseScenariosTest : BaseIntegrationTest() {
         assertThat(timer.status).isEqualTo(TimerStatus.PAUSED)
         assertThat(timer.pausedAt).isNotNull()
         assertThat(timer.deadline).isEqualTo(deadline)
-        assertThat(journal(roomId).map { it.second }).containsExactly("started", "timer-changed")
+        assertThat(journal(roomId).map { it.second }).containsExactly("session-started", "game-paused")
         assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.IN_GAME)
         // Проекция таймера: на паузе дедлайна для MoveTimeoutJob нет.
         assertThat(countRows("room_session WHERE move_deadline IS NULL")).isEqualTo(1)
@@ -72,7 +72,7 @@ class RoomPauseScenariosTest : BaseIntegrationTest() {
         pause(ALICE, roomId)
 
         assertThat(fullState(roomId).state.timer!!.pausedAt).isEqualTo(pausedAt)
-        assertThat(journal(roomId).map { it.second }).containsExactly("started", "timer-changed")
+        assertThat(journal(roomId).map { it.second }).containsExactly("session-started", "game-paused")
     }
 
     @Test
@@ -98,7 +98,7 @@ class RoomPauseScenariosTest : BaseIntegrationTest() {
 
         moveTimeoutJob.run()
 
-        assertThat(journal(roomId).map { it.second }).doesNotContain("moved")
+        assertThat(journal(roomId).map { it.second }).doesNotContain("player-passed")
     }
 
     @Test
@@ -181,12 +181,13 @@ class RoomPauseScenariosTest : BaseIntegrationTest() {
 
     /** Пишет в журнал паузу таймера с момента [pausedAt] — как будто владелец поставил её тогда. */
     private fun appendPause(roomId: UUID, pausedAt: Instant) {
-        val timer = fullState(roomId).state.timer!!
-        val data = jsonMapper.writeValueAsString(timer.copy(status = TimerStatus.PAUSED, pausedAt = pausedAt))
+        val data = jsonMapper.writeValueAsString(
+            mapOf("path" to listOf("state", "timer"), "value" to mapOf("status" to TimerStatus.PAUSED, "pausedAt" to pausedAt)),
+        )
         jdbcClient.sql(
             """
-            INSERT INTO room_session_event (session_id, seq, type, data)
-            SELECT id, last_seq + 1, 'timer-changed', CAST(:data AS jsonb) FROM room_session WHERE id = :id
+            INSERT INTO room_session_event (session_id, seq, method, code, data)
+            SELECT id, last_seq + 1, 'PATCH', 'game-paused', CAST(:data AS jsonb) FROM room_session WHERE id = :id
             """,
         )
             .param("id", sessionId(roomId))

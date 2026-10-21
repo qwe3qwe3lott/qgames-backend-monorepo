@@ -12,14 +12,17 @@ import java.util.UUID
  * Правила одной игры: описание, параметры и чистые функции. Одинаковые входы дают одинаковый результат на любом
  * инстансе и при переигрывании журнала. Случайность берётся только из seed.
  *
- * Партия — журнал событий ([SessionEvent]); состояние не хранится, а собирается свёрткой журнала. Платформа
+ * Партия — журнал событий ([SessionEvent]): каждое событие — одна операция над документом партии `{status, meta, state}`
+ * (PUT, PATCH, DELETE или INFO по пути). Состояние не хранится, а собирается свёрткой журнала одним общим применителем
+ * ([site.qgames.games.api.session.SessionPatch]); своих редьюсеров у игры нет. Платформа
  * ([site.qgames.games.api.session.SessionEngine]) подключает к игре модули core (игроки и их варианты ходов), turns
- * (очерёдность и раунды) и timer (таймер хода, в том числе пауза) и сама добавляет их события. Игра решает, что
- * происходит в ответ на ход ([decide]) и на истечение времени ([onTimeout]), и сворачивает свои события ([evolve]).
+ * (очерёдность и раунды) и timer (таймер хода, в том числе пауза) и сама добавляет их события. Игра решает, какие
+ * события происходят в ответ на ход ([decide]) и на истечение времени ([onTimeout]), и задаёт их коды.
  *
- * Игровая часть состояния [G], ход [M], настройки [C] и данные событий из [eventClasses] — простые data-классы без
- * вычисляемых свойств: сервис game пишет события в журнал как JSON. При несовместимом изменении формата событий
- * увеличивается [stateSchemaVersion].
+ * Поля игровой части состояния [G] лежат в документе в `state` рядом с блоками модулей (`players`, `timer`, `turns`) и
+ * не совпадают с ними по именам; события игры адресуют их путями от `state` (например, `PATCH ["state"] {moves}`).
+ * [G], ход [M] и настройки [C] — простые data-классы без вычисляемых свойств: сервис game пишет их в журнал как JSON.
+ * При несовместимом изменении формата событий увеличивается [stateSchemaVersion].
  */
 interface GameRules<G : Any, M : Any, C : Any> {
 
@@ -36,9 +39,6 @@ interface GameRules<G : Any, M : Any, C : Any> {
     val moveClass: Class<M>
     val settingsClass: Class<C>
     val stateSchemaVersion: Int
-
-    /** Собственные события игры: тип → класс данных. Типы не пересекаются с типами платформы и модулей. */
-    val eventClasses: Map<String, Class<*>>
 
     /** Какие режимы времени поддерживает игра, их границы и режим по умолчанию. */
     val timeControl: TimeControlRules
@@ -60,14 +60,15 @@ interface GameRules<G : Any, M : Any, C : Any> {
 
     /**
      * Начало партии: игровая часть состояния и очерёдность. Игроки перечислены в порядке мест, настройки уже
-     * проверены [validateSettings]. Из этого платформа собирает первое событие журнала `started`.
+     * проверены [validateSettings]. Из этого платформа собирает первое событие журнала `session-started`.
      */
     fun start(players: List<UUID>, seed: Long, settings: C): GameStart<G>
 
     /**
      * Ход игрока [playerId] в полном состоянии [state]: события игры (и модулей, которыми игра управляет сама, —
-     * например `turns-changed`) или отказ. Конец партии — событие `session-finished` в списке
-     * ([site.qgames.games.api.session.SessionEvents.finished]).
+     * например `turn-changed`) или отказ. Конец партии — событие `session-finished` в списке
+     * ([site.qgames.games.api.session.SessionEvents.finished]). Коды событий игры не совпадают с кодами платформы и
+     * модулей.
      */
     fun decide(state: SessionState<G>, playerId: UUID, move: M): Decision
 
@@ -77,13 +78,13 @@ interface GameRules<G : Any, M : Any, C : Any> {
     /** Что сейчас может сделать игрок: варианты ходов в том же конверте, что тело хода. */
     fun moveOptions(state: SessionState<G>, playerId: UUID): List<MoveOption>
 
-    /** Применяет собственное событие игры (тип из [eventClasses]). Один редьюсер и для полного состояния, и для проекций. */
-    fun evolve(state: SessionState<G>, event: SessionEvent): SessionState<G>
-
-    /** Данные собственного события игры для проекции [viewer]. По умолчанию событие публичное. */
+    /**
+     * Собственное событие игры для проекции [viewer]: маскируется только значение (`value`), код, метод и путь
+     * остаются, событие доставляется. По умолчанию событие публичное.
+     */
     fun mask(event: SessionEvent, viewer: ViewerKey): SessionEvent = event
 
-    /** Игровая часть начального состояния (событие `started`) для проекции [viewer]. По умолчанию публичная. */
+    /** Игровая часть начального состояния (событие `session-started`) для проекции [viewer]. По умолчанию публичная. */
     fun maskGame(game: G, viewer: ViewerKey): G = game
 }
 

@@ -36,6 +36,7 @@ import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 import site.qgames.game.job.room.RoomLeaveJob
 import site.qgames.game.repository.session.RoomSessionEventRepository
 import site.qgames.game.repository.session.RoomSessionRepository
+import site.qgames.game.service.session.SessionJournalService
 import site.qgames.game.service.session.SessionStateService
 import site.qgames.game.service.session.SessionStreamService
 import site.qgames.game.stream.room.RoomStreamRegistry
@@ -84,6 +85,9 @@ abstract class BaseIntegrationTest {
 
     @Autowired
     protected lateinit var sessionStateService: SessionStateService
+
+    @Autowired
+    protected lateinit var sessionJournalService: SessionJournalService
 
     @Autowired
     protected lateinit var roomSessionRepository: RoomSessionRepository
@@ -245,16 +249,17 @@ abstract class BaseIntegrationTest {
             .single()
 
     /** Полное состояние последней партии комнаты — свёртка журнала (как его видит сервер). */
-    protected fun fullState(roomId: UUID): Session {
-        val session = roomSessionRepository.findById(sessionId(roomId))!!
-        return sessionStateService.state(session, ViewerKey.Full).session
-    }
+    protected fun fullState(roomId: UUID): Session = sessionJournalService.full(roomSessionRepository.findById(sessionId(roomId))!!).session
 
-    /** Журнал последней партии комнаты: пары (seq, тип) по порядку. */
+    /** Полный документ последней партии комнаты {status, meta, state} — свёртка журнала. */
+    protected fun fullDocument(roomId: UUID): Map<String, Any?> =
+        sessionStateService.state(roomSessionRepository.findById(sessionId(roomId))!!, ViewerKey.Full).document
+
+    /** Журнал последней партии комнаты: пары (seq, код) по порядку. */
     protected fun journal(roomId: UUID): List<Pair<Long, String>> =
-        jdbcClient.sql("SELECT seq, type FROM room_session_event WHERE session_id = :id ORDER BY seq")
+        jdbcClient.sql("SELECT seq, code FROM room_session_event WHERE session_id = :id ORDER BY seq")
             .param("id", sessionId(roomId))
-            .query { rs, _ -> rs.getLong("seq") to rs.getString("type") }
+            .query { rs, _ -> rs.getLong("seq") to rs.getString("code") }
             .list()
 
     /** Открывает поток партии (SSE). Поток остаётся открытым до конца партии или конца теста. */

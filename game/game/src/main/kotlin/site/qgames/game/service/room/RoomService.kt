@@ -27,7 +27,6 @@ import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.game.service.game.GameService
 import site.qgames.game.service.session.SessionJournalService
-import site.qgames.games.api.session.SessionEngine
 import site.qgames.games.api.timer.TimerModule
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
@@ -218,8 +217,7 @@ class RoomService(
             return false
         }
         room.currentSessionId?.let(roomSessionRepository::findById)?.let { session ->
-            val full = sessionJournalService.full(session)
-            sessionJournalService.record(session, full, SessionEngine.cancel(full), clock.instant())
+            sessionJournalService.cancel(session, clock.instant())
         }
         roomRepository.delete(roomId)
         roomEventPublisher.publish(roomId, RoomEventType.ROOM_DELETED)
@@ -340,7 +338,7 @@ class RoomService(
     /** С какого момента таймер идущей партии на паузе; null — не на паузе (или таймера нет, или партия не идёт). */
     private fun pausedAt(session: RoomSessionModel): Instant? {
         if (session.status != RoomSessionStatus.IN_PROGRESS) return null
-        val timer = sessionJournalService.full(session).state.timer
+        val timer = sessionJournalService.full(session).session.state.timer
         return if (TimerModule.isPaused(timer)) timer?.pausedAt else null
     }
 

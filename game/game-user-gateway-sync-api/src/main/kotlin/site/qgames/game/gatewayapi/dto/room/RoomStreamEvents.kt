@@ -89,11 +89,11 @@ data class RoomSettingsChangedEvent(
 
 /**
  * Партия началась, отменена или закончилась: клиент перечитывает комнату (GET) и подписывается на поток партии.
- * Пауза и продолжение сюда не попадают: это timer-changed потока партии.
+ * Пауза и продолжение сюда не попадают: это game-paused и game-resumed потока партии.
  */
 @Schema(
     description = "Партия началась, отменена или закончилась: клиент перечитывает комнату (GET) и подписывается на " +
-        "поток партии. Пауза и продолжение — timer-changed потока партии",
+        "поток партии. Пауза и продолжение — game-paused и game-resumed потока партии",
 )
 data class RoomSessionChangedEvent(
     @field:Schema(type = "string", allowableValues = [RoomStreamEventTypes.SESSION_CHANGED])

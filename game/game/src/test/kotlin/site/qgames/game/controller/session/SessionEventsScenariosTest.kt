@@ -22,14 +22,19 @@ import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 import site.qgames.game.gatewayapi.dto.session.MoveOptionDto
 import site.qgames.game.gatewayapi.dto.session.NothingSessionStateDto
 import site.qgames.game.gatewayapi.dto.session.SessionPlayerDto
+import site.qgames.game.gatewayapi.dto.session.SessionPatchStreamEvent
+import site.qgames.game.gatewayapi.dto.session.SessionStreamEvent
 import site.qgames.game.gatewayapi.dto.session.SessionTimerStatus
 import site.qgames.game.gatewayapi.dto.session.SessionTurnsDto
 import site.qgames.game.job.game.ForceDisabledGameCleanupJob
 import site.qgames.game.job.room.RoomConnectionHeartbeatJob
+import site.qgames.game.job.session.MoveTimeoutJob
+import site.qgames.game.mapper.session.SessionEventJsonMapper
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.game.support.TestData.EVE
+import site.qgames.games.api.session.SessionPatch
 import site.qgames.games.api.session.ViewerKey
 import tools.jackson.databind.JsonNode
 import java.util.UUID
@@ -47,6 +52,12 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
 
     @Autowired
     private lateinit var forceDisabledGameCleanupJob: ForceDisabledGameCleanupJob
+
+    @Autowired
+    private lateinit var moveTimeoutJob: MoveTimeoutJob
+
+    @Autowired
+    private lateinit var sessionEventJsonMapper: SessionEventJsonMapper
 
     /** Контроллер game объявляет маршрут из константы контракта, по которой gateway строит клиента. */
     @Test
@@ -98,25 +109,30 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
 
         val received = streams.mapValues { (_, stream) -> awaitEvents(stream, 6) }
         received.values.forEach { events ->
-            assertThat(events.map { it.first })
-                .containsExactly("snapshot", "moved", "turns-changed", "player-changed", "player-changed", "timer-changed")
-            assertThat(events.drop(1).map { frame(it).path("seq").asLong() }).containsExactly(2L, 3L, 4L, 5L, 6L)
-            val moved = frame(events[1]).path("data")
-            assertThat(moved.path("playerId").asString()).isEqualTo(ALICE.toString())
-            assertThat(moved.path("type").asString()).isEqualTo("PASS")
-            assertThat(moved.path("timeout").asBoolean()).isFalse()
-            assertThat(frame(events[2]).path("data").path("currentPlayerId").asString()).isEqualTo(BOB.toString())
-            assertThat(frame(events[5]).path("data").path("status").asString()).isEqualTo("RUNNING")
+            assertThat(events.map { it.first }).containsExactly("snapshot", "patch", "put", "put", "put", "put")
+            val frames = events.drop(1).map(::frame)
+            assertThat(frames.map { it.path("seq").asLong() }).containsExactly(2L, 3L, 4L, 5L, 6L)
+            assertThat(frames.map { it.path("code").asString() })
+                .containsExactly("player-passed", "turn-changed", "move-options-changed", "move-options-changed", "timer-started")
+            assertThat(frames.map { it.path("method").asString() }).containsExactly("PATCH", "PUT", "PUT", "PUT", "PUT")
+            assertThat(frames[0].path("data")).isEqualTo(json("""{"path": ["state"], "value": {"moves": 1}}"""))
+            assertThat(frames[1].path("data")).isEqualTo(
+                json("""{"path": ["state", "turns"], "value": {"currentPlayerId": "$BOB", "round": 1, "rounds": 3}}"""),
+            )
+            assertThat(frames[3].path("data").path("path")).isEqualTo(json("""["state", "players", {"id": "$BOB"}, "moveOptions"]"""))
+            assertThat(frames[4].path("data").path("path")).isEqualTo(json("""["state", "timer"]"""))
+            assertThat(frames[4].path("data").path("value").path("status").asString()).isEqualTo("RUNNING")
+            frames.forEach { assertThat(it.path("at").isString).isTrue() }
         }
         // Варианты хода Боба целиком видит только Боб, остальным приходит маска.
-        fun bobOptions(viewer: UUID) = frame(received.getValue(viewer)[4]).path("data").path("moveOptions").size()
-        assertThat(bobOptions(BOB)).isEqualTo(1)
-        assertThat(bobOptions(ALICE)).isZero()
-        assertThat(bobOptions(CAROL)).isZero()
+        fun bobOptions(viewer: UUID) = frame(received.getValue(viewer)[4]).path("data").path("value")
+        assertThat(bobOptions(BOB)).isEqualTo(json("""[{"type": "PASS", "data": null}]"""))
+        assertThat(bobOptions(ALICE)).isEqualTo(json("[]"))
+        assertThat(bobOptions(CAROL)).isEqualTo(json("[]"))
     }
 
     @Test
-    fun `pause and resume are timer-changed in the session stream, the room stream is not touched`() {
+    fun `pause and resume are timer patches in the session stream, the room stream is not touched`() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
         val roomStream = openStream(ALICE, roomId)
         awaitEvents(roomStream, 1)
@@ -127,11 +143,17 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
         resume(ALICE, roomId)
 
         val events = awaitEvents(stream, 3)
-        assertThat(events.map { it.first }).containsExactly("snapshot", "timer-changed", "timer-changed")
-        assertThat(frame(events[1]).path("data").path("status").asString()).isEqualTo("PAUSED")
-        assertThat(frame(events[1]).path("data").path("pausedAt").isNull).isFalse()
-        assertThat(frame(events[2]).path("data").path("status").asString()).isEqualTo("RUNNING")
-        assertThat(frame(events[2]).path("data").path("pausedAt").isNull).isTrue()
+        assertThat(events.map { it.first }).containsExactly("snapshot", "patch", "patch")
+        val paused = frame(events[1])
+        assertThat(paused.path("code").asString()).isEqualTo("game-paused")
+        assertThat(paused.path("data").path("path")).isEqualTo(json("""["state", "timer"]"""))
+        assertThat(paused.path("data").path("value").path("status").asString()).isEqualTo("PAUSED")
+        assertThat(paused.path("data").path("value").path("pausedAt").isNull).isFalse()
+        val resumed = frame(events[2])
+        assertThat(resumed.path("code").asString()).isEqualTo("game-resumed")
+        assertThat(resumed.path("data").path("value").path("status").asString()).isEqualTo("RUNNING")
+        assertThat(resumed.path("data").path("value").path("pausedAt").isNull).isTrue()
+        assertThat(resumed.path("data").path("value").has("deadline")).isTrue()
         assertThat(events(roomStream).map { it.first }).containsExactly("snapshot")
     }
 
@@ -143,8 +165,11 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
 
         pass(ALICE, roomId)
 
-        assertThat(awaitEvents(stream, 5).map { it.first })
-            .containsExactly("snapshot", "moved", "turns-changed", "player-changed", "session-finished")
+        val events = awaitEvents(stream, 5)
+        assertThat(events.map { it.first }).containsExactly("snapshot", "patch", "put", "put", "patch")
+        assertThat(events.drop(1).map { frame(it).path("code").asString() })
+            .containsExactly("player-passed", "turn-changed", "move-options-changed", "session-finished")
+        assertThat(frame(events.last()).path("data")).isEqualTo(json("""{"path": [], "value": {"status": "FINISHED"}}"""))
         awaitUntil("stream is closed") { sessionStreamRegistry.subscribers(sessionId(roomId)).isEmpty() }
     }
 
@@ -157,12 +182,65 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
         pass(ALICE, roomId)
 
         val events = awaitEvents(stream, 6)
-        assertThat(events.map { it.first })
-            .containsExactly("snapshot", "moved", "turns-changed", "player-changed", "timer-changed", "session-finished")
-        val stopped = frame(events[4]).path("data")
-        assertThat(stopped.path("status").asString()).isEqualTo(SessionTimerStatus.STOPPED.name)
-        assertThat(stopped.path("deadline").isNull).isTrue()
-        assertThat(stopped.path("pausedAt").isNull).isTrue()
+        assertThat(events.drop(1).map { frame(it).path("code").asString() })
+            .containsExactly("player-passed", "turn-changed", "move-options-changed", "timer-stopped", "session-finished")
+        assertThat(frame(events[4]).path("data")).isEqualTo(
+            json("""{"path": ["state", "timer"], "value": {"status": "${SessionTimerStatus.STOPPED}", "deadline": null, "pausedAt": null}}"""),
+        )
+    }
+
+    @Test
+    fun `cancel stops the timer, ends the stream with session-cancelled and closes it`() {
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        val stream = openSessionStream(BOB, roomId)
+        awaitEvents(stream, 1)
+
+        cancel(ALICE, roomId)
+
+        val events = awaitEvents(stream, 4)
+        assertThat(events.drop(1).map { frame(it).path("code").asString() })
+            .containsExactly("move-options-changed", "timer-stopped", "session-cancelled")
+        assertThat(frame(events.last()).path("data")).isEqualTo(json("""{"path": [], "value": {"status": "CANCELLED"}}"""))
+        awaitUntil("stream is closed") { sessionStreamRegistry.subscribers(sessionId(roomId)).isEmpty() }
+    }
+
+    /**
+     * Клиент применяет события к снапшоту по method, не зная кодов: у каждого зрителя это даёт тот же документ, что
+     * полный снапшот завершённой партии. Каждое событие разбирается схемой контракта (SessionStreamEvent).
+     */
+    @Test
+    fun `events applied to the snapshot give the final snapshot for every viewer`() {
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(rounds = 2, mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        join(CAROL, roomId)
+        val sessionId = sessionId(roomId)
+        val streams = listOf(ALICE, BOB, CAROL).map { openSessionStream(it, roomId) }
+        streams.forEach { awaitEvents(it, 1) }
+
+        pass(ALICE, roomId)
+        pause(ALICE, roomId)
+        resume(ALICE, roomId)
+        pass(BOB, roomId)
+        jdbcClient.sql("UPDATE room_session SET move_deadline = now() - interval '1 second' WHERE id = :id").param("id", sessionId).update()
+        assertThat(moveTimeoutJob.run()).isEqualTo(1)
+        pass(BOB, roomId)
+
+        streams.forEach { stream -> awaitUntil("session-finished") { events(stream).any { frame(it).path("code").asString() == "session-finished" } } }
+        val final = document(snapshot(openSessionStream(ALICE, roomId, sessionId)))
+        assertThat(final["status"]).isEqualTo("FINISHED")
+        streams.forEach { stream ->
+            val events = events(stream)
+            // Состояние в снапшоте — union без дискриминатора (игра — meta.game.code), его проверяют другие тесты.
+            events.drop(1).forEach { (type, data) ->
+                assertThat(jsonMapper.readValue("""{"type": "$type", "data": $data}""", SessionStreamEvent::class.java))
+                    .isInstanceOf(SessionPatchStreamEvent::class.java)
+            }
+            val applied = events.drop(1).fold(document(jsonMapper.readTree(events.first().second))) { document, event ->
+                val frame = frame(event)
+                val patch = sessionEventJsonMapper.read(frame.path("method").asString(), frame.path("code").asString(), frame.path("data").toString())
+                SessionPatch.apply(document, patch)
+            }
+            assertThat(applied).isEqualTo(final)
+        }
     }
 
     @Test
@@ -178,7 +256,7 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
         // После конца партии всё публично: снапшот собирается полной проекцией, а не проекцией игрока.
         verify { sessionStreamService.snapshot(sessionId, ViewerKey.Full) }
         assertThat(snapshot.path("seq").asLong()).isEqualTo(journal(roomId).size.toLong())
-        // Отмена обнулила варианты ходов (player-changed), как и конец партии.
+        // Отмена обнулила варианты ходов (move-options-changed), как и конец партии.
         assertThat(players(snapshot)).containsExactly(SessionPlayerDto(ALICE, emptyList()), SessionPlayerDto(BOB, emptyList()))
         assertThat(jsonMapper.treeToValue(snapshot.path("state"), NothingSessionStateDto::class.java).timer).isNull()
         awaitUntil("stream is closed") { sessionStreamRegistry.subscribers(sessionId).isEmpty() }
@@ -267,6 +345,13 @@ class SessionEventsScenariosTest : BaseIntegrationTest() {
         jsonMapper.treeToValue(snapshot.path("state"), NothingSessionStateDto::class.java).players
 
     private fun frame(event: Pair<String, String>): JsonNode = jsonMapper.readTree(event.second)
+
+    private fun json(text: String): JsonNode = jsonMapper.readTree(text)
+
+    /** Документ партии {status, meta, state} из снапшота — то, к чему клиент применяет события. */
+    @Suppress("UNCHECKED_CAST")
+    private fun document(snapshot: JsonNode): Map<String, Any?> =
+        (jsonMapper.convertValue(snapshot, Map::class.java) as Map<String, Any?>) - setOf("seq", "serverTime")
 
     companion object {
         private const val PATH = "/api/games/%s/rooms/%s/sessions/%s/events"

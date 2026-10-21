@@ -35,6 +35,7 @@ class SessionStreamService(
     private val sessionStateService: SessionStateService,
     private val gameService: GameService,
     private val gameRegistry: GameRegistry,
+    private val sessionEngine: SessionEngine,
     private val clock: Clock,
 ) {
 
@@ -62,14 +63,14 @@ class SessionStreamService(
     }
 
     /**
-     * Снапшот для [viewer] на последнем seq журнала. Если партия к этому моменту закончилась, снапшот полный.
-     * null — партии уже нет (комната удалена).
+     * Снапшот (документ партии) для [viewer] на последнем seq журнала. Если партия к этому моменту закончилась, снапшот
+     * полный. null — партии уже нет (комната удалена).
      */
     @Transactional(readOnly = true)
     fun snapshot(sessionId: UUID, viewer: ViewerKey): SessionSnapshotModel? {
         val session = roomSessionRepository.findById(sessionId) ?: return null
         val state = sessionStateService.state(session, viewer)
-        val result = if (state.session.status != SessionStatus.IN_PROGRESS && viewer != ViewerKey.Full) {
+        val result = if (state.document[SessionEngine.STATUS] != SessionStatus.IN_PROGRESS.name && viewer != ViewerKey.Full) {
             sessionStateService.state(session, ViewerKey.Full)
         } else {
             state
@@ -81,10 +82,10 @@ class SessionStreamService(
     @Transactional(readOnly = true)
     fun events(sessionId: UUID, fromSeq: Long, toSeq: Long): SessionEventsBatchModel? {
         val session = roomSessionRepository.findById(sessionId) ?: return null
-        return SessionEventsBatchModel(session, roomSessionEventRepository.findRange(sessionId, session.gameCode, fromSeq, toSeq))
+        return SessionEventsBatchModel(session, roomSessionEventRepository.findRange(sessionId, fromSeq, toSeq))
     }
 
-    /** Данные события для проекции [viewer]. */
+    /** Событие для проекции [viewer] (маскируется только значение). */
     fun mask(session: RoomSessionModel, event: SessionEvent, viewer: ViewerKey): SessionEvent =
-        SessionEngine.mask(gameRegistry.rules(session.gameCode), event, viewer)
+        sessionEngine.mask(gameRegistry.rules(session.gameCode), event, viewer)
 }

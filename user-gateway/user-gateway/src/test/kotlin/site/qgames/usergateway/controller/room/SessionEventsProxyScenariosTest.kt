@@ -110,7 +110,9 @@ class SessionEventsProxyScenariosTest : BaseIntegrationTest() {
 
         private val STREAM = "event:snapshot\ndata:{\"seq\":1,\"status\":\"IN_PROGRESS\"}\n\n" +
             ": ping\n\n" +
-            "event:moved\ndata:{\"seq\":2,\"at\":\"2026-10-21T10:00:00Z\",\"data\":{}}\n\n" +
-            "event:session-finished\ndata:{\"seq\":3,\"at\":\"2026-10-21T10:00:00Z\",\"data\":{}}\n\n"
+            "event:patch\ndata:{\"seq\":2,\"at\":\"2026-10-21T10:00:00Z\",\"method\":\"PATCH\",\"code\":\"player-passed\"," +
+            "\"data\":{\"path\":[\"state\"],\"value\":{\"moves\":1}}}\n\n" +
+            "event:patch\ndata:{\"seq\":3,\"at\":\"2026-10-21T10:00:00Z\",\"method\":\"PATCH\",\"code\":\"session-finished\"," +
+            "\"data\":{\"path\":[],\"value\":{\"status\":\"FINISHED\"}}}\n\n"
     }
 }
