@@ -62,7 +62,7 @@ class SessionEventsController(
         ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND), " +
+            description = "Неизвестный код игры, игра не опубликована (GAME_NOT_FOUND), " +
                 "комнаты нет (ROOM_NOT_FOUND), партии нет в этой комнате (SESSION_NOT_FOUND)",
         ),
         ApiResponse(responseCode = "409", description = "Комната другой игры (GAME_TYPE_MISMATCH)"),

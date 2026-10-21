@@ -22,9 +22,8 @@ interface PublicGameApi {
 
     @Operation(
         summary = "Каталог игр",
-        description = "Игры в порядке показа: код, название, описание и статус публикации. Скрытые игры в список не " +
-            "попадают. Игры со статусом DISABLED (временно недоступна) показываются, но создать для них комнату " +
-            "нельзя. Доступна без аутентификации.",
+        description = "Игры в порядке показа: код, название и описание. Скрытые и неопубликованные игры в список не " +
+            "попадают. Доступна без аутентификации.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Каталог игр"),
@@ -46,7 +45,7 @@ interface PublicGameApi {
         ApiResponse(responseCode = "401", description = "Access-токен в куке недействителен или истёк (UNAUTHENTICATED)"),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Неизвестный код игры или игра не опубликована (GAME_NOT_FOUND)",
         ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )

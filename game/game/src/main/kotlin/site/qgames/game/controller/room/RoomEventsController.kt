@@ -56,8 +56,7 @@ class RoomEventsController(
         ApiResponse(responseCode = "401", description = "Нет заголовка X-User-Id (UNAUTHENTICATED)"),
         ApiResponse(
             responseCode = "404",
-            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
-                "или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована (GAME_NOT_FOUND)",
         ),
     )
     @GetMapping(RoomEventsApi.PATH, produces = [MediaType.TEXT_EVENT_STREAM_VALUE])

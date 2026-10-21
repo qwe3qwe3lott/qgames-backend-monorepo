@@ -30,9 +30,9 @@ management:
 qgames:
   game:
     catalog:
-      # Как часто отменять партии и удалять комнаты принудительно отключённых игр (ForceDisabledGameCleanupJob).
-      force-disabled-cleanup-interval: 1m
-      force-disabled-cleanup-enabled: true
+      # Как часто отменять партии и удалять комнаты неопубликованных игр (NotPublishedGameCleanupJob).
+      not-published-cleanup-interval: 1m
+      not-published-cleanup-enabled: true
     room:
       # Комната без присутствующих участников удаляется, когда пустует дольше этого времени (EmptyRoomCleanupJob).
       # Отсутствующие игроки идущей партии комнату не держат: партия при удалении отменяется.

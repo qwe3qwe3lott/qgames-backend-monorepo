@@ -47,9 +47,9 @@ interface PublicGameRoomApi {
             "Ссылку на комнату (её id) можно отправить другим игрокам. В ответе комната ещё пустая (members пустой, " +
             "ownerId = null): создатель входит в неё игроком и становится владельцем, подключившись к потоку событий " +
             "комнаты в течение 15 с; позже владельцем станет первый вошедший. " +
-            "Игра должна быть доступна (PUBLISHED или HIDDEN): это проверяется до настроек. Границы настроек и " +
-            "значения по умолчанию — в параметрах игры (GET /api/games/{gameCode}). Ошибки настроек отдаются по полям " +
-            "тела (например, settings.gameSettings.rounds), как у валидации запроса.",
+            "Игра должна быть доступна (опубликована или скрыта из каталога): это проверяется до настроек. " +
+            "Границы настроек и значения по умолчанию — в параметрах игры (GET /api/games/{gameCode}). Ошибки " +
+            "настроек отдаются по полям тела (например, settings.gameSettings.rounds), как у валидации запроса.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Комната создана"),
@@ -60,11 +60,7 @@ interface PublicGameRoomApi {
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND)",
-        ),
-        ApiResponse(
-            responseCode = "409",
-            description = "Игра временно недоступна (GAME_UNAVAILABLE)",
+            description = "Неизвестный код игры или игра не опубликована (GAME_NOT_FOUND)",
         ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
@@ -94,7 +90,7 @@ interface PublicGameRoomApi {
         ),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND), " +
+            description = "Неизвестный код игры, игра не опубликована (GAME_NOT_FOUND), " +
                 "комнаты нет (ROOM_NOT_FOUND)",
         ),
         ApiResponse(
@@ -118,8 +114,7 @@ interface PublicGameRoomApi {
             "moveOptions его игрока в состоянии партии. Код игры должен совпадать с игрой комнаты. Ходить может только " +
             "игрок партии, находящийся в комнате. Ход проверяется по текущему состоянию партии. Ответ без тела: " +
             "изменения (ход, очерёдность, варианты ходов, таймер, конец партии) приходят событиями потока партии. Когда " +
-            "партия заканчивается, комната возвращается в ожидание. Идущая партия продолжается, даже если игра стала " +
-            "временно недоступной.",
+            "партия заканчивается, комната возвращается в ожидание.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "204", description = "Ход принят"),
@@ -134,7 +129,7 @@ interface PublicGameRoomApi {
         ),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND), " +
+            description = "Неизвестный код игры, игра не опубликована (GAME_NOT_FOUND), " +
                 "комнаты нет (ROOM_NOT_FOUND)",
         ),
         ApiResponse(
@@ -190,7 +185,7 @@ interface PublicGameRoomApi {
         ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND), " +
+            description = "Неизвестный код игры, игра не опубликована (GAME_NOT_FOUND), " +
                 "комнаты нет (ROOM_NOT_FOUND), партии нет в этой комнате (SESSION_NOT_FOUND)",
         ),
         ApiResponse(responseCode = "409", description = "Комната другой игры (GAME_TYPE_MISMATCH)"),

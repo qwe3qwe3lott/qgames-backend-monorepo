@@ -9,7 +9,6 @@ import site.qgames.game.BaseIntegrationTest
 import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.game.GameDetailsResponse
 import site.qgames.game.gatewayapi.dto.game.GameListResponse
-import site.qgames.game.gatewayapi.dto.game.GamePublishStatus
 import site.qgames.game.gatewayapi.dto.game.GameRulesDto
 import site.qgames.game.gatewayapi.dto.game.GameSummaryDto
 import site.qgames.game.gatewayapi.dto.game.TimeControlLimitsDto
@@ -30,10 +29,8 @@ class GameCatalogScenariosTest : BaseIntegrationTest() {
     @ParameterizedTest(name = "{0}")
     @CsvSource(
         "PUBLISHED, true",
-        "DISABLED, true",
         "HIDDEN, false",
         "NOT_PUBLISHED, false",
-        "FORCE_DISABLED, false",
     )
     fun `catalog shows the game depending on its publish status`(status: String, listed: Boolean) {
         setPublishStatus("nothing", status)
@@ -42,7 +39,7 @@ class GameCatalogScenariosTest : BaseIntegrationTest() {
 
         // Каркассон не опубликован и в каталог не попадает.
         if (listed) {
-            val nothing = GameSummaryDto(GameCode.NOTHING, NOTHING_TITLE, NOTHING_DESCRIPTION, GamePublishStatus.valueOf(status))
+            val nothing = GameSummaryDto(GameCode.NOTHING, NOTHING_TITLE, NOTHING_DESCRIPTION)
             assertThat(games).containsExactly(nothing)
         } else {
             assertThat(games).isEmpty()
@@ -72,7 +69,6 @@ class GameCatalogScenariosTest : BaseIntegrationTest() {
                 code = GameCode.NOTHING,
                 title = NOTHING_TITLE,
                 description = NOTHING_DESCRIPTION,
-                publishStatus = GamePublishStatus.PUBLISHED,
                 rules = GameRulesDto(
                     minPlayers = 1,
                     maxPlayers = 4,
@@ -85,13 +81,14 @@ class GameCatalogScenariosTest : BaseIntegrationTest() {
     }
 
     @ParameterizedTest(name = "{0}")
-    @CsvSource("PUBLISHED", "HIDDEN", "DISABLED")
+    @CsvSource("PUBLISHED", "HIDDEN")
     fun `game details are available for an exposed game`(status: String) {
         setPublishStatus("nothing", status)
 
         call(HttpMethod.GET, "/api/games/nothing", null).andExpect {
             status { isOk() }
-            jsonPath("$.publishStatus") { value(status) }
+            jsonPath("$.code") { value("nothing") }
+            jsonPath("$.publishStatus") { doesNotExist() }
             jsonPath("$.rules.maxPlayers") { value(4) }
         }
     }
@@ -101,7 +98,6 @@ class GameCatalogScenariosTest : BaseIntegrationTest() {
         "chess, ",
         "NOTHING, ",
         "nothing, NOT_PUBLISHED",
-        "nothing, FORCE_DISABLED",
         "carcassonne, ",
     )
     fun `game that is unknown or not exposed is not found`(code: String, status: String?) {

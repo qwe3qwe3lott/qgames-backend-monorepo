@@ -55,7 +55,7 @@ class RoomSessionRepository(
 
     /**
      * Идущие партии с идущим таймером, у которых время хода истекло к [now], — самые просроченные первыми. Партии
-     * принудительно отключённых игр (FORCE_DISABLED) пропускаются. Без блокировок.
+     * неопубликованных игр (NOT_PUBLISHED) пропускаются. Без блокировок.
      */
     fun findIdsWithExpiredMove(now: Instant, limit: Int): List<UUID> =
         roomSessionPostgresqlRepository.findIdsWithExpiredMove(now, limit)

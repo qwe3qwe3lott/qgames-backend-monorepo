@@ -26,22 +26,7 @@ object GameCodes {
     const val CARCASSONNE = "carcassonne"
 }
 
-/**
- * Статус публикации игры. Неопубликованные (NOT_PUBLISHED) и принудительно отключённые (FORCE_DISABLED) игры наружу
- * не выдаются (GAME_NOT_FOUND).
- */
-enum class GamePublishStatus {
-    /** Доступна: можно создавать комнаты и начинать партии. */
-    PUBLISHED,
-
-    /** Временно недоступна: новые комнаты и партии запрещены (GAME_UNAVAILABLE), идущие партии продолжаются. */
-    DISABLED,
-
-    /** Скрыта из каталога, но доступна по прямой ссылке. */
-    HIDDEN,
-}
-
-/** Каталог игр в порядке показа, без скрытых (HIDDEN). */
+/** Каталог игр в порядке показа, без скрытых (HIDDEN) и неопубликованных (NOT_PUBLISHED). */
 data class GameListResponse(
     val games: List<GameSummaryDto>,
 )
@@ -51,7 +36,6 @@ data class GameSummaryDto(
     val code: GameCode,
     val title: String,
     val description: String,
-    val publishStatus: GamePublishStatus,
 )
 
 /** Игра целиком: описание из каталога и параметры правил для формы настроек комнаты. */
@@ -59,7 +43,6 @@ data class GameDetailsResponse(
     val code: GameCode,
     val title: String,
     val description: String,
-    val publishStatus: GamePublishStatus,
     val rules: GameRulesDto,
 )
 

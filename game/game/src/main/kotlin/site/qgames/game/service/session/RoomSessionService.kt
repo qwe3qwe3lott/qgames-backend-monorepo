@@ -63,7 +63,7 @@ class RoomSessionService(
     @Transactional
     fun start(userId: UUID, roomId: UUID): RoomDetailsModel {
         val room = lockAsOwner(userId, roomId)
-        gameService.checkPlayable(room.gameCode)
+        gameService.checkAccessible(room.gameCode)
         if (room.status != RoomStatus.WAITING) {
             throw RoomErrors.roomNotWaiting()
         }
@@ -243,7 +243,7 @@ class RoomSessionService(
         return room
     }
 
-    /** Комната под блокировкой. С комнатой принудительно отключённой игры работать нельзя (404 GAME_NOT_FOUND). */
+    /** Комната под блокировкой. С комнатой неопубликованной игры работать нельзя (404 GAME_NOT_FOUND). */
     private fun lock(roomId: UUID): RoomModel {
         val room = roomRepository.lockById(roomId) ?: throw RoomErrors.roomNotFound()
         gameService.checkAccessible(room.gameCode)

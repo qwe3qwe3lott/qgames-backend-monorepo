@@ -27,8 +27,8 @@ interface GameApi {
 
     @Operation(
         summary = "Каталог игр",
-        description = "Игры в порядке показа с названием, описанием и статусом публикации. Скрытые (HIDDEN), " +
-            "неопубликованные и принудительно отключённые игры в список не попадают.",
+        description = "Игры в порядке показа с кодом, названием и описанием. Скрытые (HIDDEN) " +
+            "и неопубликованные игры в список не попадают.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Каталог игр"),
@@ -46,7 +46,7 @@ interface GameApi {
         ApiResponse(responseCode = "200", description = "Игра"),
         ApiResponse(
             responseCode = "404",
-            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND)",
+            description = "Неизвестный код игры или игра не опубликована (GAME_NOT_FOUND)",
         ),
     )
     @GetExchange("/{gameCode}")

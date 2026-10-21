@@ -10,12 +10,12 @@ data class GameProperties(
     val session: Session,
 ) {
     data class Catalog(
-        /** Как часто ForceDisabledGameCleanupJob ищет комнаты принудительно отключённых игр. */
-        val forceDisabledCleanupInterval: Duration,
-        /** Запуск ForceDisabledGameCleanupJob по расписанию. В тестах выключен: job вызывается напрямую. */
-        val forceDisabledCleanupEnabled: Boolean = true,
+        /** Как часто NotPublishedGameCleanupJob ищет комнаты неопубликованных игр. */
+        val notPublishedCleanupInterval: Duration,
+        /** Запуск NotPublishedGameCleanupJob по расписанию. В тестах выключен: job вызывается напрямую. */
+        val notPublishedCleanupEnabled: Boolean = true,
         /** Сколько комнат удаляется за один запуск, остальные — в следующих. */
-        val forceDisabledCleanupBatchSize: Int = 100,
+        val notPublishedCleanupBatchSize: Int = 100,
     )
 
     data class Room(

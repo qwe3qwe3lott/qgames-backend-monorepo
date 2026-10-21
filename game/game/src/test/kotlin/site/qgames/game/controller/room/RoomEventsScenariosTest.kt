@@ -14,7 +14,7 @@ import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomRole
 import site.qgames.game.gatewayapi.dto.room.RoomSettingsChangedDto
 import site.qgames.game.gatewayapi.dto.room.RoomUsersDto
-import site.qgames.game.job.game.ForceDisabledGameCleanupJob
+import site.qgames.game.job.game.NotPublishedGameCleanupJob
 import site.qgames.game.job.room.RoomConnectionHeartbeatJob
 import site.qgames.game.model.room.RoomEventType
 import site.qgames.game.publisher.room.RoomEventPublisher
@@ -39,7 +39,7 @@ class RoomEventsScenariosTest : BaseIntegrationTest() {
     private lateinit var transactionTemplate: TransactionTemplate
 
     @Autowired
-    private lateinit var forceDisabledGameCleanupJob: ForceDisabledGameCleanupJob
+    private lateinit var notPublishedGameCleanupJob: NotPublishedGameCleanupJob
 
     @Autowired
     private lateinit var roomConnectionHeartbeatJob: RoomConnectionHeartbeatJob
@@ -161,9 +161,9 @@ class RoomEventsScenariosTest : BaseIntegrationTest() {
         val roomId = roomWith(ALICE, BOB)
         val stream = openStream(BOB, roomId)
         awaitEvents(stream, 1)
-        setPublishStatus("nothing", "FORCE_DISABLED")
+        setPublishStatus("nothing", "NOT_PUBLISHED")
 
-        forceDisabledGameCleanupJob.run()
+        notPublishedGameCleanupJob.run()
 
         assertThat(awaitEvents(stream, 2).map { it.first }).containsExactly("snapshot", "room-deleted")
         awaitUntil("streams are closed") { roomStreamRegistry.subscribers(roomId).isEmpty() }

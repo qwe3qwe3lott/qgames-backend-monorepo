@@ -35,14 +35,12 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(strings(variantSchema.path("required"))).contains("gameCode", variantField)
     }
 
-    /** Код игры — строчные коды (`@JsonValue`), а не имена значений enum; NOT_PUBLISHED и FORCE_DISABLED наружу не выходят. */
+    /** Код игры — строчные коды (`@JsonValue`), а не имена значений enum. */
     @ParameterizedTest(name = "{0}.{1}")
     @CsvSource(
         "RoomResponse, gameCode, nothing|carcassonne",
         "GameSummaryDto, code, nothing|carcassonne",
         "GameDetailsResponse, code, nothing|carcassonne",
-        "GameSummaryDto, publishStatus, PUBLISHED|DISABLED|HIDDEN",
-        "GameDetailsResponse, publishStatus, PUBLISHED|DISABLED|HIDDEN",
     )
     fun `game enums expose their public values`(schema: String, property: String, values: String) {
         val node = apiDocs().path("components").path("schemas").path(schema).path("properties").path(property)
@@ -55,7 +53,11 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         val docs = apiDocs()
 
         val details = docs.path("components").path("schemas").path("GameDetailsResponse")
-        assertThat(strings(details.path("required"))).contains("code", "title", "description", "publishStatus", "rules")
+        assertThat(strings(details.path("required"))).contains("code", "title", "description", "rules")
+        // Статус публикации наружу не выходит: в каталоге и по ссылке — только доступные игры.
+        assertThat(details.path("properties").has("publishStatus")).isFalse()
+        assertThat(docs.path("components").path("schemas").path("GameSummaryDto").path("properties").has("publishStatus")).isFalse()
+        assertThat(docs.path("components").path("schemas").has("GamePublishStatus")).isFalse()
         val parameter = docs.path("paths").path("/api/games/{gameCode}").path("get").path("parameters").get(0)
         assertThat(strings(parameter.path("schema").path("enum"))).containsExactly("nothing", "carcassonne")
     }

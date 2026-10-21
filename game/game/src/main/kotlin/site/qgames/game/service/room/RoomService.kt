@@ -69,7 +69,7 @@ class RoomService(
      */
     @Transactional
     fun create(userId: UUID, gameCode: GameCode, settings: RoomSettingsModel): RoomDetailsModel {
-        gameService.checkPlayable(gameCode)
+        gameService.checkAccessible(gameCode)
         roomSettingsValidator.check(gameCode, settings, fieldPrefix = "settings.")
         val now = clock.instant()
         val room = roomRepository.insert(
@@ -207,17 +207,17 @@ class RoomService(
     }
 
     /**
-     * Удаляет комнату принудительно отключённой игры: отменяет идущую партию и удаляет комнату вместе с участниками
+     * Удаляет комнату неопубликованной игры (NOT_PUBLISHED): отменяет идущую партию и удаляет комнату вместе с участниками
      * и историей партий (каскадно). Комната берётся под блокировку без ожидания: если её держит другой запрос, она
      * обработается в следующий раз. Возвращает true, если комната удалена. Журнал партии удаляется вместе с ней,
      * поэтому потоки партии закроются (диспетчер не найдёт объявленных событий), а клиенты получат 404 при
      * переподключении.
      */
     @Transactional
-    fun deleteOfForceDisabledGame(roomId: UUID): Boolean {
+    fun deleteOfNotPublishedGame(roomId: UUID): Boolean {
         val room = roomRepository.lockByIdSkipLocked(roomId) ?: return false
-        // Перепроверка под блокировкой: статус игры могли вернуть.
-        if (!gameService.isForceDisabled(room.gameCode)) {
+        // Перепроверка под блокировкой: игру могли опубликовать снова.
+        if (!gameService.isNotPublished(room.gameCode)) {
             return false
         }
         delete(room)
@@ -227,7 +227,7 @@ class RoomService(
     /**
      * Удаляет комнату, если она пустует (нет присутствующих участников) с момента раньше [threshold]. Идущая партия,
      * в которой остались только отсутствующие игроки, отменяется, журнал удаляется вместе с комнатой (как в
-     * [deleteOfForceDisabledGame]). Комната берётся под блокировку без ожидания: если её держит другой запрос, она
+     * [deleteOfNotPublishedGame]). Комната берётся под блокировку без ожидания: если её держит другой запрос, она
      * обработается в следующий раз. Возвращает true, если комната удалена.
      */
     @Transactional
@@ -365,7 +365,7 @@ class RoomService(
 
     private fun maxPlayers(room: RoomModel) = gameRegistry.rules(room.gameCode).maxPlayers
 
-    /** Комната под блокировкой. С комнатой принудительно отключённой игры работать нельзя (404 GAME_NOT_FOUND). */
+    /** Комната под блокировкой. С комнатой неопубликованной игры работать нельзя (404 GAME_NOT_FOUND). */
     private fun lock(roomId: UUID): RoomModel {
         val room = roomRepository.lockById(roomId) ?: throw RoomErrors.roomNotFound()
         gameService.checkAccessible(room.gameCode)

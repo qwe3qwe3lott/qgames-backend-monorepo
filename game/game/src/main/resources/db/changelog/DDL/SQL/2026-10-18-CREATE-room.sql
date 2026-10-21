@@ -26,7 +26,7 @@ CREATE TABLE room
 );
 
 CREATE INDEX room_empty_since_idx ON room (empty_since) WHERE empty_since IS NOT NULL;
--- Комнаты игры (ForceDisabledGameCleanupJob).
+-- Комнаты игры (NotPublishedGameCleanupJob).
 CREATE INDEX room_game_code_idx ON room (game_code);
 -- Поиск истёкших окон владения (RoomOwnerGraceJob).
 CREATE INDEX room_owner_grace_deadline_idx ON room (owner_grace_deadline) WHERE owner_grace_deadline IS NOT NULL;

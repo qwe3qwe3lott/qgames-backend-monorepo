@@ -1,9 +1,9 @@
 qgames:
   game:
-    # Шедулеры в тестах выключены: ForceDisabledGameCleanupJob, EmptyRoomCleanupJob, RoomOwnerGraceJob и MoveTimeoutJob
+    # Шедулеры в тестах выключены: NotPublishedGameCleanupJob, EmptyRoomCleanupJob, RoomOwnerGraceJob и MoveTimeoutJob
     # вызываются напрямую.
     catalog:
-      force-disabled-cleanup-enabled: false
+      not-published-cleanup-enabled: false
     room:
       cleanup-enabled: false
       owner-grace-enabled: false

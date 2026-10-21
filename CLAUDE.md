@@ -263,22 +263,20 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 
 - Игры объявляются в таблице `game` (`code`, `title`, `description`, `sort_order`, `publish_status`) DML-миграциями (`<дата>-INSERT-game`). `room.game_code` и `room_session.game_code` ссылаются на `game(code)`. Статус позже будет менять админка.
 - Набор кодов в таблице совпадает с enum `GameCode`, модуль правил обязателен для всех игр, кроме `NOT_PUBLISHED`. Это проверяет `GameCatalogVerifier` при старте `game` (после миграций); при расхождении сервис не стартует.
-- **Статусы публикации** (`publish_status`, CHECK в DDL). Наружу (публичный `GamePublishStatus`) выходят только `PUBLISHED`, `DISABLED`, `HIDDEN`, поэтому `rules` в `GameDetailsResponse` всегда есть:
+- **Статусы публикации** (`publish_status`, CHECK в DDL) — три. Наружу статус не выходит (в публичных ответах поля нет): в каталоге и по прямой ссылке видны только доступные игры, поэтому `rules` в `GameDetailsResponse` всегда есть:
 
-  | Статус | В `GET /api/games` | `GET /api/games/{gameCode}` | Новые комнаты и партии | Существующие комнаты и партии |
-  |---|---|---|---|---|
-  | `PUBLISHED` | да | да | да | работают |
-  | `HIDDEN` | нет | да (доступ по прямой ссылке) | да | работают |
-  | `DISABLED` | да (фронт: «Временно недоступна») | да | 409 `GAME_UNAVAILABLE` | работают, идущие партии продолжаются |
-  | `NOT_PUBLISHED` | нет | 404 `GAME_NOT_FOUND` | 404 `GAME_NOT_FOUND` | все ручки комнат — 404 `GAME_NOT_FOUND`; комнаты не удаляются. Игра в разработке, модуля правил может не быть |
-  | `FORCE_DISABLED` | нет | 404 `GAME_NOT_FOUND` | 404 `GAME_NOT_FOUND` | все ручки комнат — 404 `GAME_NOT_FOUND`; `ForceDisabledGameCleanupJob` отменяет партии и удаляет комнаты |
+  | Статус | В `GET /api/games` | `GET /api/games/{gameCode}`, комнаты, партии | Модуль правил |
+  |---|---|---|---|
+  | `PUBLISHED` | да | работают | обязателен |
+  | `HIDDEN` | нет | работают (доступ по прямой ссылке) | обязателен |
+  | `NOT_PUBLISHED` | нет | 404 `GAME_NOT_FOUND`; `NotPublishedGameCleanupJob` отменяет идущие партии и удаляет комнаты | может отсутствовать |
 
-- Доступность игры проверяет `GameService`: `checkPlayable` — при создании комнаты (до проверки настроек) и старте партии, `checkAccessible` — во всех остальных операциях с комнатой, по игре комнаты под её блокировкой.
-- **`ForceDisabledGameCleanupJob`** (ShedLock, `qgames.game.catalog.force-disabled-cleanup-enabled`, интервал 1m): пачкой находит комнаты `FORCE_DISABLED`-игр, каждую — `room FOR UPDATE SKIP LOCKED` с перепроверкой статуса, отменяет идущую партию и удаляет комнату (участники и партии — каскадно). `MoveTimeoutJob` и `RoomOwnerGraceJob` комнаты `FORCE_DISABLED`-игр пропускают (фильтр в SQL), комнаты `NOT_PUBLISHED`-игр — нет.
+  `NOT_PUBLISHED` — игра в разработке или отключена; отключение игры — штатный перевод в `NOT_PUBLISHED`.
+- Доступность игры проверяет `GameService.checkAccessible` — при создании комнаты (до проверки настроек), старте партии и во всех остальных операциях с комнатой, по игре комнаты под её блокировкой.
+- **`NotPublishedGameCleanupJob`** (ShedLock, `qgames.game.catalog.not-published-cleanup-enabled`, интервал 1m): пачкой находит комнаты `NOT_PUBLISHED`-игр, каждую — `room FOR UPDATE SKIP LOCKED` с перепроверкой статуса, отменяет идущую партию и удаляет комнату (участники и партии — каскадно). `MoveTimeoutJob` и `RoomOwnerGraceJob` комнаты `NOT_PUBLISHED`-игр пропускают (фильтр в SQL).
 - Решить при реализации управления каталогом игр в админке:
-  - запрет перевода игры обратно в `NOT_PUBLISHED`;
-  - запрет публикации (любой статус, кроме `NOT_PUBLISHED`) игры без модуля правил — сейчас такая игра наружу не выдаётся (404), но статус это не запрещает;
-  - завершение партий и удаление комнат при смене статуса вызовом из админки и судьба периодического `ForceDisabledGameCleanupJob`.
+  - перевод в `PUBLISHED`/`HIDDEN` разрешён только игре с модулем правил — проверка в ручке смены статуса (сейчас статус меняется миграциями, а проверяет `GameCatalogVerifier`; игра без модуля правил наружу и так не выдаётся — 404);
+  - завершение партий и удаление комнат при смене статуса вызовом из админки и судьба периодического `NotPublishedGameCleanupJob`.
 
 ### Игровые комнаты (сервис `game`)
 
@@ -306,7 +304,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - только владелец стартует партию, ставит её на паузу и продолжает, отменяет её (комната возвращается в ожидание).
 - **Партии.** В комнате идут несколько партий подряд; после конца или отмены комната снова в WAITING, а последняя партия видна в ответе.
 - **Автоудаление:** комната без присутствующих (подключённых) участников дольше `qgames.game.room.empty-ttl` (30m) удаляется `EmptyRoomCleanupJob` (ShedLock). Отсутствующие игроки партии комнату не держат. Джоб пачкой выбирает id, каждую комнату берёт `FOR UPDATE SKIP LOCKED` с перепроверкой, отменяет идущую партию и удаляет комнату (участники, подключения и партии — каскадно).
-- **Конкурентность:** каждая мутация комнаты, участников и партии идёт под `SELECT … FOR UPDATE` строки `room`. Джобы (`MoveTimeoutJob`, `RoomConnectionCleanupJob`, `RoomOwnerGraceJob`, `EmptyRoomCleanupJob`, `ForceDisabledGameCleanupJob`) берут блокировки в том же порядке: сначала `room` (`FOR UPDATE … SKIP LOCKED`), потом перепроверка под блокировкой.
+- **Конкурентность:** каждая мутация комнаты, участников и партии идёт под `SELECT … FOR UPDATE` строки `room`. Джобы (`MoveTimeoutJob`, `RoomConnectionCleanupJob`, `RoomOwnerGraceJob`, `EmptyRoomCleanupJob`, `NotPublishedGameCleanupJob`) берут блокировки в том же порядке: сначала `room` (`FOR UPDATE … SKIP LOCKED`), потом перепроверка под блокировкой.
 - **Real-time:** изменения комнаты идут по SSE-потоку комнаты, состояние партии — только по потоку партии (§3). В ответе комнаты партия краткая: `session {id, status}`; `session-changed` в потоке комнаты — на старт, конец и отмену партии.
 - Смена ника (`UserProfileListener`) публикует `users-changed` во все комнаты пользователя **без блокировки комнат**: если из-за гонки со снапшотом кто-то не увидит новый ник, это допустимо.
 
@@ -425,7 +423,7 @@ src/main/resources/db/changelog/
 - Миграции — Liquibase (его lock защищает от параллельного запуска).
 - Шедулеры:
   - джобы, которые часто обрабатывают строки по одной (`MoveTimeoutJob`, `RoomConnectionCleanupJob`, `RoomOwnerGraceJob`), работают без ShedLock: id выбираются без блокировки, затем `FOR UPDATE SKIP LOCKED` с перепроверкой, работу делят инстансы;
-  - `EmptyRoomCleanupJob` и `ForceDisabledGameCleanupJob` — с ShedLock и тоже блокируют каждую комнату `FOR UPDATE SKIP LOCKED` с перепроверкой, транзакция на комнату;
+  - `EmptyRoomCleanupJob` и `NotPublishedGameCleanupJob` — с ShedLock и тоже блокируют каждую комнату `FOR UPDATE SKIP LOCKED` с перепроверкой, транзакция на комнату;
   - у каждого джоба свой флаг включения `…-enabled`. В тестах джобы выключены и вызываются напрямую через `run()`.
 - Kafka — consumer groups, идемпотентная обработка.
 - Побочные эффекты (письма, события) — после коммита (`@TransactionalEventListener`) или через outbox. События SSE публикуются `pg_notify` в самой транзакции: Postgres доставляет их только после коммита.
@@ -615,7 +613,9 @@ docker compose down -v                # остановить и удалить �
 
 | Вариант | Почему отклонён | Что вместо |
 |---|---|---|
-| Флаг `disabled` у игры | Нужны разные режимы недоступности: скрыть из списка, временно запретить новые партии, отключить с удалением комнат | `publish_status` (см. §4 «Каталог игр») |
+| Флаг `disabled` у игры | Нужно ещё и скрыть игру из списка, оставив доступ по прямой ссылке | `publish_status` (см. §4 «Каталог игр») |
+| Статусы `DISABLED` (временно запретить новые комнаты и партии, идущие продолжаются) и `FORCE_DISABLED` (отключить с удалением комнат) наряду с `NOT_PUBLISHED` | Решение пользователя: лишние режимы недоступности | Три статуса `PUBLISHED`/`HIDDEN`/`NOT_PUBLISHED`; отключение — перевод в `NOT_PUBLISHED`, комнаты удаляет `NotPublishedGameCleanupJob` |
+| Поле `publishStatus` (публичный `GamePublishStatus`) в ответах каталога и игры, 409 `GAME_UNAVAILABLE` | Решение пользователя: без `DISABLED` наружу выходят только доступные игры, статус фронту не нужен | Поля нет; недоступная игра — 404 `GAME_NOT_FOUND` |
 | Статус `ANNOUNCED` («скоро выйдет») в каталоге | Убран пользователем | Игра в разработке — `NOT_PUBLISHED`, наружу не выдаётся |
 | `gameType` наряду с кодом игры (`GameType.NOTHING` + `nothing`) | Два идентификатора одной сущности, их приходится сопоставлять в каждом маппере и на фронте | Только `gameCode` (enum `GameCode` со строчными кодами), в том числе в дискриминаторе настроек |
 
