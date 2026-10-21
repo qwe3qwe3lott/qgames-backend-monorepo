@@ -8,8 +8,8 @@ import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
-import site.qgames.admingateway.publicapi.dto.admin.AdminResponse
-import site.qgames.admingateway.publicapi.dto.auth.AdminLoginRequest
+import site.qgames.adminauth.gatewayapi.dto.admin.AdminResponse
+import site.qgames.adminauth.gatewayapi.dto.auth.LoginRequest
 
 /**
  * Аутентификация администраторов. Токены в контракт не входят: gateway кладёт их в HttpOnly-куки
@@ -36,7 +36,7 @@ interface PublicAuthApi {
         ApiResponse(responseCode = "503", description = "Сервис аутентификации недоступен (SERVICE_UNAVAILABLE)"),
     )
     @PostExchange("/login")
-    fun login(@Valid @RequestBody request: AdminLoginRequest): AdminResponse
+    fun login(@Valid @RequestBody request: LoginRequest): AdminResponse
 
     @Operation(
         summary = "Обновление сессии",

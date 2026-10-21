@@ -6,20 +6,19 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.client.RestClientResponseException
 import site.qgames.adminauth.gatewayapi.api.AuthApi
+import site.qgames.adminauth.gatewayapi.dto.admin.AdminResponse
 import site.qgames.adminauth.gatewayapi.dto.auth.AuthResponse
+import site.qgames.adminauth.gatewayapi.dto.auth.LoginRequest
 import site.qgames.adminauth.gatewayapi.dto.auth.RefreshTokenRequest
 import site.qgames.admingateway.cookie.AuthCookies
-import site.qgames.admingateway.mapper.admin.toPublic
-import site.qgames.admingateway.mapper.auth.toAdminAuth
 import site.qgames.admingateway.publicapi.api.PublicAuthApi
-import site.qgames.admingateway.publicapi.dto.admin.AdminResponse
-import site.qgames.admingateway.publicapi.dto.auth.AdminLoginRequest
 import site.qgames.common.exception.exception.UnauthorizedException
 
 /**
- * Публичные эндпоинты аутентификации администраторов. Токены из admin-auth уходят клиенту только в HttpOnly-куках,
- * в теле ответа — данные администратора. Запрос и ответ — request-scoped прокси, потому что контракт
- * [PublicAuthApi] не содержит servlet-параметров.
+ * Публичные эндпоинты аутентификации администраторов. Запросы и ответы — DTO контракта admin-auth, они передаются как
+ * есть. Токены из admin-auth ([AuthResponse.tokens]) уходят клиенту только в HttpOnly-куках, в теле ответа — данные
+ * администратора. Запрос и ответ — request-scoped прокси, потому что контракт [PublicAuthApi] не содержит
+ * servlet-параметров.
  */
 @RestController
 class AuthGatewayController(
@@ -29,8 +28,7 @@ class AuthGatewayController(
     private val httpResponse: HttpServletResponse,
 ) : PublicAuthApi {
 
-    override fun login(request: AdminLoginRequest): AdminResponse =
-        startSession(authApi.login(request.toAdminAuth()))
+    override fun login(request: LoginRequest): AdminResponse = startSession(authApi.login(request))
 
     override fun refresh(): AdminResponse {
         val refreshToken = authCookies.refreshToken(httpRequest) ?: run {
@@ -55,6 +53,6 @@ class AuthGatewayController(
 
     private fun startSession(auth: AuthResponse): AdminResponse {
         authCookies.write(httpResponse, auth.tokens)
-        return auth.admin.toPublic()
+        return auth.admin
     }
 }

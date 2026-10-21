@@ -18,7 +18,6 @@ import org.springframework.test.web.servlet.post
 import site.qgames.adminauth.gatewayapi.dto.auth.LoginRequest
 import site.qgames.adminauth.gatewayapi.dto.auth.RefreshTokenRequest
 import site.qgames.admingateway.BaseIntegrationTest
-import site.qgames.admingateway.publicapi.dto.auth.AdminLoginRequest
 import site.qgames.common.web.header.QgamesHeaders
 import java.time.Instant
 import java.util.stream.Stream
@@ -32,7 +31,7 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
 
         val result = mockMvc.post("/api/auth/login") {
             contentType = MediaType.APPLICATION_JSON
-            content = json(AdminLoginRequest("root", "correct-horse-1"))
+            content = json(LoginRequest("root", "correct-horse-1"))
             // Даже валидная кука не должна превращаться в X-User-Id на эндпоинтах аутентификации.
             cookie(Cookie(ACCESS_COOKIE, accessToken()))
         }.andExpect {
@@ -70,7 +69,7 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
 
         val result = mockMvc.post("/api/auth/login") {
             contentType = MediaType.APPLICATION_JSON
-            content = json(AdminLoginRequest("root", "wrong-password"))
+            content = json(LoginRequest("root", "wrong-password"))
         }.andExpect {
             status { isEqualTo(status) }
             content { contentType(MediaType.APPLICATION_PROBLEM_JSON) }
@@ -167,6 +166,8 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
         adminAuth.stubFor(post(urlEqualTo(path)).willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)))
 
         mockMvc.post(path) {
+            // Клиент ждёт JSON, а ошибка всё равно приходит как ProblemDetail.
+            accept = MediaType.APPLICATION_JSON
             requestBody?.let {
                 contentType = MediaType.APPLICATION_JSON
                 content = json(it)
@@ -174,6 +175,7 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
             refreshCookie?.let { cookie(it) }
         }.andExpect {
             status { isServiceUnavailable() }
+            content { contentTypeCompatibleWith(MediaType.APPLICATION_PROBLEM_JSON) }
             jsonPath("$.code") { value("SERVICE_UNAVAILABLE") }
         }
         adminAuth.verify(1, postRequestedFor(urlEqualTo(path)))
@@ -204,7 +206,7 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
 
         @JvmStatic
         fun unreachableEndpoints(): Stream<Arguments> = Stream.of(
-            arguments("/api/auth/login", AdminLoginRequest("root", "correct-horse-1"), null),
+            arguments("/api/auth/login", LoginRequest("root", "correct-horse-1"), null),
             arguments("/api/auth/refresh", null, Cookie(REFRESH_COOKIE, "refresh-token-1")),
             arguments("/api/auth/logout", null, Cookie(REFRESH_COOKIE, "refresh-token-1")),
         )

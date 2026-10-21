@@ -14,8 +14,8 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.options
 import org.springframework.test.web.servlet.post
+import site.qgames.adminauth.gatewayapi.dto.auth.LoginRequest
 import site.qgames.admingateway.BaseIntegrationTest
-import site.qgames.admingateway.publicapi.dto.auth.AdminLoginRequest
 
 /**
  * Разрешённый origin берётся из application.yml по умолчанию: только админка, http://localhost:3001.
@@ -60,7 +60,7 @@ class CorsScenariosTest : BaseIntegrationTest() {
         val result = mockMvc.post("/api/auth/login") {
             header(HttpHeaders.ORIGIN, origin)
             contentType = MediaType.APPLICATION_JSON
-            content = json(AdminLoginRequest("root", "correct-horse-1"))
+            content = json(LoginRequest("root", "correct-horse-1"))
         }
 
         if (allowed) {

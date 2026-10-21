@@ -6,8 +6,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.web.service.annotation.GetExchange
 import org.springframework.web.service.annotation.HttpExchange
-import site.qgames.admingateway.publicapi.dto.admin.AdminListResponse
-import site.qgames.admingateway.publicapi.dto.admin.AdminResponse
+import site.qgames.adminauth.gatewayapi.dto.admin.AdminListResponse
+import site.qgames.adminauth.gatewayapi.dto.admin.AdminResponse
 
 /**
  * Администраторы. Требует аутентификации (access-токен в куке или заголовке Authorization).

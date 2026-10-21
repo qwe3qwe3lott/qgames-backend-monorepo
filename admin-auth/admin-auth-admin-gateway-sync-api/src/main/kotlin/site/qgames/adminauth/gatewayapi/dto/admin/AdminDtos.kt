@@ -5,6 +5,7 @@ import java.util.UUID
 
 data class AdminResponse(
     val id: UUID,
+    /** Логин для входа, уникален. */
     val login: String,
     val createdAt: Instant,
 )

@@ -30,7 +30,7 @@
 
 **Админ-панель** (`admin-gateway` + `admin-auth`):
 - админка — CSR SPA на `http://localhost:3001`, в проде — отдельный поддомен того же домена (same-site). Браузер ходит в admin-gateway напрямую: CORS с `allowCredentials` и точным origin админки (§5);
-- соглашения те же, что у user-gateway (§3): REST/JSON, ошибки — ProblemDetail с `code`, Swagger на русском, собственные DTO в `admin-gateway-public-sync-api`, OpenAPI на `/v3/api-docs` (permitAll). Фронт генерирует по нему отдельный клиент Orval;
+- соглашения те же, что у user-gateway (§3): REST/JSON, ошибки — ProblemDetail с `code`, Swagger на русском, без дублей DTO: `admin-gateway-public-sync-api` отдаёт DTO `admin-auth-admin-gateway-sync-api` (§3), OpenAPI на `/v3/api-docs` (permitAll). Фронт генерирует по нему отдельный клиент Orval;
 - пути `/api/auth/*` (`login`, `refresh`, `logout`) и 401 `UNAUTHENTICATED` совпадают с user-gateway: на этом держится общий fetch-mutator фронта;
 - текущий админ — `GET /api/admins/me` (по нему фронт определяет, вошёл ли админ), список админов — `GET /api/admins`;
 - ролей нет, все админы равны;
@@ -173,8 +173,8 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 ## 3. Взаимодействие
 
 - **Фронт ↔ gateway:** REST/JSON. Ошибки — `ProblemDetail` с машиночитаемым полем `code`. Контракт — `<gateway>-public-sync-api` (`user-gateway-public-sync-api`, `admin-gateway-public-sync-api`). Gateway валидирует публичные запросы сам и не вызывает сервисы на заведомо невалидных данных.
-  - **Простое проксирование — без дублей DTO:** если gateway только пересылает запрос и ответ, публичный интерфейс использует DTO из `<svc>-user-gateway-sync-api` проксируемого сервиса (`user-gateway-public-sync-api` зависит от них через `api`), без собственных копий и маппинга. Так сделаны все ручки gateway: каталог игр, комнаты, SSE-потоки, auth и users. Иначе одноимённые классы дают коллизию схем в OpenAPI: swagger-core называет схему по простому имени класса.
-  - Собственные DTO и маппинг (`mapper/<feature>/`) — только когда gateway меняет форму данных. Если gateway лишь добавляет побочный эффект, используются DTO сервиса: auth ставит куки из `AuthResponse.tokens` и отдаёт `auth.user`, а внутренние DTO сессии (`AuthResponse`, `TokenPair`, `RefreshTokenRequest`) в публичный контракт не попадают (проверяет `OpenApiContractScenariosTest`).
+  - **Простое проксирование — без дублей DTO:** если gateway только пересылает запрос и ответ, публичный интерфейс использует DTO из `<svc>-<gateway>-sync-api` проксируемого сервиса (`<gateway>-public-sync-api` зависит от них через `api`), без собственных копий и маппинга. Так сделаны все ручки обоих gateway: в user-gateway — каталог игр, комнаты, SSE-потоки, auth и users; в admin-gateway — auth и admins. Иначе одноимённые классы дают коллизию схем в OpenAPI: swagger-core называет схему по простому имени класса.
+  - Собственные DTO и маппинг (`mapper/<feature>/`) — только когда gateway меняет форму данных. Если gateway лишь добавляет побочный эффект, используются DTO сервиса: auth ставит куки из `AuthResponse.tokens` и отдаёт `auth.user` (в admin-gateway — `auth.admin`), а внутренние DTO сессии (`AuthResponse`, `TokenPair`, `RefreshTokenRequest`) в публичный контракт не попадают (проверяет `OpenApiContractScenariosTest`).
 - **Документация API (Swagger):** у каждой ручки в `*-sync-api` интерфейсе обязательно есть:
   - `@Operation(summary, description)` на русском: что делает метод, зачем он нужен и какие у него особенности;
   - `@ApiResponses` со всеми реально возможными статусами (200, 400, 401, …). Описания на русском, у ошибок в описании указаны значения `code` (например, «Неверный email или пароль (INVALID_CREDENTIALS)»);
