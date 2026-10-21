@@ -229,6 +229,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 ## 4. Данные
 
 - **PostgreSQL 18, отдельная БД и пользователь на каждый сервис.** Чужие БД/таблицы не читаем никогда.
+- Роли и БД сервисов создаёт идемпотентный `docker/postgres/init.sql`. Его выполняет одноразовый `postgres-init` в docker-compose на каждом `up`, поэтому новый сервис получает БД на существующем томе без пересоздания. Для нового сервиса с БД нужны блок в скрипте, пароль (`-v <роль>_password=…`) в `postgres-init` и `depends_on: postgres-init` (`service_completed_successfully`) у сервиса.
 - Нужны данные другого сервиса → **Transactional Outbox + Debezium Server** (Outbox Event Router) → read model у потребителя. Payload — Protobuf из `*-internal-async-api`. Таблицы сервиса наружу не публикуются (сырой CDC таблиц запрещён). Подробности — в подразделе «CDC».
 - **Доступ к данным без ORM:** Spring Data JDBC (`CrudRepository`) для простого CRUD, сложное — `@Query` с SQL или `JdbcClient`. JPA/Hibernate запрещены.
 - **Именование:** таблицы в единственном числе, snake_case (`user_identity`, `refresh_token`). Зарезервированные слова — в двойных кавычках (`"user"`), в своих SQL тоже.
@@ -459,10 +460,10 @@ docker compose down -v                # остановить и удалить �
 ```
 
 - Swagger gateway'ев: user-gateway — http://localhost:8080/swagger-ui.html, admin-gateway — http://localhost:8083/swagger-ui.html (сервисы: 8081, 8082, 8084).
-- Вход в админку на стенде: `admin` / `admin`. БД `admin_auth` создаёт init-скрипт postgres, а он выполняется только на пустом томе: на старом стенде сначала `docker compose down -v`.
+- Вход в админку на стенде: `admin` / `admin`.
 - Mailpit (письма с кодами): http://localhost:8025
 - Google-вход: заполнить `GOOGLE_CLIENT_IDS` в `.env` (см. `.env.example`).
-- Запуск сервиса из IDE: нужны `docker compose up -d postgres mailpit redpanda redpanda-init` (и `debezium-user-auth`, если нужен CDC); значения по умолчанию в `application.yml` смотрят на localhost, Redpanda снаружи — `localhost:19092`.
+- Запуск сервиса из IDE: нужны `docker compose up -d postgres postgres-init mailpit redpanda redpanda-init` (и `debezium-user-auth`, если нужен CDC); значения по умолчанию в `application.yml` смотрят на localhost, Redpanda снаружи — `localhost:19092`.
 - Посмотреть CDC-события: `docker compose exec redpanda rpk topic consume outbox.event.user-auth.user-profile`.
 - Образы: один общий multi-stage `docker/service.Dockerfile`, модуль задаётся аргументом `SERVICE`. Контекст сборки — корень репозитория.
 
@@ -553,6 +554,7 @@ docker compose down -v                # остановить и удалить �
 | Класс на каждую бизнес-ошибку | Десятки мелких классов без пользы | Каталоги-фабрики `<Фича>Errors` |
 | Обработчик ошибок downstream-сервисов в `libs/common-exception` | Проброс ответа целевого сервиса — логика прокси, нужна только gateway | `DownstreamExceptionHandler` в каждом gateway |
 | Отдельный контейнер postgres на сервис локально | Лишние ресурсы на локальном стенде | Один контейнер, БД на сервис |
+| Создание ролей и БД init-скриптом в `/docker-entrypoint-initdb.d` | Выполняется только на пустом томе: новый сервис не получает БД на существующем стенде, а на VPS том не пересоздать | Идемпотентный скрипт в одноразовом `postgres-init` на каждом `up` |
 | Сырой CDC таблиц через Debezium | Схема таблиц становится публичным контрактом | Outbox + Debezium |
 | Outbox с поллингом из сервиса | Нагрузка на БД и больше кода | Debezium читает WAL |
 | Отдельные таблицы на каждую игру | Каждая игра тащит свои миграции и репозитории в общий сервис | JSONB-снапшот + журнал ходов |

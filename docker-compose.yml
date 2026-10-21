@@ -24,12 +24,37 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
-      - ./docker/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 10
+
+  # Роли и БД сервисов. Скрипт идемпотентный и выполняется на каждом up (а не через initdb, который срабатывает
+  # только на пустом томе), поэтому новый сервис получает БД без пересоздания тома.
+  postgres-init:
+    image: postgres:18-alpine
+    environment:
+      PGHOST: postgres
+      PGUSER: postgres
+      PGPASSWORD: postgres
+    command:
+      - psql
+      - -v
+      - ON_ERROR_STOP=1
+      - -v
+      - user_auth_password=user_auth
+      - -v
+      - game_password=game
+      - -v
+      - admin_auth_password=admin_auth
+      - -f
+      - /init.sql
+    volumes:
+      - ./docker/postgres/init.sql:/init.sql:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   # Один Redis на весь стенд (и на одном VPS): кеш сервисов и шина pub/sub для SSE fan-out.
   # В коде это два независимых подключения (cache и bus), права разведены ACL — разнести по инстансам можно конфигом.
@@ -143,8 +168,8 @@ services:
     ports:
       - "8081:8081"
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
       mailpit:
         condition: service_started
     healthcheck:
@@ -183,8 +208,8 @@ services:
     ports:
       - "8082:8082"
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
       redpanda-init:
         condition: service_completed_successfully
     healthcheck:
@@ -212,8 +237,8 @@ services:
     ports:
       - "8084:8084"
     depends_on:
-      postgres:
-        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
     healthcheck:
       <<: *service-healthcheck
       test: ["CMD", "curl", "-fs", "http://localhost:8084/actuator/health/readiness"]
