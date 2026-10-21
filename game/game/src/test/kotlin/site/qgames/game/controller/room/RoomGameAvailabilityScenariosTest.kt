@@ -91,8 +91,9 @@ class RoomGameAvailabilityScenariosTest : BaseIntegrationTest() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(rounds = 1))
         setPublishStatus("nothing", "DISABLED")
 
-        assertThat(pass(ALICE, roomId).session!!.version).isEqualTo(1)
-        val finished = pass(BOB, roomId)
+        pass(ALICE, roomId)
+        pass(BOB, roomId)
+        val finished = room(roomId, ALICE)
 
         assertThat(finished.status).isEqualTo(RoomStatus.WAITING)
         assertThat(finished.session!!.status).isEqualTo(SessionStatus.FINISHED)
@@ -136,7 +137,7 @@ class RoomGameAvailabilityScenariosTest : BaseIntegrationTest() {
     }
 
     private fun sessionSnapshot(): Map<String, Any?> =
-        jdbcClient.sql("SELECT status, version, paused_at FROM room_session").query().singleRow()
+        jdbcClient.sql("SELECT status, last_seq, move_deadline FROM room_session").query().singleRow()
 
     companion object {
         @JvmStatic

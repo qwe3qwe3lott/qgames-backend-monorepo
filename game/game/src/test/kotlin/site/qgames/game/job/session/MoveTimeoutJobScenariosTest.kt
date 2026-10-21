@@ -13,8 +13,9 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Истечение времени хода: дедлайн сдвигается в прошлое через SQL, джоб вызывается напрямую (по расписанию он в тестах
- * выключен). В «игре в ничто» истечение времени — автоматический PASS игрока, чьё время вышло.
+ * Истечение времени хода: дедлайн-проекция сдвигается в прошлое через SQL, джоб вызывается напрямую (по расписанию он в
+ * тестах выключен). В «игре в ничто» истечение времени — автоматический PASS игрока, чьё время вышло; события идут в
+ * журнал тем же путём, что ход.
  */
 class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
 
@@ -31,17 +32,19 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
         val after = Instant.now()
 
         assertThat(processed).isEqualTo(1)
-        val room = room(roomId, ALICE)
-        val session = room.session!!
-        assertThat(room.status).isEqualTo(RoomStatus.IN_GAME)
-        assertThat(session.version).isEqualTo(1)
-        assertThat(session.state).containsEntry("currentPlayer", BOB.toString())
-        assertThat(session.moveDeadline).isBetween(before.plusSeconds(30).minusMillis(1), after.plusSeconds(30))
-        val logged = jdbcClient.sql("SELECT seq, player_id, move::text AS move FROM room_session_move").query().singleRow()
-        assertThat(logged).containsEntry("seq", 1L).containsEntry("player_id", ALICE).containsEntry("move", """{"type": "TIMEOUT"}""")
+        assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.IN_GAME)
+        val state = fullState(roomId).state
+        assertThat(state.turns.currentPlayerId).isEqualTo(BOB)
+        assertThat(state.timer!!.deadline).isBetween(before.plusSeconds(30).minusMillis(1), after.plusSeconds(30))
+        assertThat(journal(roomId).map { it.second })
+            .containsExactly("started", "moved", "turns-changed", "player-changed", "player-changed", "timer-changed")
+        val moved = jdbcClient.sql("SELECT data::text FROM room_session_event WHERE type = 'moved'").query(String::class.java).single()
+        assertThat(jsonMapper.readTree(moved)).isEqualTo(
+            jsonMapper.readTree("""{"playerId": "$ALICE", "type": "PASS", "timeout": true}"""),
+        )
 
         // Следующий ход — уже обычный ход Боба.
-        assertThat(pass(BOB, roomId).session!!.version).isEqualTo(2)
+        pass(BOB, roomId)
     }
 
     @Test
@@ -54,7 +57,7 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
         val room = room(roomId, ALICE)
         assertThat(room.status).isEqualTo(RoomStatus.WAITING)
         assertThat(room.session!!.status).isEqualTo(SessionStatus.FINISHED)
-        assertThat(room.session!!.moveDeadline).isNull()
+        assertThat(journal(roomId).last().second).isEqualTo("session-finished")
         assertThat(countRows("room_session WHERE move_deadline IS NULL AND finished_at IS NOT NULL")).isEqualTo(1)
         assertThat(countRows("room WHERE current_session_id IS NULL AND status = 'WAITING'")).isEqualTo(1)
     }
@@ -71,9 +74,9 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
 
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_move")).isZero()
-        assertThat(room(withoutTimer, ALICE).session!!.moveDeadline).isNull()
-        assertThat(room(notExpired, BOB).session!!.version).isZero()
+        assertThat(countRows("room_session_event WHERE type = 'moved'")).isZero()
+        assertThat(fullState(withoutTimer).state.timer).isNull()
+        assertThat(journal(notExpired)).hasSize(1)
     }
 
     @Test
@@ -84,7 +87,7 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
         assertThat(moveTimeoutJob.run()).isEqualTo(1)
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_move")).isEqualTo(1)
+        assertThat(countRows("room_session_event WHERE type = 'moved'")).isEqualTo(1)
     }
 
     private fun perMove(seconds: Int, rounds: Int = 3) =

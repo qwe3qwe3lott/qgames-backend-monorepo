@@ -87,8 +87,14 @@ data class RoomSettingsChangedEvent(
     val data: RoomSettingsChangedDto,
 ) : RoomStreamEvent
 
-/** Партия началась, отменена, поставлена на паузу, продолжена или закончилась: клиент перечитывает комнату (GET). */
-@Schema(description = "Партия началась, отменена, поставлена на паузу, продолжена или закончилась: клиент перечитывает комнату (GET)")
+/**
+ * Партия началась, отменена или закончилась: клиент перечитывает комнату (GET) и подписывается на поток партии.
+ * Пауза и продолжение сюда не попадают: это timer-changed потока партии.
+ */
+@Schema(
+    description = "Партия началась, отменена или закончилась: клиент перечитывает комнату (GET) и подписывается на " +
+        "поток партии. Пауза и продолжение — timer-changed потока партии",
+)
 data class RoomSessionChangedEvent(
     @field:Schema(type = "string", allowableValues = [RoomStreamEventTypes.SESSION_CHANGED])
     val type: RoomStreamEventType,

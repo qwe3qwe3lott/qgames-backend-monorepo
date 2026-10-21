@@ -5,8 +5,8 @@ import org.springframework.context.SmartLifecycle
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import site.qgames.game.service.room.RoomService
+import site.qgames.game.stream.common.StreamIndex
 import java.util.UUID
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Открытые на этом инстансе потоки комнат: roomId → подписчики. Состояние в памяти допустимо — оно привязано к
@@ -20,23 +20,18 @@ class RoomStreamRegistry(
     private val roomService: RoomService,
 ) : SmartLifecycle {
 
-    private val rooms = ConcurrentHashMap<UUID, MutableSet<RoomStreamSubscriber>>()
+    private val rooms = StreamIndex<RoomStreamSubscriber> { it.roomId }
 
     @Volatile
     private var running = false
 
     /** Новый подписчик в режиме «ждёт маркер». Эмиттер без таймаута: поток живёт, пока его не закроет одна из сторон. */
-    fun register(roomId: UUID, userId: UUID): RoomStreamSubscriber {
-        val subscriber = RoomStreamSubscriber(roomId, userId, SseEmitter(NO_TIMEOUT), ::onClosed)
-        // Добавление — внутри атомарной операции над ключом: иначе параллельное удаление последнего подписчика могло бы
-        // выкинуть множество, и новый подписчик остался бы в «осиротевшем» множестве без событий и продления аренды.
-        rooms.compute(roomId) { _, set -> (set ?: ConcurrentHashMap.newKeySet()).apply { add(subscriber) } }
-        return subscriber
-    }
+    fun register(roomId: UUID, userId: UUID): RoomStreamSubscriber =
+        RoomStreamSubscriber(roomId, userId, SseEmitter(NO_TIMEOUT), ::onClosed).also(rooms::add)
 
-    fun subscribers(roomId: UUID): Collection<RoomStreamSubscriber> = rooms[roomId].orEmpty()
+    fun subscribers(roomId: UUID): Collection<RoomStreamSubscriber> = rooms[roomId]
 
-    fun all(): List<RoomStreamSubscriber> = rooms.values.flatten()
+    fun all(): List<RoomStreamSubscriber> = rooms.all()
 
     /** Закрывает все потоки (обрыв LISTEN-соединения, остановка). Отключения от комнат идут параллельно. */
     fun closeAll() {
@@ -47,7 +42,7 @@ class RoomStreamRegistry(
     }
 
     private fun onClosed(subscriber: RoomStreamSubscriber) {
-        remove(subscriber)
+        rooms.remove(subscriber)
         val connectionId = subscriber.connectionId ?: return
         try {
             roomService.disconnect(connectionId, subscriber.roomId, subscriber.userId)
@@ -59,13 +54,8 @@ class RoomStreamRegistry(
 
     /** Убирает подписчика, который так и не подключился (ошибка до начала потока). */
     fun discard(subscriber: RoomStreamSubscriber) {
-        remove(subscriber)
+        rooms.remove(subscriber)
         subscriber.close()
-    }
-
-    /** Удаление тоже атомарно по ключу: опустевшее множество убирается в той же операции, что и подписчик. */
-    private fun remove(subscriber: RoomStreamSubscriber) {
-        rooms.computeIfPresent(subscriber.roomId) { _, set -> set.apply { remove(subscriber) }.takeIf { it.isNotEmpty() } }
     }
 
     override fun start() {

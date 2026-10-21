@@ -111,7 +111,9 @@ class RoomSettingsScenariosTest : BaseIntegrationTest() {
         assertThat(updated.settings).isEqualTo(settings)
         assertThat(storedSettings(roomId)).isEqualTo(StoredSettings("PER_MOVE", 45, 1))
         val started = start(ALICE, roomId)
-        assertThat(started.session!!.state).containsEntry("rounds", 1)
+        assertThat(started.session).isNotNull()
+        assertThat(fullState(roomId).state.turns.rounds).isEqualTo(1)
+        assertThat(fullState(roomId).state.timer).isNotNull()
         val snapshot = jdbcClient.sql(
             "SELECT time_control_mode, move_seconds, game_settings->>'rounds' AS rounds FROM room_session WHERE room_id = :id",
         ).param("id", roomId).query().singleRow()

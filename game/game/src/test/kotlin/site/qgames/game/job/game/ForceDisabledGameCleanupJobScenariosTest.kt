@@ -37,7 +37,7 @@ class ForceDisabledGameCleanupJobScenariosTest : BaseIntegrationTest() {
         assertThat(countRows("room_member")).isZero()
         assertThat(countRows("room_session")).isZero()
         assertThat(countRows("room_session_player")).isZero()
-        assertThat(countRows("room_session_move")).isZero()
+        assertThat(countRows("room_session_event")).isZero()
         assertThat(forceDisabledGameCleanupJob.run()).isZero()
     }
 
@@ -63,7 +63,7 @@ class ForceDisabledGameCleanupJobScenariosTest : BaseIntegrationTest() {
 
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_move")).isZero()
+        assertThat(countRows("room_session_event WHERE type = 'moved'")).isZero()
     }
 
     @Test

@@ -7,10 +7,12 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.service.annotation.DeleteExchange
 import org.springframework.web.service.annotation.GetExchange
 import org.springframework.web.service.annotation.HttpExchange
@@ -31,7 +33,8 @@ import java.util.UUID
     name = "Игровые комнаты",
     description = "Публичные комнаты: вход по ссылке с id комнаты для любого авторизованного пользователя. " +
         "Изменения комнаты приходят в реальном времени через поток событий (GET /api/rooms/{roomId}/events), открытый " +
-        "поток и есть нахождение в комнате. Все ручки требуют аутентификации.",
+        "поток и есть нахождение в комнате. Состояние партии приходит через её поток (GET " +
+        "/api/games/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events). Все ручки требуют аутентификации.",
 )
 @HttpExchange("/api/rooms")
 interface PublicRoomApi {
@@ -60,8 +63,9 @@ interface PublicRoomApi {
             "без `id:`, раз в ~5 с комментарий `: ping`. Первое сообщение — snapshot: комната целиком для этого " +
             "пользователя, как в GET /api/rooms/{roomId}; так же после каждого переподключения. Дальше — users-changed " +
             "(владелец и полный список участников: вход, выход, уход, смена роли, ника, владельца), settings-changed " +
-            "(настройки комнаты), session-changed (старт, отмена, пауза, продолжение, конец партии — перечитать комнату " +
-            "через GET) и room-deleted (комната удалена, после него сервер закрывает поток). События несут полное " +
+            "(настройки комнаты), session-changed (старт, отмена, конец партии — перечитать комнату через GET и " +
+            "подписаться на поток партии session.id; пауза и продолжение — timer-changed потока партии) " +
+            "и room-deleted (комната удалена, после него сервер закрывает поток). События несут полное " +
             "значение, повтор безопасен. Схема пары тип + данные — RoomStreamEvent ({type, data}, дискриминатор type).\n\n" +
             "Открытый поток и есть нахождение в комнате: подключение входит в комнату (игрок идущей партии возвращается " +
             "на своё место; иначе игрок, если партия не идёт и есть место, или наблюдатель; в пустой комнате — " +
@@ -120,7 +124,7 @@ interface PublicRoomApi {
         summary = "Начать партию",
         description = "Стартует партию с текущими игроками комнаты (места — по порядку входа). Только владелец, " +
             "число игроков должно укладываться в ограничения игры (minPlayers–maxPlayers). Игра должна быть доступна " +
-            "(PUBLISHED или HIDDEN).",
+            "(PUBLISHED или HIDDEN). В ответе комната; по session.id клиент подписывается на поток партии.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Партия началась"),
@@ -144,10 +148,11 @@ interface PublicRoomApi {
     @Operation(
         summary = "Отменить партию",
         description = "Завершает идущую партию без результата и возвращает комнату в ожидание. Работает и на паузе. " +
-            "Только владелец.",
+            "Только владелец. Ответ без тела: поток партии получает session-cancelled и закрывается, поток комнаты — " +
+            "session-changed.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Партия отменена"),
+        ApiResponse(responseCode = "204", description = "Партия отменена"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(responseCode = "403", description = "Пользователь не владелец (NOT_ROOM_OWNER)"),
         ApiResponse(
@@ -159,16 +164,18 @@ interface PublicRoomApi {
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
     @DeleteExchange("/{roomId}/session")
-    fun cancelSession(@PathVariable roomId: UUID): RoomResponse
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun cancelSession(@PathVariable roomId: UUID)
 
     @Operation(
         summary = "Поставить партию на паузу",
-        description = "Замораживает идущую партию: ходы запрещены, время хода и сроки возвращения вышедших игроков " +
-            "партии не идут (session.pausedAt; остаток времени хода — moveDeadline − pausedAt). Вход, выход и отмена " +
-            "партии работают. Только владелец. Повторный вызов на паузе ничего не меняет.",
+        description = "Пауза — действие таймера партии: ходы запрещены, время хода и сроки возвращения вышедших " +
+            "игроков партии не идут (state.timer: status PAUSED, pausedAt; остаток времени хода — deadline − pausedAt). " +
+            "Вход, выход и отмена партии работают. Только владелец. Ответ без тела: изменение приходит событием " +
+            "timer-changed потока партии. Повторный вызов на паузе ничего не меняет. У партии без таймера паузы нет.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Партия на паузе"),
+        ApiResponse(responseCode = "204", description = "Партия на паузе"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(
             responseCode = "403",
@@ -179,20 +186,24 @@ interface PublicRoomApi {
             description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
                 "или принудительно отключена (GAME_NOT_FOUND)",
         ),
-        ApiResponse(responseCode = "409", description = "Партия не идёт (ROOM_NOT_IN_GAME)"),
+        ApiResponse(
+            responseCode = "409",
+            description = "Партия не идёт (ROOM_NOT_IN_GAME) или у неё нет таймера (SESSION_NOT_PAUSABLE)",
+        ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
     @PostExchange("/{roomId}/session/pause")
-    fun pauseSession(@PathVariable roomId: UUID): RoomResponse
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun pauseSession(@PathVariable roomId: UUID)
 
     @Operation(
         summary = "Продолжить партию",
-        description = "Снимает паузу. Время хода и сроки возвращения вышедших игроков партии сдвигаются на длительность " +
-            "паузы: остаётся столько же времени, сколько было в момент паузы. Только владелец. Без паузы вызов ничего " +
-            "не меняет.",
+        description = "Снимает паузу таймера. Время хода и сроки возвращения вышедших игроков партии сдвигаются на " +
+            "длительность паузы: остаётся столько же времени, сколько было в момент паузы. Только владелец. Ответ без " +
+            "тела: изменение приходит событием timer-changed потока партии. Без паузы вызов ничего не меняет.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Партия продолжается"),
+        ApiResponse(responseCode = "204", description = "Партия продолжается"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(
             responseCode = "403",
@@ -203,9 +214,13 @@ interface PublicRoomApi {
             description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована " +
                 "или принудительно отключена (GAME_NOT_FOUND)",
         ),
-        ApiResponse(responseCode = "409", description = "Партия не идёт (ROOM_NOT_IN_GAME)"),
+        ApiResponse(
+            responseCode = "409",
+            description = "Партия не идёт (ROOM_NOT_IN_GAME) или у неё нет таймера (SESSION_NOT_PAUSABLE)",
+        ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
     @PostExchange("/{roomId}/session/resume")
-    fun resumeSession(@PathVariable roomId: UUID): RoomResponse
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun resumeSession(@PathVariable roomId: UUID)
 }

@@ -2,11 +2,11 @@ package site.qgames.game.controller.room
 
 import org.springframework.web.bind.annotation.RestController
 import site.qgames.common.web.context.RequestUserContext
-import site.qgames.game.model.room.RoomRole
 import site.qgames.game.gatewayapi.api.RoomApi
 import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.mapper.room.RoomResponseMapper
+import site.qgames.game.model.room.RoomRole
 import site.qgames.game.service.room.RoomService
 import site.qgames.game.service.session.RoomSessionService
 import java.util.UUID
@@ -28,12 +28,9 @@ class RoomController(
     override fun startSession(roomId: UUID): RoomResponse =
         roomResponseMapper.toResponse(roomSessionService.start(requestUserContext.userId(), roomId))
 
-    override fun cancelSession(roomId: UUID): RoomResponse =
-        roomResponseMapper.toResponse(roomSessionService.cancel(requestUserContext.userId(), roomId))
+    override fun cancelSession(roomId: UUID) = roomSessionService.cancel(requestUserContext.userId(), roomId)
 
-    override fun pauseSession(roomId: UUID): RoomResponse =
-        roomResponseMapper.toResponse(roomSessionService.pause(requestUserContext.userId(), roomId))
+    override fun pauseSession(roomId: UUID) = roomSessionService.pause(requestUserContext.userId(), roomId)
 
-    override fun resumeSession(roomId: UUID): RoomResponse =
-        roomResponseMapper.toResponse(roomSessionService.resume(requestUserContext.userId(), roomId))
+    override fun resumeSession(roomId: UUID) = roomSessionService.resume(requestUserContext.userId(), roomId)
 }

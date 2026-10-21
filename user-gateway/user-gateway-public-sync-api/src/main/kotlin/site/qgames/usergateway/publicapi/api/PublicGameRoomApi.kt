@@ -2,21 +2,29 @@ package site.qgames.usergateway.publicapi.api
 
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.ResponseStatus
+import org.springframework.web.service.annotation.GetExchange
 import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
 import org.springframework.web.service.annotation.PutExchange
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import site.qgames.game.gatewayapi.dto.game.GameCodes
 import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
 import site.qgames.game.gatewayapi.dto.room.MoveRequest
 import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
+import site.qgames.game.gatewayapi.dto.session.SessionStreamEvent
 import java.util.UUID
 
 /**
@@ -27,7 +35,8 @@ import java.util.UUID
     name = "Игровые комнаты",
     description = "Публичные комнаты: вход по ссылке с id комнаты для любого авторизованного пользователя. " +
         "Изменения комнаты приходят в реальном времени через поток событий (GET /api/rooms/{roomId}/events), открытый " +
-        "поток и есть нахождение в комнате. Все ручки требуют аутентификации.",
+        "поток и есть нахождение в комнате. Состояние партии приходит через её поток (GET " +
+        "/api/games/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events). Все ручки требуют аутентификации.",
 )
 @HttpExchange("/api/games")
 interface PublicGameRoomApi {
@@ -104,14 +113,15 @@ interface PublicGameRoomApi {
     @Operation(
         summary = "Сделать ход",
         description = "Ручка одна на все игры: код игры — в пути, ход — общий конверт `{type, data}`. `type` — вид " +
-            "действия (`PASS` в «игре в ничто»), `data` — его параметры в формате игры. Код игры должен совпадать " +
-            "с игрой комнаты. Ходить может только игрок партии, находящийся в комнате. Если у партии есть таймер, ход " +
-            "переставляет дедлайн (session.moveDeadline). Когда партия заканчивается, комната возвращается в ожидание, " +
-            "а законченная партия остаётся в ответе. Идущая партия продолжается, даже если игра стала временно " +
-            "недоступной.",
+            "действия (`PASS` в «игре в ничто»), `data` — его параметры в формате игры; допустимые сейчас ходы игрока — " +
+            "moveOptions его игрока в состоянии партии. Код игры должен совпадать с игрой комнаты. Ходить может только " +
+            "игрок партии, находящийся в комнате. Ход проверяется по текущему состоянию партии. Ответ без тела: " +
+            "изменения (ход, очерёдность, варианты ходов, таймер, конец партии) приходят событиями потока партии. Когда " +
+            "партия заканчивается, комната возвращается в ожидание. Идущая партия продолжается, даже если игра стала " +
+            "временно недоступной.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Ход принят, возвращено новое состояние"),
+        ApiResponse(responseCode = "204", description = "Ход принят"),
         ApiResponse(
             responseCode = "400",
             description = "Не указан вид хода или параметры не подходят игре (VALIDATION_ERROR)",
@@ -128,9 +138,8 @@ interface PublicGameRoomApi {
         ),
         ApiResponse(
             responseCode = "409",
-            description = "Комната другой игры (GAME_TYPE_MISMATCH), партия не идёт (ROOM_NOT_IN_GAME), стоит на паузе " +
-                "(SESSION_PAUSED) или изменилась " +
-                "с момента, который видел клиент (SESSION_CONFLICT)",
+            description = "Комната другой игры (GAME_TYPE_MISMATCH), партия не идёт (ROOM_NOT_IN_GAME) или таймер " +
+                "партии на паузе (SESSION_PAUSED)",
         ),
         ApiResponse(
             responseCode = "422",
@@ -139,10 +148,54 @@ interface PublicGameRoomApi {
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
     @PostExchange("/{gameCode}/rooms/{roomId}/moves")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun makeMove(
         @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: MoveRequest,
-    ): RoomResponse
+    )
+
+    @Operation(
+        summary = "Поток событий партии",
+        description = "Server-Sent Events (EventSource с withCredentials): сообщения `event: <тип>` + `data: <json>`, " +
+            "без `id:`, раз в ~5 с комментарий `: ping`. Схема пары тип + данные — SessionStreamEvent ({type, data}, " +
+            "дискриминатор type).\n\n" +
+            "Первое сообщение — snapshot: состояние партии для этого зрителя `{seq, status, serverTime, meta, state}`; " +
+            "так же после каждого переподключения. meta.game — код игры и правила партии, закреплённые при старте; по " +
+            "meta.game.code клиент выбирает схемы состояния и игровых событий (NothingSessionStateDto, NothingMovedDto). " +
+            "state — блоки модулей (players с moveOptions, timer, turns) и поля игры.\n\n" +
+            "Дальше — события журнала партии в кадре `{seq, at, data}`, seq непрерывен и продолжает seq снапшота: дыра " +
+            "означает потерю (переподключиться), повтор с уже применённым seq отбрасывается. События модулей заменяют " +
+            "блок целиком: player-changed — игрок (по id), turns-changed — очерёдность, timer-changed — таймер, в том " +
+            "числе пауза и продолжение. moved — ход (данные задаёт игра). started — первое событие журнала (обычно уже в " +
+            "снапшоте). session-finished и session-cancelled — конец партии, после них сервер закрывает поток.\n\n" +
+            "События маскируются под зрителя: варианты ходов (moveOptions) видит только сам игрок, остальным приходит " +
+            "пустой список, но событие доставляется. После конца партии всё публично: на завершённую или отменённую " +
+            "партию приходит полный снапшот, и поток закрывается. Подписаться может участник комнаты (открытый поток " +
+            "комнаты). Access-токен проверяется только при подключении.",
+    )
+    @ApiResponses(
+        ApiResponse(
+            responseCode = "200",
+            description = "Поток событий",
+            content = [Content(mediaType = MediaType.TEXT_EVENT_STREAM_VALUE, schema = Schema(implementation = SessionStreamEvent::class))],
+        ),
+        ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
+        ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
+        ApiResponse(
+            responseCode = "404",
+            description = "Неизвестный код игры, игра не опубликована или принудительно отключена (GAME_NOT_FOUND), " +
+                "комнаты нет (ROOM_NOT_FOUND), партии нет в этой комнате (SESSION_NOT_FOUND)",
+        ),
+        ApiResponse(responseCode = "409", description = "Комната другой игры (GAME_TYPE_MISMATCH)"),
+        ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
+    )
+    @GetExchange("/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events", accept = [MediaType.TEXT_EVENT_STREAM_VALUE])
+    fun sessionEvents(
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @PathVariable gameCode: String,
+        @PathVariable roomId: UUID,
+        @PathVariable sessionId: UUID,
+    ): ResponseEntity<ResponseBodyEmitter>
 }

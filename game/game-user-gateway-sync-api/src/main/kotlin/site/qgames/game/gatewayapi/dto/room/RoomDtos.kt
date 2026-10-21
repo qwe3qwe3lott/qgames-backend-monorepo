@@ -49,8 +49,6 @@ data class MoveRequest(
     val type: String,
     /** Параметры действия в свободном формате, их разбирает правило игры. У `PASS` их нет. */
     val data: Map<String, Any?>? = null,
-    /** Версия партии, которую видел клиент. Если партия уже изменилась — 409, чтобы не ходить по устаревшему состоянию. */
-    val expectedVersion: Long? = null,
 )
 
 data class RoomResponse(
@@ -86,20 +84,11 @@ data class RoomMemberResponse(
     val joinedAt: Instant,
 )
 
+/**
+ * Партия комнаты кратко. Состояние партии приходит только из её потока
+ * (`GET /api/games/{gameCode}/rooms/{roomId}/sessions/{id}/events`).
+ */
 data class SessionResponse(
     val id: UUID,
     val status: SessionStatus,
-    /** Игроки партии в порядке мест. Место сохраняется, даже если игрок вышел из комнаты. */
-    val players: List<UUID>,
-    /** Растёт с каждым ходом; передаётся в MoveRequest.expectedVersion. */
-    val version: Long,
-    /** Состояние партии с точки зрения запросившего пользователя, формат задаёт игра. */
-    val state: Map<String, Any?>,
-    /** Когда истекает время текущего хода. null — партия без таймера или уже закончена/отменена. */
-    val moveDeadline: Instant?,
-    /**
-     * С какого момента партия на паузе; null — не на паузе. На паузе moveDeadline не меняется: остаток времени
-     * хода — moveDeadline − pausedAt.
-     */
-    val pausedAt: Instant?,
 )

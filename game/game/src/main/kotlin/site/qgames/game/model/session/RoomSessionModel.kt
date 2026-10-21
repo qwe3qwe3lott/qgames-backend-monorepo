@@ -5,24 +5,22 @@ import site.qgames.game.model.room.RoomTimeControlModel
 import java.time.Instant
 import java.util.UUID
 
+/** Партия комнаты. Состояния здесь нет: оно собирается из журнала (SessionStateService). */
 data class RoomSessionModel(
     val id: UUID,
     val roomId: UUID,
     val gameCode: GameCode,
     val status: RoomSessionStatus,
-    /** JSON состояния, формат задаёт модуль игры. */
-    val state: String,
     val stateSchemaVersion: Int,
     val seed: Long,
-    val version: Long,
+    /** seq последнего события журнала. */
+    val lastSeq: Long,
     /** Снимок правил времени комнаты на момент старта. */
     val timeControl: RoomTimeControlModel,
     /** Снимок JSON настроек игры на момент старта. */
     val gameSettings: String,
-    /** Когда истекает время текущего хода; null — без таймера или партия не идёт. */
+    /** Проекция таймера: дедлайн идущего таймера хода; null — без таймера, на паузе или партия не идёт. */
     val moveDeadline: Instant?,
-    /** С какого момента партия на паузе; null — не на паузе. */
-    val pausedAt: Instant?,
     val createdAt: Instant,
     val finishedAt: Instant?,
 )

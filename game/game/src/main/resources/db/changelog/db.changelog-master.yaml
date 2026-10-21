@@ -24,11 +24,11 @@ databaseChangeLog:
       file: DDL/2026-10-18-CREATE-room_session_player.yaml
       relativeToChangelogFile: true
   - include:
-      file: DDL/2026-10-18-CREATE-room_session_move.yaml
-      relativeToChangelogFile: true
-  - include:
       file: DDL/2026-10-18-CREATE-shedlock.yaml
       relativeToChangelogFile: true
   - include:
       file: DDL/2026-10-20-CREATE-room_connection.yaml
+      relativeToChangelogFile: true
+  - include:
+      file: DDL/2026-10-21-CREATE-room_session_event.yaml
       relativeToChangelogFile: true

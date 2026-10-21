@@ -37,8 +37,10 @@ object RoomErrors {
     fun notEnoughPlayers(min: Int, max: Int) =
         ConflictException("NOT_ENOUGH_PLAYERS", "The game needs from $min to $max players")
 
-    fun sessionConflict() =
-        ConflictException("SESSION_CONFLICT", "The game has changed, reload the state and retry")
+    fun sessionNotFound() = NotFoundException("SESSION_NOT_FOUND", "Session not found in the room")
+
+    /** Пауза — действие таймера: у партии без таймера её нет. */
+    fun sessionNotPausable() = ConflictException("SESSION_NOT_PAUSABLE", "The game has no timer to pause")
 
     fun sessionPaused() = ConflictException("SESSION_PAUSED", "The game is paused")
 

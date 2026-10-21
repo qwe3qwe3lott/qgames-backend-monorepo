@@ -16,6 +16,7 @@ import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.model.room.RoomStatus
 import site.qgames.game.model.room.RoomUsersModel
+import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.RoomSessionStatus
 import site.qgames.game.publisher.room.RoomEventPublisher
 import site.qgames.game.repository.replica.UserAuthUserRepository
@@ -25,6 +26,9 @@ import site.qgames.game.repository.room.RoomRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.game.service.game.GameService
+import site.qgames.game.service.session.SessionJournalService
+import site.qgames.games.api.session.SessionEngine
+import site.qgames.games.api.timer.TimerModule
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
 import java.time.Instant
@@ -44,6 +48,7 @@ class RoomService(
     private val roomMemberRepository: RoomMemberRepository,
     private val roomConnectionRepository: RoomConnectionRepository,
     private val roomSessionRepository: RoomSessionRepository,
+    private val sessionJournalService: SessionJournalService,
     private val userAuthUserRepository: UserAuthUserRepository,
     private val roomEventPublisher: RoomEventPublisher,
     private val gameRegistry: GameRegistry,
@@ -69,7 +74,7 @@ class RoomService(
         val now = clock.instant()
         val room = roomRepository.insert(gameCode, userId, settings.timeControl, jsonMapper.writeValueAsString(settings.gameSettings), now)
         roomMemberRepository.insert(RoomMemberModel(room.id, userId, RoomRole.PLAYER, now, now + properties.room.leaveGrace.owner))
-        return roomDetailsService.details(room, userId)
+        return roomDetailsService.details(room)
     }
 
     /**
@@ -95,14 +100,14 @@ class RoomService(
         val updated = room.copy(timeControl = settings.timeControl, gameSettings = jsonMapper.writeValueAsString(settings.gameSettings))
         roomRepository.update(updated)
         roomEventPublisher.publish(roomId, RoomEventType.SETTINGS_CHANGED)
-        return roomDetailsService.details(updated, userId)
+        return roomDetailsService.details(updated)
     }
 
     @Transactional(readOnly = true)
     fun get(userId: UUID, roomId: UUID): RoomDetailsModel {
         val room = roomRepository.findById(roomId) ?: throw RoomErrors.roomNotFound()
         gameService.checkAccessible(room.gameCode)
-        return roomDetailsService.details(room, userId)
+        return roomDetailsService.details(room)
     }
 
     /**
@@ -122,7 +127,7 @@ class RoomService(
         if (join(room, userId)) {
             roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
         }
-        val details = roomDetailsService.details(roomRepository.findById(roomId)!!, userId)
+        val details = roomDetailsService.details(roomRepository.findById(roomId)!!)
         roomEventPublisher.publishSubscribed(roomId, subscriberId)
         return RoomConnectionModel(connectionId, details)
     }
@@ -167,7 +172,7 @@ class RoomService(
         val now = clock.instant()
         val members = roomMemberRepository.findAll(roomId)
         val session = room.currentSessionId?.let(roomSessionRepository::findById)
-        val frozen = if (session?.pausedAt != null) roomSessionRepository.findPlayers(session.id).toSet() else emptySet()
+        val frozen = if (session != null && pausedAt(session) != null) roomSessionRepository.findPlayers(session.id).toSet() else emptySet()
         val expired = members
             .filter { member -> member.leaveDeadline?.let { it <= now } == true && member.userId !in frozen }
             .map { it.userId }
@@ -195,13 +200,15 @@ class RoomService(
             roomMemberRepository.updateRole(roomId, userId, role)
             roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
         }
-        return roomDetailsService.details(room, userId)
+        return roomDetailsService.details(room)
     }
 
     /**
      * Удаляет комнату принудительно отключённой игры: отменяет идущую партию и удаляет комнату вместе с участниками
      * и историей партий (каскадно). Комната берётся под блокировку без ожидания: если её держит другой запрос, она
-     * обработается в следующий раз. Возвращает true, если комната удалена.
+     * обработается в следующий раз. Возвращает true, если комната удалена. Журнал партии удаляется вместе с ней,
+     * поэтому потоки партии закроются (диспетчер не найдёт объявленных событий), а клиенты получат 404 при
+     * переподключении.
      */
     @Transactional
     fun deleteOfForceDisabledGame(roomId: UUID): Boolean {
@@ -210,7 +217,10 @@ class RoomService(
         if (!gameService.isForceDisabled(room.gameCode)) {
             return false
         }
-        room.currentSessionId?.let { roomSessionRepository.finish(it, RoomSessionStatus.CANCELLED, clock.instant()) }
+        room.currentSessionId?.let(roomSessionRepository::findById)?.let { session ->
+            val full = sessionJournalService.full(session)
+            sessionJournalService.record(session, full, SessionEngine.cancel(full), clock.instant())
+        }
         roomRepository.delete(roomId)
         roomEventPublisher.publish(roomId, RoomEventType.ROOM_DELETED)
         return true
@@ -293,7 +303,7 @@ class RoomService(
         val now = clock.instant()
         val session = room.currentSessionId?.let(roomSessionRepository::findById)
         if (session != null && userId in roomSessionRepository.findPlayers(session.id)) {
-            return (session.pausedAt ?: now) + gameRegistry.rules(room.gameCode).reconnectGrace
+            return (pausedAt(session) ?: now) + gameRegistry.rules(room.gameCode).reconnectGrace
         }
         return now + if (room.ownerId == userId) properties.room.leaveGrace.owner else properties.room.leaveGrace.member
     }
@@ -326,6 +336,13 @@ class RoomService(
     }
 
     private fun maxPlayers(room: RoomModel) = gameRegistry.rules(room.gameCode).maxPlayers
+
+    /** С какого момента таймер идущей партии на паузе; null — не на паузе (или таймера нет, или партия не идёт). */
+    private fun pausedAt(session: RoomSessionModel): Instant? {
+        if (session.status != RoomSessionStatus.IN_PROGRESS) return null
+        val timer = sessionJournalService.full(session).state.timer
+        return if (TimerModule.isPaused(timer)) timer?.pausedAt else null
+    }
 
     /** Комната под блокировкой. С комнатой принудительно отключённой игры работать нельзя (404 GAME_NOT_FOUND). */
     private fun lock(roomId: UUID): RoomModel {

@@ -63,3 +63,8 @@ qgames:
       # Как часто искать партии с истёкшим временем хода (MoveTimeoutJob).
       timeout-check-interval: 1s
       timeout-enabled: true
+      # Кеш состояний партий по проекциям зрителей (SessionStateCache): по закешированному состоянию на seq K
+      # доигрываются только события K+1…N. Потеря записи безопасна — состояние соберётся из журнала.
+      state-cache:
+        max-size: 10000
+        expire-after-access: 30m

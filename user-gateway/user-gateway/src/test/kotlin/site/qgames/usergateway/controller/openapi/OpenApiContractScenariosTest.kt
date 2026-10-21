@@ -98,6 +98,94 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(schemas.has("ResponseBodyEmitter")).isFalse()
     }
 
+    /** Поток партии: text/event-stream со схемой-union событий; данные игры — схемы конкретной игры в components. */
+    @Test
+    fun `session events stream is described as a union of events`() {
+        val docs = apiDocs()
+
+        val operation = docs.path("paths").path("/api/games/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events").path("get")
+        val ok = operation.path("responses").path("200").path("content")
+        assertThat(ok.propertyNames().toList()).containsExactly("text/event-stream")
+        assertThat(ok.path("text/event-stream").path("schema").path("\$ref").asString())
+            .isEqualTo("#/components/schemas/SessionStreamEvent")
+        assertThat(operation.path("responses").propertyNames().toList()).containsExactly("200", "401", "403", "404", "409", "503")
+
+        val schemas = docs.path("components").path("schemas")
+        val union = schemas.path("SessionStreamEvent")
+        assertThat(union.path("discriminator").path("propertyName").asString()).isEqualTo("type")
+        assertThat(union.has("properties")).isFalse()
+        val variants = mapOf(
+            "snapshot" to ("SessionSnapshotEvent" to "SessionSnapshotDto"),
+            "started" to ("SessionStartedEvent" to "SessionStartedFrame"),
+            "session-finished" to ("SessionFinishedEvent" to "SessionEndedFrame"),
+            "session-cancelled" to ("SessionCancelledEvent" to "SessionEndedFrame"),
+            "player-changed" to ("SessionPlayerChangedEvent" to "SessionPlayerChangedFrame"),
+            "turns-changed" to ("SessionTurnsChangedEvent" to "SessionTurnsChangedFrame"),
+            "timer-changed" to ("SessionTimerChangedEvent" to "SessionTimerChangedFrame"),
+            "moved" to ("SessionMovedEvent" to "SessionMovedFrame"),
+        )
+        assertThat(strings(union.path("oneOf")) { it.path("\$ref") })
+            .containsExactlyInAnyOrderElementsOf(variants.values.map { "#/components/schemas/${it.first}" })
+        variants.forEach { (type, names) ->
+            val (variant, data) = names
+            assertThat(union.path("discriminator").path("mapping").path(type).asString()).isEqualTo("#/components/schemas/$variant")
+            val schema = schemas.path(variant)
+            assertThat(schema.has("allOf")).isFalse()
+            assertThat(strings(schema.path("properties").path("type").path("enum"))).containsExactly(type)
+            assertThat(strings(schema.path("required"))).contains("type", "data")
+            assertThat(schema.path("properties").path("data").path("\$ref").asString()).isEqualTo("#/components/schemas/$data")
+        }
+        listOf("SessionStartedFrame", "SessionEndedFrame", "SessionPlayerChangedFrame", "SessionTurnsChangedFrame",
+            "SessionTimerChangedFrame", "SessionMovedFrame").forEach { frame ->
+            assertThat(strings(schemas.path(frame).path("required"))).containsExactlyInAnyOrder("seq", "at", "data")
+        }
+        assertThat(strings(schemas.path("SessionSnapshotDto").path("required")))
+            .containsExactlyInAnyOrder("seq", "status", "serverTime", "meta", "state")
+        assertThat(strings(schemas.path("SessionTimerDto").path("required"))).containsExactly("status")
+        assertThat(strings(schemas.path("SessionTimerDto").path("properties").path("status").path("enum")))
+            .containsExactly("RUNNING", "PAUSED", "STOPPED")
+        assertThat(strings(schemas.path("SessionPlayerDto").path("required"))).containsExactlyInAnyOrder("id", "moveOptions")
+    }
+
+    /** Состояние и данные игровых событий — union схем конкретных игр (игра — meta.game.code), без обратных ссылок. */
+    @ParameterizedTest(name = "{0}")
+    @CsvSource(
+        "SessionStateDto, NothingSessionStateDto, players|timer|turns|moves",
+        "SessionMovedDto, NothingMovedDto, playerId|type|timeout",
+    )
+    fun `game specific session data is a union of game schemas`(union: String, variant: String, properties: String) {
+        val schemas = apiDocs().path("components").path("schemas")
+
+        assertThat(strings(schemas.path(union).path("oneOf")) { it.path("\$ref") }).containsExactly("#/components/schemas/$variant")
+        val schema = schemas.path(variant)
+        assertThat(schema.has("allOf")).isFalse()
+        assertThat(schema.path("properties").propertyNames().toList()).containsExactlyInAnyOrder(*properties.split('|').toTypedArray())
+    }
+
+    @Test
+    fun `session mutations answer 204 and the session in the room is brief`() {
+        val docs = apiDocs()
+        val paths = docs.path("paths")
+
+        listOf(
+            "/api/games/{gameCode}/rooms/{roomId}/moves" to "post",
+            "/api/rooms/{roomId}/session/pause" to "post",
+            "/api/rooms/{roomId}/session/resume" to "post",
+            "/api/rooms/{roomId}/session" to "delete",
+        ).forEach { (path, method) ->
+            val responses = paths.path(path).path(method).path("responses")
+            assertThat(responses.has("204")).describedAs("$method $path").isTrue()
+            assertThat(responses.has("200")).describedAs("$method $path").isFalse()
+            assertThat(responses.path("204").has("content")).describedAs("$method $path").isFalse()
+        }
+        assertThat(paths.path("/api/rooms/{roomId}/session").path("post").path("responses").path("200").path("content")
+            .path("application/json").path("schema").path("\$ref").asString()).isEqualTo("#/components/schemas/RoomResponse")
+        val schemas = docs.path("components").path("schemas")
+        assertThat(schemas.path("SessionResponse").path("properties").propertyNames().toList()).containsExactlyInAnyOrder("id", "status")
+        assertThat(schemas.path("MoveRequest").path("properties").propertyNames().toList()).containsExactlyInAnyOrder("type", "data")
+        assertThat(docs.toString()).doesNotContain("SESSION_CONFLICT", "expectedVersion")
+    }
+
     @Test
     fun `presence is the stream, join and leave are gone`() {
         val paths = apiDocs().path("paths").propertyNames().toList()

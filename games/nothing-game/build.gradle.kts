@@ -5,4 +5,9 @@ plugins {
 
 dependencies {
     api(project(":games:game-api"))
+
+    // Чистые функции правил проверяются без Spring и контейнеров.
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testImplementation("org.assertj:assertj-core")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }

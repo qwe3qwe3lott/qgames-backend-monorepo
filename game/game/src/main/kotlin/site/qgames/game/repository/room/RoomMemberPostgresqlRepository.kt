@@ -68,6 +68,8 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
 
     /**
      * Комнаты, где у кого-то истёк срок выхода к [now], кроме игроков партии на паузе. Без блокировок.
+     * Пауза — состояние таймера; в проекции room_session она видна как идущая партия с таймером без дедлайна хода
+     * (у идущего таймера дедлайн есть всегда).
      * `leave_deadline <= :now` — под частичный индекс room_member_leave_deadline_idx.
      */
     fun findRoomIdsWithExpiredLeave(now: Instant, limit: Int): List<UUID> =
@@ -77,7 +79,8 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
             FROM room_member m
                      JOIN room r ON r.id = m.room_id
                      JOIN game g ON g.code = r.game_code
-                     LEFT JOIN room_session s ON s.id = r.current_session_id AND s.paused_at IS NOT NULL
+                     LEFT JOIN room_session s ON s.id = r.current_session_id AND s.status = 'IN_PROGRESS'
+                AND s.time_control_mode <> 'NONE' AND s.move_deadline IS NULL
             WHERE m.leave_deadline <= :now
               AND g.publish_status <> 'FORCE_DISABLED'
               AND NOT EXISTS (SELECT 1 FROM room_session_player p WHERE p.session_id = s.id AND p.user_id = m.user_id)

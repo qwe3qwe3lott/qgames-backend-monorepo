@@ -65,5 +65,14 @@ data class GameProperties(
         val timeoutEnabled: Boolean = true,
         /** Сколько партий с истёкшим временем обрабатывается за один запуск, остальные — в следующих. */
         val timeoutBatchSize: Int = 100,
+        /** Кеш состояний партий по проекциям зрителей (SessionStateCache). */
+        val stateCache: StateCache = StateCache(),
+    )
+
+    data class StateCache(
+        /** Сколько состояний (партия × проекция) держит инстанс. */
+        val maxSize: Long = 10_000,
+        /** Состояние, которое так долго не читали, вытесняется. */
+        val expireAfterAccess: Duration = Duration.ofMinutes(30),
     )
 }

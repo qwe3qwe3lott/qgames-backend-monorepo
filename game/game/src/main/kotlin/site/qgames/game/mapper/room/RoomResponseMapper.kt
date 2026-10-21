@@ -11,15 +11,12 @@ import site.qgames.game.gatewayapi.dto.room.SessionResponse
 import site.qgames.game.gatewayapi.dto.room.SessionStatus
 import site.qgames.game.model.room.RoomDetailsModel
 import site.qgames.game.model.room.RoomMemberDetailsModel
-import site.qgames.game.model.room.RoomSessionDetailsModel
-import site.qgames.game.model.session.RoomSessionStatus
-import tools.jackson.databind.json.JsonMapper
+import site.qgames.game.model.session.RoomSessionModel
 import java.util.UUID
 
 /** Модель комнаты → DTO контракта для gateway. Только преобразование, без обращений к данным. */
 @Component
 class RoomResponseMapper(
-    private val jsonMapper: JsonMapper,
     private val roomSettingsResponseMapper: RoomSettingsResponseMapper,
 ) {
 
@@ -54,14 +51,8 @@ class RoomResponseMapper(
         )
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun toResponse(details: RoomSessionDetailsModel) = SessionResponse(
-        id = details.session.id,
-        status = SessionStatus.valueOf(details.session.status.name),
-        players = details.players,
-        version = details.session.version,
-        state = jsonMapper.convertValue(details.view, Map::class.java) as Map<String, Any?>,
-        moveDeadline = details.session.moveDeadline.takeIf { details.session.status == RoomSessionStatus.IN_PROGRESS },
-        pausedAt = details.session.pausedAt.takeIf { details.session.status == RoomSessionStatus.IN_PROGRESS },
+    private fun toResponse(session: RoomSessionModel) = SessionResponse(
+        id = session.id,
+        status = SessionStatus.valueOf(session.status.name),
     )
 }

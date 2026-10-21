@@ -60,7 +60,7 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .orElse(null)
 
     /**
-     * Блокирует комнату, у которой идёт партия [sessionId] (не на паузе) с истёкшим к [now] временем хода. Комнату, уже
+     * Блокирует комнату, у которой идёт партия [sessionId] с истёкшим к [now] временем хода. Комнату, уже
      * заблокированную другим запросом (ход, другой инстанс джоба), пропускает: её обработает следующий запуск.
      * Партии принудительно отключённых игр пропускает: их отменит ForceDisabledGameCleanupJob.
      * Статус — литералом, чтобы подходил частичный индекс room_session_move_deadline_idx.
@@ -73,7 +73,7 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
             FROM room r
                      JOIN room_session s ON s.id = r.current_session_id
                      JOIN game g ON g.code = r.game_code
-            WHERE s.id = :sessionId AND s.status = 'IN_PROGRESS' AND s.paused_at IS NULL AND s.move_deadline <= :now
+            WHERE s.id = :sessionId AND s.status = 'IN_PROGRESS' AND s.move_deadline <= :now
               AND g.publish_status <> 'FORCE_DISABLED'
             FOR UPDATE OF r SKIP LOCKED
             """,

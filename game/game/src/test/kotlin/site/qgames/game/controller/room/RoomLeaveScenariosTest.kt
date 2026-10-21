@@ -1,6 +1,7 @@
 package site.qgames.game.controller.room
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.within
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -8,6 +9,7 @@ import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
 import site.qgames.game.BaseIntegrationTest
 import site.qgames.game.gatewayapi.dto.room.RoomRole
+import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
@@ -15,6 +17,7 @@ import site.qgames.game.support.TestData.DAVE
 import site.qgames.game.support.TestData.EVE
 import java.time.Duration
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.stream.Stream
 
@@ -51,13 +54,13 @@ class RoomLeaveScenariosTest : BaseIntegrationTest() {
 
     @Test
     fun `player of a paused game gets the full grace counted from the pause`() {
-        val roomId = roomWith(ALICE, BOB, started = true)
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
         pause(ALICE, roomId)
         val pausedAt = pausedAt(roomId)
 
         leave(BOB, roomId)
 
-        assertThat(leaveDeadline(roomId, BOB)).isEqualTo(pausedAt.plusSeconds(30))
+        assertThat(leaveDeadline(roomId, BOB)).isCloseTo(pausedAt.plusSeconds(30), within(1, ChronoUnit.MILLIS))
     }
 
     @ParameterizedTest(name = "{0}")
@@ -163,15 +166,11 @@ class RoomLeaveScenariosTest : BaseIntegrationTest() {
 
         val room = room(roomId, ALICE)
         assertThat(room.members.map { it.userId }).containsExactly(ALICE)
-        assertThat(room.session!!.players).containsExactly(ALICE, BOB)
+        assertThat(fullState(roomId).state.players.map { it.id }).containsExactly(ALICE, BOB)
         assertThat(join(BOB, roomId).members.single { it.userId == BOB }.role).isEqualTo(RoomRole.PLAYER)
     }
 
-    private fun pausedAt(roomId: UUID): Instant =
-        jdbcClient.sql("SELECT paused_at FROM room_session WHERE room_id = :id AND status = 'IN_PROGRESS'")
-            .param("id", roomId)
-            .query { rs, _ -> rs.getTimestamp("paused_at").toInstant() }
-            .single()
+    private fun pausedAt(roomId: UUID): Instant = fullState(roomId).state.timer!!.pausedAt!!
 
     companion object {
         private val GAME = Duration.ofSeconds(30)
