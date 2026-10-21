@@ -9,6 +9,7 @@ data class UserResponse(
     val id: UUID,
     val email: String,
     val emailVerified: Boolean,
+    /** Отображаемое имя, не уникально. */
     val nickname: String,
     val avatar: Avatar,
     val loginMethods: List<LoginMethod>,

@@ -15,7 +15,7 @@ import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.options
 import org.springframework.test.web.servlet.post
 import site.qgames.usergateway.BaseIntegrationTest
-import site.qgames.usergateway.publicapi.dto.auth.LoginRequest
+import site.qgames.userauth.gatewayapi.dto.auth.LoginRequest
 
 /**
  * Разрешённый origin берётся из application.yml по умолчанию: только портал, http://localhost:3000.

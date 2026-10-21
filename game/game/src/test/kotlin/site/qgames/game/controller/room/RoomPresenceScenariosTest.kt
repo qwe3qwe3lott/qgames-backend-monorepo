@@ -4,8 +4,6 @@ import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.beans.factory.annotation.Autowired
 import site.qgames.game.BaseIntegrationTest
-import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
-import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomRole
 import site.qgames.game.job.room.RoomConnectionCleanupJob
 import site.qgames.game.job.room.RoomConnectionHeartbeatJob
@@ -17,7 +15,7 @@ import java.util.UUID
 
 /**
  * Присутствие: открытый поток комнаты и есть нахождение в ней. Подключение входит в комнату, закрытие последнего потока
- * пользователя ставит срок выхода, подключения упавших инстансов истекают по аренде.
+ * пользователя выводит из комнаты, подключения упавших инстансов истекают по аренде.
  */
 class RoomPresenceScenariosTest : BaseIntegrationTest() {
 
@@ -48,24 +46,24 @@ class RoomPresenceScenariosTest : BaseIntegrationTest() {
 
         first.close()
 
-        assertThat(leaveDeadline(roomId, BOB)).isNull()
+        assertThat(isMember(roomId, BOB)).isTrue()
         assertThat(connections(roomId, BOB)).isEqualTo(1)
 
         second.close()
 
-        assertThat(leaveDeadline(roomId, BOB)).isNotNull()
+        assertThat(isMember(roomId, BOB)).isFalse()
         assertThat(connections(roomId, BOB)).isZero()
-        assertThat(room(roomId, ALICE).members.single { it.userId == BOB }.leaving).isTrue()
+        assertThat(room(roomId, ALICE).members.map { it.userId }).containsExactly(ALICE)
     }
 
     @Test
-    fun `reconnecting within the deadline cancels the leave`() {
-        val roomId = roomWith(ALICE, BOB)
+    fun `reconnecting player of the running game is present again`() {
+        val roomId = roomWith(ALICE, BOB, started = true)
         leave(BOB, roomId)
 
         openStream(BOB, roomId)
 
-        assertThat(leaveDeadline(roomId, BOB)).isNull()
+        assertThat(leftAt(roomId, BOB)).isNull()
     }
 
     @Test
@@ -76,8 +74,8 @@ class RoomPresenceScenariosTest : BaseIntegrationTest() {
         assertThat(roomConnectionCleanupJob.run()).isEqualTo(1)
 
         assertThat(connections(roomId, BOB)).isZero()
-        assertThat(leaveDeadline(roomId, BOB)).isNotNull()
-        assertThat(leaveDeadline(roomId, ALICE)).isNull()
+        assertThat(isMember(roomId, BOB)).isFalse()
+        assertThat(isMember(roomId, ALICE)).isTrue()
         assertThat(roomConnectionCleanupJob.run()).isZero()
     }
 
@@ -104,35 +102,9 @@ class RoomPresenceScenariosTest : BaseIntegrationTest() {
 
         assertThat(streams(BOB, roomId)).isEmpty()
         assertThat(streams(ALICE, roomId)).hasSize(1)
-        assertThat(leaveDeadline(roomId, BOB)).isNotNull()
+        assertThat(isMember(roomId, BOB)).isFalse()
         openStream(BOB, roomId)
-        assertThat(leaveDeadline(roomId, BOB)).isNull()
-    }
-
-    @Test
-    fun `creator who never connects is removed after the owner grace`() {
-        val before = Instant.now()
-        val created: RoomResponse = createRoomRequest(ALICE, CreateRoomRequest(nothingSettings()))
-            .andExpect { status { isOk() } }
-            .body()
-        val roomId = created.id
-
-        assertThat(created.members.single().leaving).isTrue()
-        assertThat(leaveDeadline(roomId, ALICE)).isBetween(before.plusSeconds(15).minusMillis(1), Instant.now().plusSeconds(15))
-        expireLeave(roomId, ALICE)
-        roomLeaveJob.run()
-
-        val room = room(roomId, BOB)
-        assertThat(room.members).isEmpty()
-        assertThat(room.ownerId).isNull()
-    }
-
-    @Test
-    fun `creator who connects stays in the room`() {
-        val roomId = createRoom(ALICE).id
-
-        assertThat(leaveDeadline(roomId, ALICE)).isNull()
-        assertThat(room(roomId, ALICE).members.single().owner).isTrue()
+        assertThat(isMember(roomId, BOB)).isTrue()
     }
 
     private fun connections(roomId: UUID, user: UUID): Long =

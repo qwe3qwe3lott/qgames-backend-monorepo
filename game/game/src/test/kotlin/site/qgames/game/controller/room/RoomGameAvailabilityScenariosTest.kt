@@ -133,7 +133,7 @@ class RoomGameAvailabilityScenariosTest : BaseIntegrationTest() {
         }
 
         assertThat(sessionSnapshot()).isEqualTo(sessionBefore)
-        assertThat(countRows("room_member WHERE leave_deadline IS NULL")).isEqualTo(2)
+        assertThat(countRows("room_member WHERE left_at IS NULL")).isEqualTo(2)
     }
 
     private fun sessionSnapshot(): Map<String, Any?> =

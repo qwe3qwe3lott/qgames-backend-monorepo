@@ -8,6 +8,8 @@ data class RoomEntity(
     val id: UUID,
     val gameCode: String,
     val ownerId: UUID?,
+    val ownerGraceUserId: UUID?,
+    val ownerGraceDeadline: Instant?,
     val status: String,
     val currentSessionId: UUID?,
     val emptySince: Instant?,
@@ -24,6 +26,6 @@ data class RoomMemberEntity(
     val userId: UUID,
     val role: String,
     val joinedAt: Instant,
-    /** Когда вышедший участник перестанет числиться в комнате; null — участник присутствует. */
-    val leaveDeadline: Instant? = null,
+    /** Когда игрок идущей партии закрыл последний поток комнаты; null — участник присутствует. */
+    val leftAt: Instant? = null,
 )

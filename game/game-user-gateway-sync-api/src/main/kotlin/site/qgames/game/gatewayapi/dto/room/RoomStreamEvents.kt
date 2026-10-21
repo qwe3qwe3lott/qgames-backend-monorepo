@@ -71,8 +71,8 @@ data class RoomSnapshotEvent(
     val data: RoomResponse,
 ) : RoomStreamEvent
 
-/** Изменился состав участников, их роли, ники, уход (leaving) или владелец. */
-@Schema(description = "Изменился состав участников, их роли, ники, уход (leaving) или владелец")
+/** Изменился состав участников, их роли, ники, присутствие игроков партии (leaving) или владелец. */
+@Schema(description = "Изменился состав участников, их роли, ники, присутствие игроков партии (leaving) или владелец")
 data class RoomUsersChangedEvent(
     @field:Schema(type = "string", allowableValues = [RoomStreamEventTypes.USERS_CHANGED])
     val type: RoomStreamEventType,
@@ -111,7 +111,7 @@ data class RoomDeletedEvent(
 
 /** Владелец и полный список участников комнаты в порядке входа. */
 data class RoomUsersDto(
-    /** Нет, если в комнате никого не осталось. */
+    /** Нет в окне владения и в комнате без присутствующих (как RoomResponse.ownerId). */
     val ownerId: UUID?,
     val members: List<RoomMemberResponse>,
 )

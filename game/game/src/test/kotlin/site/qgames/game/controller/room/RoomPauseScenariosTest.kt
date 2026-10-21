@@ -28,7 +28,7 @@ import java.util.stream.Stream
 
 /**
  * Пауза — действие таймера партии: ставит и снимает владелец (POST …/session/pause и …/resume, 204). На паузе ходы
- * запрещены, дедлайн хода и сроки возвращения игроков партии заморожены, отмена работает. У партии без таймера паузы нет.
+ * запрещены, дедлайн хода заморожен (окно владения — нет), отмена работает. У партии без таймера паузы нет.
  */
 class RoomPauseScenariosTest : BaseIntegrationTest() {
 
@@ -102,32 +102,36 @@ class RoomPauseScenariosTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `players of a paused game are not removed, other leavers are`() {
+    fun `owner grace is not frozen by the pause`() {
+        val roomId = roomWith(ALICE, BOB, started = true, settings = perMove())
+        pause(ALICE, roomId)
+        leave(ALICE, roomId)
+        expireOwnerGrace(roomId)
+
+        assertThat(roomOwnerGraceJob.run()).isEqualTo(1)
+
+        assertThat(room(roomId, BOB).ownerId).isEqualTo(BOB)
+    }
+
+    @Test
+    fun `players of a paused game stay absent, spectators are removed`() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = perMove()).also { join(CAROL, it) }
+        pause(ALICE, roomId)
         leave(BOB, roomId)
         leave(CAROL, roomId)
-        pause(ALICE, roomId)
-        expireLeave(roomId, BOB)
-        expireLeave(roomId, CAROL)
-
-        assertThat(roomLeaveJob.run()).isEqualTo(1)
 
         val room = room(roomId, ALICE)
         assertThat(room.members.map { it.userId to it.leaving }).containsExactly(ALICE to false, BOB to true)
     }
 
     @Test
-    fun `resume shifts the move deadline and the leave deadlines of the game players by the pause length`() {
-        val roomId = roomWith(ALICE, BOB, started = true, settings = perMove()).also { join(CAROL, it) }
-        leave(BOB, roomId)
-        leave(CAROL, roomId)
+    fun `resume shifts the move deadline by the pause length`() {
+        val roomId = roomWith(ALICE, BOB, started = true, settings = perMove())
         // Пауза длится минуту: её начало в журнале сдвинуто на минуту назад.
         jdbcClient.sql("UPDATE room_session SET move_deadline = NULL WHERE room_id = :id").param("id", roomId).update()
         val pausedAt = Instant.now().minusSeconds(60)
         appendPause(roomId, pausedAt)
         val moveDeadline = fullState(roomId).state.timer!!.deadline!!
-        val bobDeadline = leaveDeadline(roomId, BOB)!!
-        val carolDeadline = leaveDeadline(roomId, CAROL)
 
         val before = Instant.now()
         resume(ALICE, roomId)
@@ -140,8 +144,6 @@ class RoomPauseScenariosTest : BaseIntegrationTest() {
         assertThat(timer.pausedAt).isNull()
         assertThat(timer.deadline).isBetween(moveDeadline.plus(minShift), moveDeadline.plus(maxShift))
         assertThat(storedDeadline(roomId)).isCloseTo(timer.deadline, within(1, ChronoUnit.MILLIS))
-        assertThat(leaveDeadline(roomId, BOB)).isBetween(bobDeadline.plus(minShift), bobDeadline.plus(maxShift))
-        assertThat(leaveDeadline(roomId, CAROL)).isEqualTo(carolDeadline)
         // Ходы снова разрешены.
         pass(ALICE, roomId)
     }

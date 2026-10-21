@@ -102,7 +102,8 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
         val viewer = expectedOwner ?: ALICE
         val room = room(roomId, viewer)
         assertThat(room.ownerId).isEqualTo(expectedOwner)
-        assertThat(room.members.map { it.userId }).doesNotContain(leaver)
+        // Игрок идущей партии остаётся отсутствующим участником, остальные удаляются.
+        assertThat(room.members.filter { !it.leaving }.map { it.userId }).doesNotContain(leaver)
     }
 
     @Test

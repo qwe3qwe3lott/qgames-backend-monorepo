@@ -46,7 +46,7 @@ class RoomResponseMapper(
             avatar = profile?.avatar?.let { Avatar.valueOf(it.name) },
             role = RoomRole.valueOf(member.role.name),
             owner = member.userId == ownerId,
-            leaving = member.leaveDeadline != null,
+            leaving = member.leftAt != null,
             joinedAt = member.joinedAt,
         )
     }

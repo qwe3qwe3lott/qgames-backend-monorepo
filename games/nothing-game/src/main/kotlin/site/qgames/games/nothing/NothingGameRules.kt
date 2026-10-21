@@ -12,7 +12,6 @@ import site.qgames.games.api.session.SessionEvent
 import site.qgames.games.api.session.SessionEvents
 import site.qgames.games.api.session.SessionState
 import site.qgames.games.api.turns.TurnsModule
-import java.time.Duration
 import java.util.UUID
 
 /**
@@ -39,8 +38,6 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
         moveSeconds = 5..600,
         default = TimeControl(TimeControlMode.NONE, moveSeconds = null),
     )
-
-    override val reconnectGrace: Duration = Duration.ofSeconds(30)
 
     override val defaultSettings = NothingSettings(rounds = 3)
 

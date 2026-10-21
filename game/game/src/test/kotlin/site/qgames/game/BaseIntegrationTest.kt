@@ -33,7 +33,7 @@ import site.qgames.game.gatewayapi.dto.room.RoomRole
 import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
 import site.qgames.game.gatewayapi.dto.room.TimeControlDto
 import site.qgames.game.gatewayapi.dto.room.TimeControlMode
-import site.qgames.game.job.room.RoomLeaveJob
+import site.qgames.game.job.room.RoomOwnerGraceJob
 import site.qgames.game.repository.session.RoomSessionEventRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.session.SessionJournalService
@@ -75,7 +75,7 @@ abstract class BaseIntegrationTest {
     protected lateinit var jdbcClient: JdbcClient
 
     @Autowired
-    protected lateinit var roomLeaveJob: RoomLeaveJob
+    protected lateinit var roomOwnerGraceJob: RoomOwnerGraceJob
 
     @Autowired
     protected lateinit var roomStreamRegistry: RoomStreamRegistry
@@ -187,30 +187,43 @@ abstract class BaseIntegrationTest {
     }
 
     /**
-     * Выход, доведённый до конца: срок выхода сдвигается в прошлое и RoomLeaveJob удаляет участника — так, как будто
-     * он не вернулся вовремя.
+     * Выход, доведённый до конца: пользователь закрыл потоки, а окно владения (если он был владельцем) истекло и
+     * RoomOwnerGraceJob передал владение — так, как будто он не вернулся вовремя.
      */
     protected fun leaveCompletely(user: UUID, roomId: UUID) {
         leave(user, roomId)
-        expireLeave(roomId, user)
-        roomLeaveJob.run()
+        expireOwnerGrace(roomId)
+        roomOwnerGraceJob.run()
     }
 
-    /** Сдвигает срок выхода участника в прошлое (по расписанию RoomLeaveJob в тестах выключен). */
-    protected fun expireLeave(roomId: UUID, user: UUID) {
+    /** Сдвигает срок окна владения комнаты в прошлое (по расписанию RoomOwnerGraceJob в тестах выключен). */
+    protected fun expireOwnerGrace(roomId: UUID) {
         jdbcClient.sql(
-            "UPDATE room_member SET leave_deadline = now() - interval '1 second' WHERE room_id = :roomId AND user_id = :userId",
+            "UPDATE room SET owner_grace_deadline = now() - interval '1 second' WHERE id = :roomId AND owner_grace_deadline IS NOT NULL",
         )
             .param("roomId", roomId)
-            .param("userId", user)
             .update()
     }
 
-    protected fun leaveDeadline(roomId: UUID, user: UUID): Instant? =
-        jdbcClient.sql("SELECT leave_deadline FROM room_member WHERE room_id = :roomId AND user_id = :userId")
+    /** Окно владения комнаты: (прежний владелец, срок) или null. */
+    protected fun ownerGrace(roomId: UUID): Pair<UUID, Instant>? =
+        jdbcClient.sql("SELECT owner_grace_user_id, owner_grace_deadline FROM room WHERE id = :roomId")
+            .param("roomId", roomId)
+            .query { rs, _ ->
+                rs.getObject("owner_grace_user_id", UUID::class.java)?.let { it to rs.getTimestamp("owner_grace_deadline").toInstant() }
+            }
+            .list()
+            .single()
+
+    protected fun isMember(roomId: UUID, user: UUID): Boolean =
+        countRows("room_member WHERE room_id = :roomId AND user_id = :userId", "roomId" to roomId, "userId" to user) == 1L
+
+    /** Когда игрок партии ушёл (room_member.left_at); null — присутствует. Участник должен быть в комнате. */
+    protected fun leftAt(roomId: UUID, user: UUID): Instant? =
+        jdbcClient.sql("SELECT left_at FROM room_member WHERE room_id = :roomId AND user_id = :userId")
             .param("roomId", roomId)
             .param("userId", user)
-            .query { rs, _ -> rs.getTimestamp("leave_deadline")?.toInstant() }
+            .query { rs, _ -> rs.getTimestamp("left_at")?.toInstant() }
             .list()
             .single()
 

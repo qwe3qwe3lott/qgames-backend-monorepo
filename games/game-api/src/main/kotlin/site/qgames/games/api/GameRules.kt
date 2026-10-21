@@ -5,7 +5,6 @@ import site.qgames.games.api.session.SessionEvent
 import site.qgames.games.api.session.SessionState
 import site.qgames.games.api.session.ViewerKey
 import site.qgames.games.api.turns.TurnsState
-import java.time.Duration
 import java.util.UUID
 
 /**
@@ -23,6 +22,9 @@ import java.util.UUID
  * не совпадают с ними по именам; события игры адресуют их путями от `state` (например, `PATCH ["state"] {moves}`).
  * [G], ход [M] и настройки [C] — простые data-классы без вычисляемых свойств: сервис game пишет их в журнал как JSON.
  * При несовместимом изменении формата событий увеличивается [stateSchemaVersion].
+ *
+ * Игроки партии закреплены до её конца: игрок, закрывший поток комнаты, остаётся игроком, а партия о его отсутствии
+ * не знает (время идёт, ходы по таймауту — как обычно). Хука на отсутствие игрока пока нет.
  */
 interface GameRules<G : Any, M : Any, C : Any> {
 
@@ -42,12 +44,6 @@ interface GameRules<G : Any, M : Any, C : Any> {
 
     /** Какие режимы времени поддерживает игра, их границы и режим по умолчанию. */
     val timeControl: TimeControlRules
-
-    /**
-     * Сколько игрок идущей партии может отсутствовать после выхода из комнаты, прежде чем перестанет считаться
-     * присутствующим (место в партии при этом сохраняется). На паузе таймера отсчёт заморожен.
-     */
-    val reconnectGrace: Duration
 
     /** Настройки игры по умолчанию: ими заполняется форма создания комнаты. */
     val defaultSettings: C

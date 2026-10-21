@@ -297,11 +297,7 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
                 RoomSetup { roomWith(ALICE, BOB, started = true).also { join(CAROL, it) } },
                 CAROL, PASS, HttpStatus.FORBIDDEN, "NOT_SESSION_PLAYER", null,
             ),
-            arguments(
-                "player who left the room",
-                RoomSetup { roomWith(ALICE, BOB, started = true).also { leaveCompletely(ALICE, it) } },
-                ALICE, PASS, HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER", null,
-            ),
+            arguments("not in the room", started(), DAVE, PASS, HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER", null),
             arguments("no game", RoomSetup { roomWith(ALICE, BOB) }, ALICE, PASS, HttpStatus.CONFLICT, "ROOM_NOT_IN_GAME", null),
         )
 

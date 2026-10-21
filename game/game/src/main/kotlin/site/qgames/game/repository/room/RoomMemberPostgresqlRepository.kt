@@ -23,15 +23,15 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun insert(member: RoomMemberEntity) {
         jdbcClient.sql(
             """
-            INSERT INTO room_member (room_id, user_id, role, joined_at, leave_deadline)
-            VALUES (:roomId, :userId, :role, :joinedAt, :leaveDeadline)
+            INSERT INTO room_member (room_id, user_id, role, joined_at, left_at)
+            VALUES (:roomId, :userId, :role, :joinedAt, :leftAt)
             """,
         )
             .param("roomId", member.roomId)
             .param("userId", member.userId)
             .param("role", member.role)
             .param("joinedAt", member.joinedAt.toTimestamp())
-            .param("leaveDeadline", member.leaveDeadline.toTimestamp())
+            .param("leftAt", member.leftAt.toTimestamp())
             .update()
     }
 
@@ -43,56 +43,13 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .update()
     }
 
-    fun updateLeaveDeadline(roomId: UUID, userId: UUID, leaveDeadline: Instant?) {
-        jdbcClient.sql("UPDATE room_member SET leave_deadline = :leaveDeadline WHERE room_id = :roomId AND user_id = :userId")
+    fun updateLeftAt(roomId: UUID, userId: UUID, leftAt: Instant?) {
+        jdbcClient.sql("UPDATE room_member SET left_at = :leftAt WHERE room_id = :roomId AND user_id = :userId")
             .param("roomId", roomId)
             .param("userId", userId)
-            .param("leaveDeadline", leaveDeadline.toTimestamp())
+            .param("leftAt", leftAt.toTimestamp())
             .update()
     }
-
-    /** Сдвигает сроки выхода участников [userIds] (у кого срок есть) на [micros] микросекунд. */
-    fun shiftLeaveDeadlines(roomId: UUID, userIds: Collection<UUID>, micros: Long) {
-        if (userIds.isEmpty()) return
-        jdbcClient.sql(
-            """
-            UPDATE room_member SET leave_deadline = leave_deadline + :micros * interval '1 microsecond'
-            WHERE room_id = :roomId AND user_id IN (:userIds) AND leave_deadline IS NOT NULL
-            """,
-        )
-            .param("roomId", roomId)
-            .param("userIds", userIds)
-            .param("micros", micros)
-            .update()
-    }
-
-    /**
-     * Комнаты, где у кого-то истёк срок выхода к [now], кроме игроков партии на паузе. Без блокировок.
-     * Пауза — состояние таймера; в проекции room_session она видна как идущая партия с таймером без дедлайна хода
-     * (у идущего таймера дедлайн есть всегда).
-     * `leave_deadline <= :now` — под частичный индекс room_member_leave_deadline_idx.
-     */
-    fun findRoomIdsWithExpiredLeave(now: Instant, limit: Int): List<UUID> =
-        jdbcClient.sql(
-            """
-            SELECT m.room_id
-            FROM room_member m
-                     JOIN room r ON r.id = m.room_id
-                     JOIN game g ON g.code = r.game_code
-                     LEFT JOIN room_session s ON s.id = r.current_session_id AND s.status = 'IN_PROGRESS'
-                AND s.time_control_mode <> 'NONE' AND s.move_deadline IS NULL
-            WHERE m.leave_deadline <= :now
-              AND g.publish_status <> 'FORCE_DISABLED'
-              AND NOT EXISTS (SELECT 1 FROM room_session_player p WHERE p.session_id = s.id AND p.user_id = m.user_id)
-            GROUP BY m.room_id
-            ORDER BY min(m.leave_deadline)
-            LIMIT :limit
-            """,
-        )
-            .param("now", now.toTimestamp())
-            .param("limit", limit)
-            .query { rs, _ -> rs.getUuid("room_id")!! }
-            .list()
 
     fun findRoomIdsByUser(userId: UUID): List<UUID> =
         jdbcClient.sql("SELECT room_id FROM room_member WHERE user_id = :userId")
@@ -107,13 +64,19 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .update()
     }
 
+    fun deleteAbsent(roomId: UUID): List<UUID> =
+        jdbcClient.sql("DELETE FROM room_member WHERE room_id = :roomId AND left_at IS NOT NULL RETURNING user_id")
+            .param("roomId", roomId)
+            .query { rs, _ -> rs.getUuid("user_id")!! }
+            .list()
+
     private val mapper = RowMapper { rs, _ ->
         RoomMemberEntity(
             roomId = rs.getUuid("room_id")!!,
             userId = rs.getUuid("user_id")!!,
             role = rs.getString("role"),
             joinedAt = rs.getInstant("joined_at")!!,
-            leaveDeadline = rs.getInstant("leave_deadline"),
+            leftAt = rs.getInstant("left_at"),
         )
     }
 }

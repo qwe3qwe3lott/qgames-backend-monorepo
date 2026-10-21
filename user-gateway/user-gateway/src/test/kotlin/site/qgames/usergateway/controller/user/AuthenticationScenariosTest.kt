@@ -17,7 +17,7 @@ import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.post
 import site.qgames.common.web.header.QgamesHeaders
-import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
+import site.qgames.userauth.gatewayapi.dto.user.SetPasswordRequest
 import site.qgames.usergateway.BaseIntegrationTest
 import java.time.Instant
 import java.util.UUID

@@ -43,7 +43,8 @@ class RoomEventsController(
         description = "Server-Sent Events: `event: <тип>`, `data: <json>`, раз в ~5 с комментарий `: ping`. Первое " +
             "сообщение — snapshot (комната для этого пользователя, как в GET), дальше — изменения участников, настроек, " +
             "партии и удаление комнаты. Открытый поток и есть нахождение в комнате: подключение входит в комнату (как " +
-            "прежний вход), а когда у пользователя закрывается последний поток, он выходит с отложенным сроком. " +
+            "прежний вход), а когда у пользователя закрывается последний поток, он выходит из комнаты (игрок идущей " +
+            "партии остаётся отсутствующим до её конца). " +
             "Подключений у пользователя может быть несколько (вкладки, устройства).",
     )
     @ApiResponses(
@@ -65,7 +66,7 @@ class RoomEventsController(
         val subscriber = registry.register(roomId, userId)
         try {
             val connection = roomService.connect(userId, roomId, subscriber.id)
-            // С этого момента закрытие подписчика отключает пользователя (удаляет подключение, ставит срок выхода).
+            // С этого момента закрытие подписчика отключает пользователя (удаляет подключение, выводит из комнаты).
             subscriber.connected(connection.connectionId)
             subscriber.snapshot(RoomStreamEventType.SNAPSHOT.code, roomEventResponseMapper.toSnapshot(connection.details))
         } catch (e: Exception) {

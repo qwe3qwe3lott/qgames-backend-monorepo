@@ -8,13 +8,13 @@ import jakarta.validation.Valid
 import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
-import site.qgames.usergateway.publicapi.dto.auth.GoogleIdTokenRequest
-import site.qgames.usergateway.publicapi.dto.auth.LoginRequest
-import site.qgames.usergateway.publicapi.dto.auth.RegisterRequest
-import site.qgames.usergateway.publicapi.dto.auth.RegistrationResponse
-import site.qgames.usergateway.publicapi.dto.auth.ResendCodeRequest
-import site.qgames.usergateway.publicapi.dto.auth.VerifyEmailRequest
-import site.qgames.usergateway.publicapi.dto.user.UserResponse
+import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.gatewayapi.dto.auth.LoginRequest
+import site.qgames.userauth.gatewayapi.dto.auth.RegisterRequest
+import site.qgames.userauth.gatewayapi.dto.auth.RegistrationResponse
+import site.qgames.userauth.gatewayapi.dto.auth.ResendCodeRequest
+import site.qgames.userauth.gatewayapi.dto.auth.VerifyEmailRequest
+import site.qgames.userauth.gatewayapi.dto.user.UserResponse
 
 /**
  * Публичная аутентификация. Токены в контракт не входят: gateway кладёт их в HttpOnly-куки

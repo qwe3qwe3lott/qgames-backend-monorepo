@@ -16,17 +16,22 @@ class RoomRepository(
     private val roomEntityMapper: RoomEntityMapper,
 ) {
 
-    /** Новая комната ждёт игроков ([RoomStatus.WAITING]). [gameSettings] — JSON настроек игры. */
+    /**
+     * Новая комната ждёт игроков ([RoomStatus.WAITING]). [gameSettings] — JSON настроек игры. Участников и владельца
+     * у неё нет, она пустая с [now], а окно владения до [ownerGraceDeadline] — за создателем [creatorId].
+     */
     fun insert(
         gameCode: GameCode,
-        ownerId: UUID,
+        creatorId: UUID,
+        ownerGraceDeadline: Instant,
         timeControl: RoomTimeControlModel,
         gameSettings: String,
         now: Instant,
     ): RoomModel = roomEntityMapper.toModel(
         roomPostgresqlRepository.insert(
             gameCode = gameCode.code,
-            ownerId = ownerId,
+            ownerGraceUserId = creatorId,
+            ownerGraceDeadline = ownerGraceDeadline,
             status = RoomStatus.WAITING.name,
             timeControlMode = timeControl.mode.name,
             moveSeconds = timeControl.moveSeconds,
@@ -61,12 +66,16 @@ class RoomRepository(
     fun findIdsByGamePublishStatus(status: GamePublishStatus, limit: Int): List<UUID> =
         roomPostgresqlRepository.findIdsByGamePublishStatus(status.name, limit)
 
-    /** Удаляет комнату. Участники и партии удаляются каскадно. */
+    /** Удаляет комнату. Участники, подключения и партии удаляются каскадно. */
     fun delete(id: UUID) = roomPostgresqlRepository.delete(id)
 
+    /** Комнаты, пустующие с момента раньше [threshold] (не больше [limit]). Без блокировок. */
+    fun findIdsEmptySince(threshold: Instant, limit: Int): List<UUID> = roomPostgresqlRepository.findIdsEmptySince(threshold, limit)
+
     /**
-     * Удаляет комнаты, пустующие с момента раньше [threshold], и возвращает их id. Участники, подключения и партии
-     * удаляются каскадно.
+     * Комнаты, у которых окно владения истекло к [now] (не больше [limit]), самые просроченные первыми. Комнаты
+     * принудительно отключённых игр (FORCE_DISABLED) пропускаются: их удалит ForceDisabledGameCleanupJob. Без блокировок.
      */
-    fun deleteEmptySince(threshold: Instant): List<UUID> = roomPostgresqlRepository.deleteEmptySince(threshold)
+    fun findIdsWithExpiredOwnerGrace(now: Instant, limit: Int): List<UUID> =
+        roomPostgresqlRepository.findIdsWithExpiredOwnerGrace(now, limit)
 }

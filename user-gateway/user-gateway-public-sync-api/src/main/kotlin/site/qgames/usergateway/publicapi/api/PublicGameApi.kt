@@ -10,8 +10,8 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.service.annotation.GetExchange
 import org.springframework.web.service.annotation.HttpExchange
 import site.qgames.game.gatewayapi.dto.game.GameCodes
-import site.qgames.usergateway.publicapi.dto.game.GameDetailsResponse
-import site.qgames.usergateway.publicapi.dto.game.GameListResponse
+import site.qgames.game.gatewayapi.dto.game.GameDetailsResponse
+import site.qgames.game.gatewayapi.dto.game.GameListResponse
 
 /**
  * Каталог игр. Доступен без аутентификации.

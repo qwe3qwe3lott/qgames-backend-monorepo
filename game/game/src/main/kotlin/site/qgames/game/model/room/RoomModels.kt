@@ -8,11 +8,16 @@ data class RoomModel(
     val id: UUID,
     /** Игра комнаты. */
     val gameCode: GameCode,
-    /** Нет, если в комнате никого не осталось: владельцем станет первый вошедший. */
+    /**
+     * Нет во время окна владения ([ownerGrace]) и в комнате без присутствующих после окна (тогда владельцем станет
+     * первый вошедший). Владелец всегда присутствует в комнате.
+     */
     val ownerId: UUID?,
+    /** Окно владения: прежний владелец ушёл и может вернуть владение до срока. Есть только при [ownerId] = null. */
+    val ownerGrace: RoomOwnerGraceModel?,
     val status: RoomStatus,
     val currentSessionId: UUID?,
-    /** С какого момента в комнате нет ни игроков, ни наблюдателей. */
+    /** С какого момента в комнате нет присутствующих участников (отсутствующие игроки партии комнату не держат). */
     val emptySince: Instant?,
     /** Правила времени следующей партии. */
     val timeControl: RoomTimeControlModel,
@@ -26,8 +31,17 @@ data class RoomMemberModel(
     val userId: UUID,
     val role: RoomRole,
     val joinedAt: Instant,
-    /** Когда вышедший участник перестанет числиться в комнате; null — участник присутствует. */
-    val leaveDeadline: Instant? = null,
+    /**
+     * Когда игрок идущей партии закрыл последний поток комнаты; null — участник присутствует. Остальные участники
+     * при уходе удаляются сразу, поэтому отсутствующим бывает только игрок идущей партии.
+     */
+    val leftAt: Instant? = null,
+)
+
+/** Окно владения: до [deadline] вернуть владение может только ушедший владелец [userId]. */
+data class RoomOwnerGraceModel(
+    val userId: UUID,
+    val deadline: Instant,
 )
 
 /** Правила времени: режим и секунды на ход (только для [RoomTimeControlMode.PER_MOVE]). */

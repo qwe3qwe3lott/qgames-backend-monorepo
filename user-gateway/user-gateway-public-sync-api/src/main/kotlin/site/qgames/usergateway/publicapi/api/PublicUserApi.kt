@@ -11,11 +11,11 @@ import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PatchExchange
 import org.springframework.web.service.annotation.PostExchange
 import org.springframework.web.service.annotation.PutExchange
-import site.qgames.usergateway.publicapi.dto.auth.GoogleIdTokenRequest
-import site.qgames.usergateway.publicapi.dto.user.ChangePasswordRequest
-import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
-import site.qgames.usergateway.publicapi.dto.user.UpdateProfileRequest
-import site.qgames.usergateway.publicapi.dto.user.UserResponse
+import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.gatewayapi.dto.user.ChangePasswordRequest
+import site.qgames.userauth.gatewayapi.dto.user.SetPasswordRequest
+import site.qgames.userauth.gatewayapi.dto.user.UpdateProfileRequest
+import site.qgames.userauth.gatewayapi.dto.user.UserResponse
 
 /**
  * Текущий пользователь. Требует аутентификации (access-токен в куке или заголовке Authorization).

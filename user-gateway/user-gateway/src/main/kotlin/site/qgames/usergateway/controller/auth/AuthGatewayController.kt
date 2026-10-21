@@ -8,24 +8,21 @@ import org.springframework.web.client.RestClientResponseException
 import site.qgames.common.exception.exception.UnauthorizedException
 import site.qgames.userauth.gatewayapi.api.AuthApi
 import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
+import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.gatewayapi.dto.auth.LoginRequest
 import site.qgames.userauth.gatewayapi.dto.auth.RefreshTokenRequest
+import site.qgames.userauth.gatewayapi.dto.auth.RegisterRequest
+import site.qgames.userauth.gatewayapi.dto.auth.RegistrationResponse
+import site.qgames.userauth.gatewayapi.dto.auth.ResendCodeRequest
+import site.qgames.userauth.gatewayapi.dto.auth.VerifyEmailRequest
+import site.qgames.userauth.gatewayapi.dto.user.UserResponse
 import site.qgames.usergateway.cookie.AuthCookies
-import site.qgames.usergateway.mapper.auth.toPublic
-import site.qgames.usergateway.mapper.auth.toUserAuth
-import site.qgames.usergateway.mapper.user.toPublic
 import site.qgames.usergateway.publicapi.api.PublicAuthApi
-import site.qgames.usergateway.publicapi.dto.auth.GoogleIdTokenRequest
-import site.qgames.usergateway.publicapi.dto.auth.LoginRequest
-import site.qgames.usergateway.publicapi.dto.auth.RegisterRequest
-import site.qgames.usergateway.publicapi.dto.auth.RegistrationResponse
-import site.qgames.usergateway.publicapi.dto.auth.ResendCodeRequest
-import site.qgames.usergateway.publicapi.dto.auth.VerifyEmailRequest
-import site.qgames.usergateway.publicapi.dto.user.UserResponse
 
 /**
- * Публичные эндпоинты аутентификации. Токены из user-auth уходят клиенту только в HttpOnly-куках,
- * в теле ответа — данные пользователя. Запрос и ответ — request-scoped прокси, потому что контракт
- * [PublicAuthApi] не содержит servlet-параметров.
+ * Публичные эндпоинты аутентификации. Запросы и ответы — DTO контракта user-auth, они передаются как есть. Токены из
+ * user-auth ([AuthResponse.tokens]) уходят клиенту только в HttpOnly-куках, в теле ответа — данные пользователя.
+ * Запрос и ответ — request-scoped прокси, потому что контракт [PublicAuthApi] не содержит servlet-параметров.
  */
 @RestController
 class AuthGatewayController(
@@ -35,20 +32,16 @@ class AuthGatewayController(
     private val httpResponse: HttpServletResponse,
 ) : PublicAuthApi {
 
-    override fun register(request: RegisterRequest): RegistrationResponse =
-        authApi.register(request.toUserAuth()).toPublic()
+    override fun register(request: RegisterRequest): RegistrationResponse = authApi.register(request)
 
-    override fun verifyEmail(request: VerifyEmailRequest): UserResponse =
-        startSession(authApi.verifyEmail(request.toUserAuth()))
+    override fun verifyEmail(request: VerifyEmailRequest): UserResponse = startSession(authApi.verifyEmail(request))
 
-    override fun resendCode(request: ResendCodeRequest) =
-        authApi.resendCode(request.toUserAuth())
+    override fun resendCode(request: ResendCodeRequest) = authApi.resendCode(request)
 
-    override fun login(request: LoginRequest): UserResponse =
-        startSession(authApi.login(request.toUserAuth()))
+    override fun login(request: LoginRequest): UserResponse = startSession(authApi.login(request))
 
     override fun loginWithGoogle(request: GoogleIdTokenRequest): UserResponse =
-        startSession(authApi.loginWithGoogle(request.toUserAuth()))
+        startSession(authApi.loginWithGoogle(request))
 
     override fun refresh(): UserResponse {
         val refreshToken = authCookies.refreshToken(httpRequest) ?: run {
@@ -73,6 +66,6 @@ class AuthGatewayController(
 
     private fun startSession(auth: AuthResponse): UserResponse {
         authCookies.write(httpResponse, auth.tokens)
-        return auth.user.toPublic()
+        return auth.user
     }
 }

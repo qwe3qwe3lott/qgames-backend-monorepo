@@ -26,7 +26,6 @@ import site.qgames.games.api.session.SessionDocument
 import site.qgames.games.api.session.SessionEngine
 import site.qgames.games.api.session.SessionStatus
 import site.qgames.games.api.session.TimerOutcome
-import site.qgames.games.api.timer.TimerModule
 import tools.jackson.databind.json.JsonMapper
 import java.security.SecureRandom
 import java.time.Clock
@@ -36,7 +35,7 @@ import java.util.UUID
  * Партии в комнате. Партия — журнал событий ([SessionJournalService]); правила конкретной игры и модули — в
  * [SessionEngine]. Все операции идут под блокировкой строки комнаты: полное состояние на last_seq → события → запись.
  *
- * Пауза — действие таймера: замораживает дедлайн хода и сроки возвращения игроков партии; у партии без таймера паузы
+ * Пауза — действие таймера: замораживает дедлайн хода (окно владения не замораживает); у партии без таймера паузы
  * нет. Старт, отмена и конец партии публикуют событие комнаты session-changed (по нему клиент узнаёт, на какую партию
  * подписаться); всё остальное — события потока партии.
  */
@@ -94,7 +93,10 @@ class RoomSessionService(
         return roomDetailsService.details(updated)
     }
 
-    /** Отмена: событие session-cancelled, комната возвращается в ожидание. Работает и на паузе. */
+    /**
+     * Отмена: событие session-cancelled, комната возвращается в ожидание, отсутствующие игроки удаляются. Работает и
+     * на паузе.
+     */
     @Transactional
     fun cancel(userId: UUID, roomId: UUID) {
         val room = lockAsOwner(userId, roomId)
@@ -104,8 +106,7 @@ class RoomSessionService(
     }
 
     /**
-     * Ставит таймер идущей партии на паузу: ходы запрещены, дедлайн хода и сроки возвращения игроков партии
-     * заморожены (джобы их не трогают). Только владелец. Повторный вызов на паузе ничего не меняет.
+     * Ставит таймер идущей партии на паузу: ходы запрещены, дедлайн хода заморожен (MoveTimeoutJob его не трогает). Только владелец. Повторный вызов на паузе ничего не меняет.
      */
     @Transactional
     fun pause(userId: UUID, roomId: UUID) {
@@ -116,20 +117,15 @@ class RoomSessionService(
     }
 
     /**
-     * Снимает паузу: дедлайн хода и сроки возвращения вышедших игроков партии сдвигаются на длительность паузы,
-     * так что у всех остаётся столько же времени, сколько было в момент паузы. Только владелец. Без паузы ничего не меняет.
+     * Снимает паузу: дедлайн хода сдвигается на длительность паузы, так что остаётся столько же времени, сколько было
+     * в момент паузы. Только владелец. Без паузы ничего не меняет.
      */
     @Transactional
     fun resume(userId: UUID, roomId: UUID) {
         val session = lockRunningSessionAsOwner(userId, roomId)
         val now = clock.instant()
         val full = sessionJournalService.full(session)
-        val outcome = sessionEngine.resume(full, now)
-        if (outcome is TimerOutcome.Changed) {
-            val shift = TimerModule.pauseLength(full.session.state.timer!!, now)
-            roomMemberRepository.shiftLeaveDeadlines(session.roomId, roomSessionRepository.findPlayers(session.id), shift)
-        }
-        applyTimer(session, full, outcome)
+        applyTimer(session, full, sessionEngine.resume(full, now))
     }
 
     /**
@@ -203,7 +199,10 @@ class RoomSessionService(
         }
     }
 
-    /** Партия закончилась — комната возвращается в ожидание, а партия остаётся видна как последняя. */
+    /**
+     * Партия закончилась — комната возвращается в ожидание, а партия остаётся видна как последняя. Закрепление игроков
+     * партии снимается: отсутствующие удаляются из комнаты.
+     */
     private fun afterChange(room: RoomModel, after: SessionDocument?) {
         if (after != null && after.session.status != SessionStatus.IN_PROGRESS) {
             endInRoom(room)
@@ -211,8 +210,12 @@ class RoomSessionService(
     }
 
     private fun endInRoom(room: RoomModel) {
+        val absent = roomMemberRepository.deleteAbsent(room.id)
         roomRepository.update(room.copy(status = RoomStatus.WAITING, currentSessionId = null))
         roomEventPublisher.publish(room.id, RoomEventType.SESSION_CHANGED)
+        if (absent.isNotEmpty()) {
+            roomEventPublisher.publish(room.id, RoomEventType.USERS_CHANGED)
+        }
     }
 
     private fun currentSession(room: RoomModel): RoomSessionModel {

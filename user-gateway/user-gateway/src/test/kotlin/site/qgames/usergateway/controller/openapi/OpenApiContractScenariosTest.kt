@@ -183,7 +183,8 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(segment.get(0).path("type").asString()).isEqualTo("string")
         assertThat(segment.get(1).path("\$ref").asString()).isEqualTo("#/components/schemas/PathSegmentId")
         assertThat(strings(schemas.path("PathSegmentId").path("required"))).containsExactly("id")
-        // value PUT — любой JSON (схемы нет), value PATCH и данные INFO — объект.
+        // value PUT — любой JSON (схемы нет, в том числе null), но ключ есть всегда — required; value PATCH и данные INFO — объект.
+        assertThat(strings(schemas.path("PutData").path("required"))).containsExactlyInAnyOrder("path", "value")
         val putValue = schemas.path("PutData").path("properties").path("value")
         assertThat(putValue.has("type")).isFalse()
         assertThat(putValue.has("\$ref")).isFalse()
@@ -236,6 +237,19 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
 
         assertThat(paths).contains("/api/rooms/{roomId}/events")
         assertThat(paths).doesNotContain("/api/rooms/{roomId}/join", "/api/rooms/{roomId}/leave")
+    }
+
+    /** Ручки auth и users отдают DTO user-auth, но токены остаются в куках: внутренние DTO сессии наружу не выходят. */
+    @Test
+    fun `auth tokens are not part of the public contract`() {
+        val docs = apiDocs()
+
+        assertThat(docs.path("components").path("schemas").propertyNames().toList())
+            .contains("UserResponse", "RegistrationResponse", "LoginRequest")
+            .doesNotContain("AuthResponse", "TokenPair", "RefreshTokenRequest")
+        listOf("/api/auth/refresh", "/api/auth/logout").forEach { path ->
+            assertThat(docs.path("paths").path(path).path("post").has("requestBody")).describedAs(path).isFalse()
+        }
     }
 
     /** Снапшот API на фронте не должен меняться без изменения контракта (springdoc.writer-with-order-by-keys). */
