@@ -17,7 +17,8 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
 
     fun insert(
         gameCode: String,
-        ownerId: UUID,
+        ownerGraceUserId: UUID,
+        ownerGraceDeadline: Instant,
         status: String,
         timeControlMode: String,
         moveSeconds: Int?,
@@ -26,13 +27,16 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
     ): RoomEntity =
         jdbcClient.sql(
             """
-            INSERT INTO room (game_code, owner_id, status, time_control_mode, move_seconds, game_settings, created_at)
-            VALUES (:gameCode, :ownerId, :status, :timeControlMode, :moveSeconds, CAST(:gameSettings AS jsonb), :now)
+            INSERT INTO room (game_code, owner_grace_user_id, owner_grace_deadline, status, empty_since, time_control_mode,
+                              move_seconds, game_settings, created_at)
+            VALUES (:gameCode, :ownerGraceUserId, :ownerGraceDeadline, :status, :now, :timeControlMode, :moveSeconds,
+                    CAST(:gameSettings AS jsonb), :now)
             RETURNING $COLUMNS
             """,
         )
             .param("gameCode", gameCode)
-            .param("ownerId", ownerId)
+            .param("ownerGraceUserId", ownerGraceUserId)
+            .param("ownerGraceDeadline", ownerGraceDeadline.toTimestamp())
             .param("status", status)
             .param("timeControlMode", timeControlMode)
             .param("moveSeconds", moveSeconds)
@@ -60,7 +64,7 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .orElse(null)
 
     /**
-     * Блокирует комнату, у которой идёт партия [sessionId] (не на паузе) с истёкшим к [now] временем хода. Комнату, уже
+     * Блокирует комнату, у которой идёт партия [sessionId] с истёкшим к [now] временем хода. Комнату, уже
      * заблокированную другим запросом (ход, другой инстанс джоба), пропускает: её обработает следующий запуск.
      * Партии принудительно отключённых игр пропускает: их отменит ForceDisabledGameCleanupJob.
      * Статус — литералом, чтобы подходил частичный индекс room_session_move_deadline_idx.
@@ -68,12 +72,12 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun lockWithExpiredMove(sessionId: UUID, now: Instant): RoomEntity? =
         jdbcClient.sql(
             """
-            SELECT r.id, r.game_code, r.owner_id, r.status, r.current_session_id, r.empty_since, r.time_control_mode,
+            SELECT r.id, r.game_code, r.owner_id, r.owner_grace_user_id, r.owner_grace_deadline, r.status, r.current_session_id, r.empty_since, r.time_control_mode,
                    r.move_seconds, r.game_settings::text AS game_settings, r.created_at
             FROM room r
                      JOIN room_session s ON s.id = r.current_session_id
                      JOIN game g ON g.code = r.game_code
-            WHERE s.id = :sessionId AND s.status = 'IN_PROGRESS' AND s.paused_at IS NULL AND s.move_deadline <= :now
+            WHERE s.id = :sessionId AND s.status = 'IN_PROGRESS' AND s.move_deadline <= :now
               AND g.publish_status <> 'FORCE_DISABLED'
             FOR UPDATE OF r SKIP LOCKED
             """,
@@ -88,7 +92,8 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
         jdbcClient.sql(
             """
             UPDATE room
-            SET owner_id = :ownerId, status = :status, current_session_id = :currentSessionId, empty_since = :emptySince,
+            SET owner_id = :ownerId, owner_grace_user_id = :ownerGraceUserId, owner_grace_deadline = :ownerGraceDeadline,
+                status = :status, current_session_id = :currentSessionId, empty_since = :emptySince,
                 time_control_mode = :timeControlMode, move_seconds = :moveSeconds,
                 game_settings = CAST(:gameSettings AS jsonb)
             WHERE id = :id
@@ -96,6 +101,8 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
         )
             .param("id", room.id)
             .param("ownerId", room.ownerId)
+            .param("ownerGraceUserId", room.ownerGraceUserId)
+            .param("ownerGraceDeadline", room.ownerGraceDeadline.toTimestamp())
             .param("status", room.status)
             .param("currentSessionId", room.currentSessionId)
             .param("emptySince", room.emptySince.toTimestamp())
@@ -125,16 +132,39 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
         jdbcClient.sql("DELETE FROM room WHERE id = :id").param("id", id).update()
     }
 
-    fun deleteEmptySince(threshold: Instant): Int =
-        jdbcClient.sql("DELETE FROM room WHERE empty_since < :threshold")
+    /** Комнаты, пустующие с момента раньше [threshold] (под частичный индекс room_empty_since_idx). */
+    fun findIdsEmptySince(threshold: Instant, limit: Int): List<UUID> =
+        jdbcClient.sql("SELECT id FROM room WHERE empty_since < :threshold ORDER BY empty_since LIMIT :limit")
             .param("threshold", threshold.toTimestamp())
-            .update()
+            .param("limit", limit)
+            .query { rs, _ -> rs.getUuid("id")!! }
+            .list()
+
+    /** `owner_grace_deadline <= :now` — под частичный индекс room_owner_grace_deadline_idx. */
+    fun findIdsWithExpiredOwnerGrace(now: Instant, limit: Int): List<UUID> =
+        jdbcClient.sql(
+            """
+            SELECT r.id
+            FROM room r
+                     JOIN game g ON g.code = r.game_code
+            WHERE r.owner_grace_deadline <= :now
+              AND g.publish_status <> 'FORCE_DISABLED'
+            ORDER BY r.owner_grace_deadline
+            LIMIT :limit
+            """,
+        )
+            .param("now", now.toTimestamp())
+            .param("limit", limit)
+            .query { rs, _ -> rs.getUuid("id")!! }
+            .list()
 
     private val mapper = RowMapper { rs, _ ->
         RoomEntity(
             id = rs.getUuid("id")!!,
             gameCode = rs.getString("game_code"),
             ownerId = rs.getUuid("owner_id"),
+            ownerGraceUserId = rs.getUuid("owner_grace_user_id"),
+            ownerGraceDeadline = rs.getInstant("owner_grace_deadline"),
             status = rs.getString("status"),
             currentSessionId = rs.getUuid("current_session_id"),
             emptySince = rs.getInstant("empty_since"),
@@ -147,7 +177,8 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
 
     companion object {
         private const val COLUMNS =
-            "id, game_code, owner_id, status, current_session_id, empty_since, time_control_mode, move_seconds, " +
+            "id, game_code, owner_id, owner_grace_user_id, owner_grace_deadline, status, current_session_id, empty_since, " +
+                "time_control_mode, move_seconds, " +
                 "game_settings::text AS game_settings, created_at"
     }
 }

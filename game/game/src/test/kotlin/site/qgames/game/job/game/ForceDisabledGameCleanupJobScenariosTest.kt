@@ -37,7 +37,7 @@ class ForceDisabledGameCleanupJobScenariosTest : BaseIntegrationTest() {
         assertThat(countRows("room_member")).isZero()
         assertThat(countRows("room_session")).isZero()
         assertThat(countRows("room_session_player")).isZero()
-        assertThat(countRows("room_session_move")).isZero()
+        assertThat(countRows("room_session_event")).isZero()
         assertThat(forceDisabledGameCleanupJob.run()).isZero()
     }
 
@@ -63,18 +63,18 @@ class ForceDisabledGameCleanupJobScenariosTest : BaseIntegrationTest() {
 
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_move")).isZero()
+        assertThat(countRows("room_session_event WHERE code = 'player-passed'")).isZero()
     }
 
     @Test
-    fun `expired leave is not processed in a room of a force disabled game`() {
+    fun `expired owner grace is not processed in a room of a force disabled game`() {
         val roomId = roomWith(ALICE, BOB)
-        leave(BOB, roomId)
-        expireLeave(roomId, BOB)
+        leave(ALICE, roomId)
+        expireOwnerGrace(roomId)
         setPublishStatus("nothing", "FORCE_DISABLED")
 
-        assertThat(roomLeaveJob.run()).isZero()
+        assertThat(roomOwnerGraceJob.run()).isZero()
 
-        assertThat(countRows("room_member WHERE room_id = :id", "id" to roomId)).isEqualTo(2)
+        assertThat(ownerGrace(roomId)?.first).isEqualTo(ALICE)
     }
 }

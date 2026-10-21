@@ -8,7 +8,10 @@ import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 
 /** Код игры. В JSON и в путях API (`/api/games/{gameCode}/…`) — строчный [code], например `nothing`. */
 enum class GameCode(@get:JsonValue val code: String) {
+    /** «Игра в ничто»: тестовая игра, игроки по очереди делают ход PASS. */
     NOTHING(GameCodes.NOTHING),
+
+    /** Каркассон. */
     CARCASSONNE(GameCodes.CARCASSONNE),
     ;
 
@@ -24,21 +27,21 @@ object GameCodes {
 }
 
 /**
- * Статус публикации игры. Неопубликованные (NOT_PUBLISHED) и принудительно отключённые (FORCE_DISABLED) игры в
- * ответы не попадают.
+ * Статус публикации игры. Неопубликованные (NOT_PUBLISHED) и принудительно отключённые (FORCE_DISABLED) игры наружу
+ * не выдаются (GAME_NOT_FOUND).
  */
 enum class GamePublishStatus {
     /** Доступна: можно создавать комнаты и начинать партии. */
     PUBLISHED,
 
-    /** Временно недоступна: новые комнаты и партии запрещены, идущие партии продолжаются. */
+    /** Временно недоступна: новые комнаты и партии запрещены (GAME_UNAVAILABLE), идущие партии продолжаются. */
     DISABLED,
 
-    /** Скрыта из списка, но доступна по прямой ссылке. */
+    /** Скрыта из каталога, но доступна по прямой ссылке. */
     HIDDEN,
 }
 
-/** Каталог игр: без скрытых, в порядке показа. */
+/** Каталог игр в порядке показа, без скрытых (HIDDEN). */
 data class GameListResponse(
     val games: List<GameSummaryDto>,
 )
@@ -60,7 +63,7 @@ data class GameDetailsResponse(
     val rules: GameRulesDto,
 )
 
-/** Параметры правил игры для формы настроек комнаты. */
+/** Параметры правил игры: по ним строится форма создания комнаты и смены настроек. */
 data class GameRulesDto(
     val minPlayers: Int,
     val maxPlayers: Int,

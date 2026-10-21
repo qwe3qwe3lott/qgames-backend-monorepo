@@ -4,7 +4,6 @@ import org.springframework.stereotype.Repository
 import site.qgames.game.mapper.room.RoomEntityMapper
 import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomRole
-import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
@@ -23,20 +22,15 @@ class RoomMemberRepository(
     fun updateRole(roomId: UUID, userId: UUID, role: RoomRole) =
         roomMemberPostgresqlRepository.updateRole(roomId, userId, role.name)
 
-    /** Ставит срок отложенного выхода или снимает его ([leaveDeadline] = null). */
-    fun updateLeaveDeadline(roomId: UUID, userId: UUID, leaveDeadline: Instant?) =
-        roomMemberPostgresqlRepository.updateLeaveDeadline(roomId, userId, leaveDeadline)
+    /** Отмечает игрока идущей партии отсутствующим с [leftAt] или присутствующим ([leftAt] = null). */
+    fun updateLeftAt(roomId: UUID, userId: UUID, leftAt: Instant?) =
+        roomMemberPostgresqlRepository.updateLeftAt(roomId, userId, leftAt)
 
-    /** Сдвигает сроки выхода участников [userIds] на [shift]; у присутствующих (без срока) ничего не меняется. */
-    fun shiftLeaveDeadlines(roomId: UUID, userIds: Collection<UUID>, shift: Duration) =
-        roomMemberPostgresqlRepository.shiftLeaveDeadlines(roomId, userIds, shift.toNanos() / 1_000)
-
-    /**
-     * Комнаты с истёкшими к [now] сроками выхода (без игроков партий на паузе), самые просроченные первыми. Комнаты
-     * принудительно отключённых игр (FORCE_DISABLED) пропускаются: их удалит ForceDisabledGameCleanupJob. Без блокировок.
-     */
-    fun findRoomIdsWithExpiredLeave(now: Instant, limit: Int): List<UUID> =
-        roomMemberPostgresqlRepository.findRoomIdsWithExpiredLeave(now, limit)
+    /** Комнаты, где пользователь числится участником (в том числе отсутствующим игроком партии). */
+    fun findRoomIdsByUser(userId: UUID): List<UUID> = roomMemberPostgresqlRepository.findRoomIdsByUser(userId)
 
     fun delete(roomId: UUID, userId: UUID) = roomMemberPostgresqlRepository.delete(roomId, userId)
+
+    /** Удаляет отсутствующих участников комнаты (игроков закончившейся партии) и возвращает их id. */
+    fun deleteAbsent(roomId: UUID): List<UUID> = roomMemberPostgresqlRepository.deleteAbsent(roomId)
 }

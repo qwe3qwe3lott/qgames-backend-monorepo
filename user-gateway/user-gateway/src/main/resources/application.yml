@@ -13,6 +13,9 @@ spring:
         base-url: ${USER_AUTH_URL:http://localhost:8081}
       game:
         base-url: ${GAME_URL:http://localhost:8082}
+      # Поток событий комнаты (SSE): без read-timeout, соединение живёт, пока открыт поток.
+      game-stream:
+        base-url: ${GAME_URL:http://localhost:8082}
 
 management:
   endpoints:

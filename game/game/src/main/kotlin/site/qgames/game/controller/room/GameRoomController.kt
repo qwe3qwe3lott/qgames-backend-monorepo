@@ -39,16 +39,13 @@ class GameRoomController(
             ),
         )
 
-    override fun makeMove(gameCode: String, roomId: UUID, request: MoveRequest): RoomResponse =
-        roomResponseMapper.toResponse(
-            roomSessionService.move(
-                userId = requestUserContext.userId(),
-                gameCode = gameCode(gameCode),
-                roomId = roomId,
-                type = request.type,
-                data = request.data,
-                expectedVersion = request.expectedVersion,
-            ),
+    override fun makeMove(gameCode: String, roomId: UUID, request: MoveRequest) =
+        roomSessionService.move(
+            userId = requestUserContext.userId(),
+            gameCode = gameCode(gameCode),
+            roomId = roomId,
+            type = request.type,
+            data = request.data,
         )
 
     private fun gameCode(gameCode: String): GameCode = GameCode.fromCode(gameCode) ?: throw RoomErrors.gameNotFound()

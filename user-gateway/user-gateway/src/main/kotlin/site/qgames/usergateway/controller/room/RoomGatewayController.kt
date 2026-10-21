@@ -1,36 +1,40 @@
 package site.qgames.usergateway.controller.room
 
+import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import site.qgames.game.gatewayapi.api.RoomApi
-import site.qgames.usergateway.mapper.room.toGame
-import site.qgames.usergateway.mapper.room.toPublic
+import site.qgames.game.gatewayapi.api.RoomEventsApi
+import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
+import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.usergateway.publicapi.api.PublicRoomApi
-import site.qgames.usergateway.publicapi.dto.room.ChangeRoleRequest
-import site.qgames.usergateway.publicapi.dto.room.RoomResponse
+import site.qgames.usergateway.stream.SseStreamProxy
 import java.util.UUID
 
 /**
- * Требует аутентификации. X-User-Id в game проставляет UserIdPropagationInterceptor.
+ * Требует аутентификации. X-User-Id в game проставляет UserIdPropagationInterceptor. Простое проксирование: запросы
+ * и ответы — DTO контракта game как есть.
  */
 @RestController
 class RoomGatewayController(
     private val roomApi: RoomApi,
+    private val roomEventsApi: RoomEventsApi,
+    private val sseStreamProxy: SseStreamProxy,
 ) : PublicRoomApi {
 
-    override fun getRoom(roomId: UUID): RoomResponse = roomApi.getRoom(roomId).toPublic()
+    override fun getRoom(roomId: UUID): RoomResponse = roomApi.getRoom(roomId)
 
-    override fun joinRoom(roomId: UUID): RoomResponse = roomApi.joinRoom(roomId).toPublic()
+    /** Поток game пересылается байтами как есть ([SseStreamProxy]). JWT проверяется только при подключении. */
+    override fun roomEvents(roomId: UUID): ResponseEntity<ResponseBodyEmitter> =
+        sseStreamProxy.forward("room-events-proxy-$roomId", roomEventsApi.roomEvents(roomId))
 
-    override fun leaveRoom(roomId: UUID) = roomApi.leaveRoom(roomId)
+    override fun changeRole(roomId: UUID, request: ChangeRoleRequest): RoomResponse = roomApi.changeRole(roomId, request)
 
-    override fun changeRole(roomId: UUID, request: ChangeRoleRequest): RoomResponse =
-        roomApi.changeRole(roomId, request.toGame()).toPublic()
+    override fun startSession(roomId: UUID): RoomResponse = roomApi.startSession(roomId)
 
-    override fun startSession(roomId: UUID): RoomResponse = roomApi.startSession(roomId).toPublic()
+    override fun cancelSession(roomId: UUID) = roomApi.cancelSession(roomId)
 
-    override fun cancelSession(roomId: UUID): RoomResponse = roomApi.cancelSession(roomId).toPublic()
+    override fun pauseSession(roomId: UUID) = roomApi.pauseSession(roomId)
 
-    override fun pauseSession(roomId: UUID): RoomResponse = roomApi.pauseSession(roomId).toPublic()
-
-    override fun resumeSession(roomId: UUID): RoomResponse = roomApi.resumeSession(roomId).toPublic()
+    override fun resumeSession(roomId: UUID) = roomApi.resumeSession(roomId)
 }

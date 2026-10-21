@@ -7,8 +7,10 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
 import org.springframework.web.service.annotation.PutExchange
@@ -33,8 +35,9 @@ interface GameRoomApi {
 
     @Operation(
         summary = "Создать комнату",
-        description = "Создаёт комнату под игру из пути с заданными настройками. Создатель становится владельцем и " +
-            "первым игроком. Игра должна быть доступна (PUBLISHED или HIDDEN): это проверяется до настроек. Настройки " +
+        description = "Создаёт комнату под игру из пути с заданными настройками. Комната создаётся пустой и без " +
+            "владельца, с окном владения 15 с за создателем: подключившись к потоку комнаты, он входит игроком и " +
+            "становится владельцем. Игра должна быть доступна (PUBLISHED или HIDDEN): это проверяется до настроек. Настройки " +
             "проверяются по правилам игры, ошибки отдаются по полям, как у валидации запроса.",
     )
     @ApiResponses(
@@ -96,13 +99,14 @@ interface GameRoomApi {
 
     @Operation(
         summary = "Сделать ход",
-        description = "Применяет ход по правилам игры. Код игры в пути должен совпадать с игрой комнаты. Ходить может " +
-            "только игрок партии, находящийся в комнате. Если у партии есть таймер, ход переставляет дедлайн следующего " +
-            "хода. Когда партия заканчивается, комната возвращается в ожидание. Идущая партия продолжается, даже если " +
-            "игра стала временно недоступной.",
+        description = "Применяет ход по правилам игры к текущему состоянию партии (под блокировкой комнаты). Код игры в " +
+            "пути должен совпадать с игрой комнаты. Ходить может только игрок партии, находящийся в комнате. Ответ без " +
+            "тела: изменения (ход, очерёдность, варианты ходов, таймер, конец партии) приходят событиями потока партии. " +
+            "Когда партия заканчивается, комната возвращается в ожидание. Идущая партия продолжается, даже если игра " +
+            "стала временно недоступной.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Ход принят, возвращено новое состояние"),
+        ApiResponse(responseCode = "204", description = "Ход принят"),
         ApiResponse(
             responseCode = "400",
             description = "Не указан вид хода или параметры не подходят игре (VALIDATION_ERROR)",
@@ -119,9 +123,8 @@ interface GameRoomApi {
         ),
         ApiResponse(
             responseCode = "409",
-            description = "Комната другой игры (GAME_TYPE_MISMATCH), партия не идёт (ROOM_NOT_IN_GAME), стоит на паузе " +
-                "(SESSION_PAUSED) или изменилась " +
-                "с момента, который видел клиент (SESSION_CONFLICT)",
+            description = "Комната другой игры (GAME_TYPE_MISMATCH), партия не идёт (ROOM_NOT_IN_GAME) или таймер " +
+                "партии на паузе (SESSION_PAUSED)",
         ),
         ApiResponse(
             responseCode = "422",
@@ -129,10 +132,11 @@ interface GameRoomApi {
         ),
     )
     @PostExchange("/{gameCode}/rooms/{roomId}/moves")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun makeMove(
         @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: MoveRequest,
-    ): RoomResponse
+    )
 }

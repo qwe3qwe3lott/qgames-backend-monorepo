@@ -9,6 +9,10 @@ data class RegistrationResponse(
     val email: String,
 )
 
+/**
+ * Открытая сессия: пользователь и токены. Наружу не выходит: user-gateway кладёт [tokens] в куки, а клиенту отдаёт
+ * только [user]. Поэтому [AuthResponse], [TokenPair] и [RefreshTokenRequest] не попадают в публичный OpenAPI.
+ */
 data class AuthResponse(
     val user: UserResponse,
     val tokens: TokenPair,

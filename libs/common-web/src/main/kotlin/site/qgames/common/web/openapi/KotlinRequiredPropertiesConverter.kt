@@ -11,6 +11,9 @@ import kotlin.reflect.full.primaryConstructor
  * Помечает `required` свойства Kotlin-DTO: параметры главного конструктора, которые не nullable и не имеют значения
  * по умолчанию. Так генераторы клиентов (Orval) получают обязательные поля без `@Schema(requiredMode)` на каждом поле.
  * Nullable и необязательные поля springdoc описывает сам (`["string", "null"]`).
+ *
+ * Исключение — параметр типа `Any?` без значения по умолчанию (например, `PutData.value`): это «любой JSON, в том
+ * числе null», ключ в объекте есть всегда, поэтому он тоже `required`. Остальные nullable-поля не трогаются.
  */
 class KotlinRequiredPropertiesConverter : ModelConverter {
 
@@ -25,7 +28,7 @@ class KotlinRequiredPropertiesConverter : ModelConverter {
         val properties = model.properties ?: return schema
         val constructor = runCatching { rawClass.kotlin.primaryConstructor }.getOrNull() ?: return schema
         constructor.parameters
-            .filter { !it.isOptional && !it.type.isMarkedNullable }
+            .filter { !it.isOptional && (!it.type.isMarkedNullable || it.type.classifier == Any::class) }
             .mapNotNull { it.name }
             .filter { it in properties && model.required?.contains(it) != true }
             .forEach(model::addRequiredItem)

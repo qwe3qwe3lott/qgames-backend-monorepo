@@ -12,15 +12,15 @@ import org.springframework.http.MediaType
 import org.springframework.http.HttpMethod
 import org.springframework.test.web.servlet.request
 import site.qgames.usergateway.BaseIntegrationTest
-import site.qgames.usergateway.publicapi.dto.auth.GoogleIdTokenRequest
-import site.qgames.usergateway.publicapi.dto.auth.LoginRequest
-import site.qgames.usergateway.publicapi.dto.auth.RegisterRequest
-import site.qgames.usergateway.publicapi.dto.auth.ResendCodeRequest
-import site.qgames.usergateway.publicapi.dto.auth.VerifyEmailRequest
-import site.qgames.usergateway.publicapi.dto.user.Avatar
-import site.qgames.usergateway.publicapi.dto.user.ChangePasswordRequest
-import site.qgames.usergateway.publicapi.dto.user.SetPasswordRequest
-import site.qgames.usergateway.publicapi.dto.user.UpdateProfileRequest
+import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.gatewayapi.dto.auth.LoginRequest
+import site.qgames.userauth.gatewayapi.dto.auth.RegisterRequest
+import site.qgames.userauth.gatewayapi.dto.auth.ResendCodeRequest
+import site.qgames.userauth.gatewayapi.dto.auth.VerifyEmailRequest
+import site.qgames.userauth.gatewayapi.dto.user.Avatar
+import site.qgames.userauth.gatewayapi.dto.user.ChangePasswordRequest
+import site.qgames.userauth.gatewayapi.dto.user.SetPasswordRequest
+import site.qgames.userauth.gatewayapi.dto.user.UpdateProfileRequest
 import java.util.stream.Stream
 
 /**

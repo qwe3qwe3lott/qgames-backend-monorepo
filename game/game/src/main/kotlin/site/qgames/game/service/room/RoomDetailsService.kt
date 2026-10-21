@@ -4,20 +4,17 @@ import org.springframework.stereotype.Service
 import site.qgames.game.model.room.RoomDetailsModel
 import site.qgames.game.model.room.RoomMemberDetailsModel
 import site.qgames.game.model.room.RoomModel
-import site.qgames.game.model.room.RoomSessionDetailsModel
 import site.qgames.game.model.room.RoomSettingsModel
-import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.repository.replica.UserAuthUserRepository
 import site.qgames.game.repository.room.RoomMemberRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
 import tools.jackson.databind.json.JsonMapper
 import java.time.Clock
-import java.util.UUID
 
 /**
- * Собирает комнату целиком: участники с профилями из реплики, настройки, текущая (или последняя) партия с точки
- * зрения [viewer]. Вызывается внутри транзакций RoomService и RoomSessionService.
+ * Собирает комнату целиком: участники с профилями из реплики, настройки, текущая (или последняя) партия кратко —
+ * её состояние приходит только из потока партии. Вызывается внутри транзакций RoomService и RoomSessionService.
  */
 @Service
 class RoomDetailsService(
@@ -29,28 +26,18 @@ class RoomDetailsService(
     private val clock: Clock,
 ) {
 
-    fun details(room: RoomModel, viewer: UUID): RoomDetailsModel {
+    fun details(room: RoomModel): RoomDetailsModel {
         val rules = gameRegistry.rules(room.gameCode)
         val members = roomMemberRepository.findAll(room.id)
         val profiles = userAuthUserRepository.findByIds(members.map { it.userId })
-        val session = room.currentSessionId?.let(roomSessionRepository::findById) ?: roomSessionRepository.findLatest(room.id)
         return RoomDetailsModel(
             room = room,
             minPlayers = rules.minPlayers,
             maxPlayers = rules.maxPlayers,
             settings = RoomSettingsModel(room.timeControl, jsonMapper.readValue(room.gameSettings, rules.settingsClass)),
             members = members.map { RoomMemberDetailsModel(it, profiles[it.userId]) },
-            session = session?.let { sessionDetails(it, viewer) },
+            session = room.currentSessionId?.let(roomSessionRepository::findById) ?: roomSessionRepository.findLatest(room.id),
             serverTime = clock.instant(),
-        )
-    }
-
-    private fun sessionDetails(session: RoomSessionModel, viewer: UUID): RoomSessionDetailsModel {
-        val rules = gameRegistry.rules(session.gameCode)
-        return RoomSessionDetailsModel(
-            session = session,
-            players = roomSessionRepository.findPlayers(session.id),
-            view = rules.view(jsonMapper.readValue(session.state, rules.stateClass), viewer),
         )
     }
 }

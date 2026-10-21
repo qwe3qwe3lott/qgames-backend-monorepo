@@ -91,8 +91,9 @@ class RoomGameAvailabilityScenariosTest : BaseIntegrationTest() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(rounds = 1))
         setPublishStatus("nothing", "DISABLED")
 
-        assertThat(pass(ALICE, roomId).session!!.version).isEqualTo(1)
-        val finished = pass(BOB, roomId)
+        pass(ALICE, roomId)
+        pass(BOB, roomId)
+        val finished = room(roomId, ALICE)
 
         assertThat(finished.status).isEqualTo(RoomStatus.WAITING)
         assertThat(finished.session!!.status).isEqualTo(SessionStatus.FINISHED)
@@ -132,19 +133,18 @@ class RoomGameAvailabilityScenariosTest : BaseIntegrationTest() {
         }
 
         assertThat(sessionSnapshot()).isEqualTo(sessionBefore)
-        assertThat(countRows("room_member WHERE leave_deadline IS NULL")).isEqualTo(2)
+        assertThat(countRows("room_member WHERE left_at IS NULL")).isEqualTo(2)
     }
 
     private fun sessionSnapshot(): Map<String, Any?> =
-        jdbcClient.sql("SELECT status, version, paused_at FROM room_session").query().singleRow()
+        jdbcClient.sql("SELECT status, last_seq, move_deadline FROM room_session").query().singleRow()
 
     companion object {
         @JvmStatic
         fun roomOperations(): Stream<Arguments> = listOf("NOT_PUBLISHED", "FORCE_DISABLED").flatMap { status ->
             listOf(
                 arguments(status, "get", HttpMethod.GET, "/api/rooms/{id}", null),
-                arguments(status, "join", HttpMethod.POST, "/api/rooms/{id}/join", null),
-                arguments(status, "leave", HttpMethod.POST, "/api/rooms/{id}/leave", null),
+                arguments(status, "events", HttpMethod.GET, "/api/rooms/{id}/events", null),
                 arguments(status, "change role", HttpMethod.PUT, "/api/rooms/{id}/role", ChangeRoleRequest(RoomRole.SPECTATOR)),
                 arguments(status, "start", HttpMethod.POST, "/api/rooms/{id}/session", null),
                 arguments(status, "cancel", HttpMethod.DELETE, "/api/rooms/{id}/session", null),

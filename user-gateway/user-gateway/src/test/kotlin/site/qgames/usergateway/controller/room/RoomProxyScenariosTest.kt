@@ -45,7 +45,7 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
     @ParameterizedTest(name = "{0}")
     @MethodSource("operations")
     fun `room operation is proxied to game with the user id`(case: String, method: HttpMethod, path: String, body: String?, returnsRoom: Boolean) {
-        stubGame(method, path, 200, if (returnsRoom) json(gameRoom()) else null)
+        stubGame(method, path, if (returnsRoom) 200 else 204, if (returnsRoom) json(gameRoom()) else null)
 
         mockMvc.request(method, path) {
             cookie(Cookie("access_token", accessToken()))
@@ -54,14 +54,13 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
                 content = it
             }
         }.andExpect {
-            status { isOk() }
+            status { isEqualTo(if (returnsRoom) 200 else 204) }
             if (returnsRoom) {
                 jsonPath("$.id") { value(ROOM_ID.toString()) }
                 jsonPath("$.members[0].nickname") { value("Player") }
                 jsonPath("$.members[0].avatar") { value("DOG") }
-                jsonPath("$.session.state.currentPlayer") { value(USER_ID.toString()) }
-                jsonPath("$.session.moveDeadline") { value("2026-10-18T10:00:30Z") }
-                jsonPath("$.session.pausedAt") { value("2026-10-18T10:00:05Z") }
+                jsonPath("$.session.id") { value(SESSION_ID.toString()) }
+                jsonPath("$.session.status") { value("IN_PROGRESS") }
                 jsonPath("$.members[0].leaving") { value(true) }
                 jsonPath("$.settings.timeControl.mode") { value("PER_MOVE") }
                 jsonPath("$.settings.timeControl.moveSeconds") { value(30) }
@@ -80,7 +79,6 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
     @CsvSource(
         "404, ROOM_NOT_FOUND",
         "403, NOT_ROOM_OWNER",
-        "409, SESSION_CONFLICT",
         "409, SESSION_PAUSED",
         "422, MOVE_REJECTED",
     )
@@ -205,15 +203,7 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
                     joinedAt = Instant.parse("2026-10-18T10:00:00Z"),
                 ),
             ),
-            session = SessionResponse(
-                id = SESSION_ID,
-                status = SessionStatus.IN_PROGRESS,
-                players = listOf(USER_ID),
-                version = 3,
-                state = mapOf("currentPlayer" to USER_ID.toString(), "round" to 2),
-                moveDeadline = Instant.parse("2026-10-18T10:00:30Z"),
-                pausedAt = Instant.parse("2026-10-18T10:00:05Z"),
-            ),
+            session = SessionResponse(id = SESSION_ID, status = SessionStatus.IN_PROGRESS),
             createdAt = Instant.parse("2026-10-18T10:00:00Z"),
             settings = RoomSettingsDto(TimeControlDto(TimeControlMode.PER_MOVE, 30), NothingSettingsDto(GameCode.NOTHING, rounds = 5)),
             serverTime = Instant.parse("2026-10-18T10:00:10Z"),
@@ -224,16 +214,14 @@ class RoomProxyScenariosTest : BaseIntegrationTest() {
             arguments("create", HttpMethod.POST, "/api/games/nothing/rooms", settingsBody("settings"), true),
             arguments("update settings", HttpMethod.PUT, "/api/games/nothing/rooms/$ROOM_ID/settings", settingsBody(null), true),
             arguments("get", HttpMethod.GET, "/api/rooms/$ROOM_ID", null, true),
-            arguments("join", HttpMethod.POST, "/api/rooms/$ROOM_ID/join", null, true),
-            arguments("leave", HttpMethod.POST, "/api/rooms/$ROOM_ID/leave", null, false),
             arguments("change role", HttpMethod.PUT, "/api/rooms/$ROOM_ID/role", """{"role":"SPECTATOR"}""", true),
             arguments("start", HttpMethod.POST, "/api/rooms/$ROOM_ID/session", null, true),
-            arguments("cancel", HttpMethod.DELETE, "/api/rooms/$ROOM_ID/session", null, true),
-            arguments("pause", HttpMethod.POST, "/api/rooms/$ROOM_ID/session/pause", null, true),
-            arguments("resume", HttpMethod.POST, "/api/rooms/$ROOM_ID/session/resume", null, true),
+            arguments("cancel", HttpMethod.DELETE, "/api/rooms/$ROOM_ID/session", null, false),
+            arguments("pause", HttpMethod.POST, "/api/rooms/$ROOM_ID/session/pause", null, false),
+            arguments("resume", HttpMethod.POST, "/api/rooms/$ROOM_ID/session/resume", null, false),
             arguments(
                 "move", HttpMethod.POST, "/api/games/nothing/rooms/$ROOM_ID/moves",
-                """{"type":"PLACE","data":{"x":1},"expectedVersion":3}""", true,
+                """{"type":"PLACE","data":{"x":1}}""", false,
             ),
         )
 

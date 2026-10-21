@@ -1,6 +1,7 @@
 package site.qgames.game.controller.room
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.within
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -11,7 +12,6 @@ import org.junit.jupiter.params.provider.ValueSource
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import site.qgames.game.BaseIntegrationTest
-import site.qgames.game.gatewayapi.dto.room.RoomResponse
 import site.qgames.game.gatewayapi.dto.room.RoomRole
 import site.qgames.game.gatewayapi.dto.room.RoomStatus
 import site.qgames.game.gatewayapi.dto.room.SessionStatus
@@ -20,13 +20,19 @@ import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.game.support.TestData.DAVE
+import site.qgames.games.api.core.MoveOption
+import site.qgames.games.api.timer.TimerState
+import site.qgames.games.api.timer.TimerStatus
+import site.qgames.games.api.turns.TurnsState
 import java.time.Instant
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.stream.Stream
 
 /**
  * Партии «игры в ничто»: игроки по очереди делают PASS, после заданного в настройках числа кругов (по умолчанию 3)
- * партия заканчивается. При таймере на ход у партии есть дедлайн текущего хода.
+ * партия заканчивается. Партия — журнал событий (room_session_event), состояние — его свёртка. При таймере на ход
+ * проекция дедлайна хранится в room_session.move_deadline.
  */
 class RoomSessionScenariosTest : BaseIntegrationTest() {
 
@@ -58,9 +64,13 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
         assertThat(room.status).isEqualTo(RoomStatus.IN_GAME)
         val session = room.session!!
         assertThat(session.status).isEqualTo(SessionStatus.IN_PROGRESS)
-        assertThat(session.players).containsExactly(ALICE, BOB)
-        assertThat(session.version).isZero()
-        assertThat(session.state).containsEntry("currentPlayer", ALICE.toString()).containsEntry("round", 1)
+        assertThat(journal(roomId)).containsExactly(1L to "session-started")
+        val state = fullState(roomId).state
+        assertThat(state.players.map { it.id }).containsExactly(ALICE, BOB)
+        assertThat(state.players.map { it.moveOptions }).containsExactly(listOf(MoveOption(PASS)), emptyList())
+        assertThat(state.turns).isEqualTo(TurnsState(ALICE, round = 1, rounds = 3))
+        assertThat(state.timer).isNull()
+        assertThat(countRows("room_session WHERE last_seq = 1")).isEqualTo(1)
     }
 
     @ParameterizedTest(name = "{0} player(s)")
@@ -68,19 +78,22 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
     fun `game ends after three rounds and the room is ready for the next one`(playerCount: Int) {
         val players = listOf(ALICE, BOB, CAROL, DAVE).take(playerCount)
         val roomId = roomWith(players.first(), *players.drop(1).toTypedArray(), started = true)
+        val first = sessionId(roomId)
 
-        var last: RoomResponse? = null
-        repeat(3) { players.forEach { last = pass(it, roomId) } }
+        repeat(3) { players.forEach { pass(it, roomId) } }
 
-        val finished = last!!
-        assertThat(finished.status).isEqualTo(RoomStatus.WAITING)
-        assertThat(finished.session!!.status).isEqualTo(SessionStatus.FINISHED)
-        assertThat(finished.session!!.state).containsEntry("finished", true).containsEntry("currentPlayer", null)
-        val seqs = jdbcClient.sql("SELECT seq FROM room_session_move ORDER BY seq").query(Long::class.java).list()
-        assertThat(seqs).containsExactlyElementsOf((1L..3L * playerCount).toList())
+        val room = room(roomId, ALICE)
+        assertThat(room.status).isEqualTo(RoomStatus.WAITING)
+        assertThat(room.session!!.status).isEqualTo(SessionStatus.FINISHED)
+        val journal = journal(roomId)
+        assertThat(journal.map { it.first }).containsExactlyElementsOf((1L..journal.size).toList())
+        assertThat(journal.count { it.second == "player-passed" }).isEqualTo(3 * playerCount)
+        assertThat(journal.last().second).isEqualTo("session-finished")
+        assertThat(countRows("room_session WHERE status = 'FINISHED' AND finished_at IS NOT NULL AND last_seq = :n", "n" to journal.size.toLong()))
+            .isEqualTo(1)
 
         val next = start(players.first(), roomId)
-        assertThat(next.session!!.id).isNotEqualTo(finished.session!!.id)
+        assertThat(next.session!!.id).isNotEqualTo(first)
         assertThat(next.session!!.status).isEqualTo(SessionStatus.IN_PROGRESS)
     }
 
@@ -90,18 +103,16 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
         val players = listOf(ALICE, BOB, CAROL, DAVE).take(playerCount)
         val roomId = roomWith(players.first(), *players.drop(1).toTypedArray(), started = true, settings = nothingSettings(rounds = rounds))
 
-        var last: RoomResponse? = null
         repeat(rounds) { round ->
+            assertThat(fullState(roomId).state.turns).isEqualTo(TurnsState(players.first(), round + 1, rounds))
             players.forEach { player ->
-                assertThat(last?.status ?: RoomStatus.IN_GAME).isEqualTo(RoomStatus.IN_GAME)
-                last = pass(player, roomId)
+                assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.IN_GAME)
+                pass(player, roomId)
             }
-            if (round < rounds - 1) assertThat(last!!.session!!.state).containsEntry("round", round + 2)
         }
 
-        assertThat(last!!.status).isEqualTo(RoomStatus.WAITING)
-        assertThat(last!!.session!!.state).containsEntry("rounds", rounds).containsEntry("finished", true)
-        assertThat(countRows("room_session_move")).isEqualTo((rounds * playerCount).toLong())
+        assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.WAITING)
+        assertThat(fullState(roomId).state.turns).isEqualTo(TurnsState(null, rounds, rounds))
     }
 
     @Test
@@ -109,31 +120,34 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
         val roomId = roomWith(ALICE, BOB, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
 
         val beforeStart = Instant.now()
-        val started = start(ALICE, roomId)
+        start(ALICE, roomId)
         val afterStart = Instant.now()
-        val firstDeadline = started.session!!.moveDeadline!!
+        val firstDeadline = fullState(roomId).state.timer!!.deadline!!
         assertThat(firstDeadline).isBetween(beforeStart.plusSeconds(30).minusMillis(1), afterStart.plusSeconds(30))
-        assertThat(started.serverTime).isBetween(beforeStart.minusMillis(1), afterStart)
-        assertThat(storedDeadline(roomId)).isEqualTo(firstDeadline)
+        assertThat(storedDeadline(roomId)).isCloseTo(firstDeadline, within(1, ChronoUnit.MILLIS))
 
         val beforeMove = Instant.now()
-        val afterAlice = pass(ALICE, roomId)
+        pass(ALICE, roomId)
         val afterMove = Instant.now()
-        val secondDeadline = afterAlice.session!!.moveDeadline!!
+        val secondDeadline = fullState(roomId).state.timer!!.deadline!!
         assertThat(secondDeadline).isBetween(beforeMove.plusSeconds(30).minusMillis(1), afterMove.plusSeconds(30))
-        assertThat(storedDeadline(roomId)).isEqualTo(secondDeadline)
+        assertThat(storedDeadline(roomId)).isCloseTo(secondDeadline, within(1, ChronoUnit.MILLIS))
+        assertThat(journal(roomId).last().second).isEqualTo("timer-started")
 
-        val cancelled = cancel(ALICE, roomId)
-        assertThat(cancelled.session!!.moveDeadline).isNull()
+        cancel(ALICE, roomId)
         assertThat(storedDeadline(roomId)).isNull()
+        assertThat(journal(roomId).takeLast(3).map { it.second }).containsExactly("move-options-changed", "timer-stopped", "session-cancelled")
+        assertThat(fullState(roomId).state.timer).isEqualTo(TimerState(TimerStatus.STOPPED, null, null))
     }
 
     @Test
     fun `game without a timer has no deadline`() {
         val roomId = roomWith(ALICE, BOB, started = true)
 
-        assertThat(room(roomId, ALICE).session!!.moveDeadline).isNull()
-        assertThat(pass(ALICE, roomId).session!!.moveDeadline).isNull()
+        pass(ALICE, roomId)
+
+        assertThat(fullState(roomId).state.timer).isNull()
+        assertThat(journal(roomId).map { it.second }).doesNotContain("timer-started", "timer-stopped")
         assertThat(storedDeadline(roomId)).isNull()
     }
 
@@ -141,11 +155,28 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
     fun `finished game has no deadline`() {
         val roomId = roomWith(ALICE, started = true, settings = nothingSettings(rounds = 1, mode = TimeControlMode.PER_MOVE, moveSeconds = 5))
 
-        val finished = pass(ALICE, roomId)
+        pass(ALICE, roomId)
 
-        assertThat(finished.session!!.status).isEqualTo(SessionStatus.FINISHED)
-        assertThat(finished.session!!.moveDeadline).isNull()
+        assertThat(room(roomId, ALICE).session!!.status).isEqualTo(SessionStatus.FINISHED)
         assertThat(storedDeadline(roomId)).isNull()
+        assertThat(journal(roomId).takeLast(2).map { it.second }).containsExactly("timer-stopped", "session-finished")
+        assertThat(fullState(roomId).state.timer).isEqualTo(TimerState(TimerStatus.STOPPED, null, null))
+    }
+
+    @Test
+    fun `accepted move answers 204 without a body and is written to the journal`() {
+        val roomId = roomWith(ALICE, BOB, started = true)
+
+        val response = moveRequest(ALICE, roomId).andExpect { status { isNoContent() } }.andReturn().response
+
+        assertThat(response.contentAsString).isEmpty()
+        assertThat(journal(roomId).map { it.second })
+            .containsExactly("session-started", "player-passed", "turn-changed", "move-options-changed", "move-options-changed")
+        val passed = jdbcClient.sql("SELECT method, data::text AS data FROM room_session_event WHERE code = 'player-passed'")
+            .query { rs, _ -> rs.getString("method") to rs.getString("data") }
+            .single()
+        assertThat(passed.first).isEqualTo("PATCH")
+        assertThat(jsonMapper.readTree(passed.second)).isEqualTo(jsonMapper.readTree("""{"path": ["state"], "value": {"moves": 1}}"""))
     }
 
     @ParameterizedTest(name = "{0}")
@@ -155,20 +186,19 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
         setup: RoomSetup,
         user: UUID,
         moveType: String,
-        expectedVersion: Long?,
         expectedStatus: HttpStatus,
         expectedCode: String,
         expectedReason: String?,
     ) {
         val roomId = with(setup) { prepare() }
-        val movesBefore = countRows("room_session_move")
+        val eventsBefore = countRows("room_session_event")
 
-        moveRequest(user, roomId, moveType, expectedVersion).andExpect {
+        moveRequest(user, roomId, moveType).andExpect {
             status { isEqualTo(expectedStatus.value()) }
             jsonPath("$.code") { value(expectedCode) }
             if (expectedReason != null) jsonPath("$.reason") { value(expectedReason) }
         }
-        assertThat(countRows("room_session_move")).isEqualTo(movesBefore)
+        assertThat(countRows("room_session_event")).isEqualTo(eventsBefore)
     }
 
     @Test
@@ -179,17 +209,7 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
             status { isNotFound() }
             jsonPath("$.code") { value("GAME_NOT_FOUND") }
         }
-        assertThat(countRows("room_session_move")).isZero()
-    }
-
-    @Test
-    fun `move envelope is stored in the move log`() {
-        val roomId = roomWith(ALICE, BOB, started = true)
-
-        pass(ALICE, roomId)
-
-        val stored = jdbcClient.sql("SELECT move::text FROM room_session_move").query(String::class.java).single()
-        assertThat(stored).isEqualTo("""{"type": "PASS"}""")
+        assertThat(journal(roomId)).hasSize(1)
     }
 
     @Test
@@ -197,23 +217,13 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
         val roomId = roomWith(ALICE, BOB, started = true)
         leaveCompletely(BOB, roomId)
 
-        val afterAlice = pass(ALICE, roomId)
-        assertThat(afterAlice.status).isEqualTo(RoomStatus.IN_GAME)
-        assertThat(afterAlice.session!!.players).containsExactly(ALICE, BOB)
+        pass(ALICE, roomId)
+        assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.IN_GAME)
+        assertThat(fullState(roomId).state.players.map { it.id }).containsExactly(ALICE, BOB)
 
         assertThat(join(BOB, roomId).members.single { it.userId == BOB }.role).isEqualTo(RoomRole.PLAYER)
-        val afterBob = pass(BOB, roomId)
-        assertThat(afterBob.session!!.version).isEqualTo(2)
-    }
-
-    @Test
-    fun `expected version from the client is honoured`() {
-        val roomId = roomWith(ALICE, BOB, started = true)
-
-        val afterAlice = moveRequest(ALICE, roomId, expectedVersion = 0).andExpect { status { isOk() } }.body<RoomResponse>()
-
-        assertThat(afterAlice.session!!.version).isEqualTo(1)
-        moveRequest(BOB, roomId, expectedVersion = afterAlice.session!!.version).andExpect { status { isOk() } }
+        pass(BOB, roomId)
+        assertThat(fullState(roomId).state.turns.round).isEqualTo(2)
     }
 
     @Test
@@ -221,12 +231,14 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
         val roomId = roomWith(ALICE, BOB, started = true)
         pass(ALICE, roomId)
 
-        val cancelled = call(HttpMethod.DELETE, "/api/rooms/$roomId/session", ALICE)
-            .andExpect { status { isOk() } }
-            .body<RoomResponse>()
+        call(HttpMethod.DELETE, "/api/rooms/$roomId/session", ALICE).andExpect { status { isNoContent() } }
 
-        assertThat(cancelled.status).isEqualTo(RoomStatus.WAITING)
-        assertThat(cancelled.session!!.status).isEqualTo(SessionStatus.CANCELLED)
+        val room = room(roomId, ALICE)
+        assertThat(room.status).isEqualTo(RoomStatus.WAITING)
+        assertThat(room.session!!.status).isEqualTo(SessionStatus.CANCELLED)
+        // Отмена, как и конец партии, обнуляет варианты ходов: у Боба был PASS.
+        assertThat(journal(roomId).takeLast(2).map { it.second }).containsExactly("move-options-changed", "session-cancelled")
+        assertThat(fullState(roomId).state.players.map { it.moveOptions }).containsOnly(emptyList())
         assertThat(start(ALICE, roomId).session!!.status).isEqualTo(SessionStatus.IN_PROGRESS)
     }
 
@@ -242,13 +254,16 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `spectator sees the game state`() {
+    fun `room response has the session briefly`() {
         val roomId = roomWith(ALICE, BOB, started = true)
-        join(CAROL, roomId)
 
-        val seenByCarol = room(roomId, CAROL)
-
-        assertThat(seenByCarol.session!!.state).containsEntry("currentPlayer", ALICE.toString())
+        call(HttpMethod.GET, "/api/rooms/$roomId", CAROL).andExpect {
+            status { isOk() }
+            jsonPath("$.session.id") { value(sessionId(roomId).toString()) }
+            jsonPath("$.session.status") { value("IN_PROGRESS") }
+            jsonPath("$.session.state") { doesNotExist() }
+            jsonPath("$.session.version") { doesNotExist() }
+        }
     }
 
     private fun storedDeadline(roomId: UUID): Instant? =
@@ -274,27 +289,16 @@ class RoomSessionScenariosTest : BaseIntegrationTest() {
 
         @JvmStatic
         fun rejectedMoves(): Stream<Arguments> = Stream.of(
-            arguments("not your turn", started(), BOB, PASS, null, HttpStatus.UNPROCESSABLE_CONTENT, "MOVE_REJECTED", "NOT_YOUR_TURN"),
-            arguments(
-                "unknown move", started(), ALICE, "JUMP", null,
-                HttpStatus.UNPROCESSABLE_CONTENT, "MOVE_REJECTED", "UNKNOWN_MOVE",
-            ),
-            arguments(
-                "move without a type", started(), ALICE, "", null,
-                HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", null,
-            ),
+            arguments("not your turn", started(), BOB, PASS, HttpStatus.UNPROCESSABLE_CONTENT, "MOVE_REJECTED", "NOT_YOUR_TURN"),
+            arguments("unknown move", started(), ALICE, "JUMP", HttpStatus.UNPROCESSABLE_CONTENT, "MOVE_REJECTED", "UNKNOWN_MOVE"),
+            arguments("move without a type", started(), ALICE, "", HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", null),
             arguments(
                 "spectator",
                 RoomSetup { roomWith(ALICE, BOB, started = true).also { join(CAROL, it) } },
-                CAROL, PASS, null, HttpStatus.FORBIDDEN, "NOT_SESSION_PLAYER", null,
+                CAROL, PASS, HttpStatus.FORBIDDEN, "NOT_SESSION_PLAYER", null,
             ),
-            arguments(
-                "player who left the room",
-                RoomSetup { roomWith(ALICE, BOB, started = true).also { leaveCompletely(ALICE, it) } },
-                ALICE, PASS, null, HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER", null,
-            ),
-            arguments("stale version", started(), ALICE, PASS, 5L, HttpStatus.CONFLICT, "SESSION_CONFLICT", null),
-            arguments("no game", RoomSetup { roomWith(ALICE, BOB) }, ALICE, PASS, null, HttpStatus.CONFLICT, "ROOM_NOT_IN_GAME", null),
+            arguments("not in the room", started(), DAVE, PASS, HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER", null),
+            arguments("no game", RoomSetup { roomWith(ALICE, BOB) }, ALICE, PASS, HttpStatus.CONFLICT, "ROOM_NOT_IN_GAME", null),
         )
 
         @JvmStatic

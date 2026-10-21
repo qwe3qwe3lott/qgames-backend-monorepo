@@ -9,18 +9,25 @@ data class RoomSessionEntity(
     val roomId: UUID,
     val gameCode: String,
     val status: String,
-    /** JSON (jsonb) состояния. */
-    val state: String,
     val stateSchemaVersion: Int,
     val seed: Long,
-    val version: Long,
+    val lastSeq: Long,
     val timeControlMode: String,
     val moveSeconds: Int?,
     /** JSON (jsonb) настроек игры. */
     val gameSettings: String,
     val moveDeadline: Instant?,
-    /** С какого момента партия на паузе; null — не на паузе. */
-    val pausedAt: Instant?,
     val createdAt: Instant,
     val finishedAt: Instant?,
+)
+
+/** Строка таблицы room_session_event (журнал партии). */
+data class RoomSessionEventEntity(
+    val sessionId: UUID,
+    val seq: Long,
+    val method: String,
+    val code: String,
+    /** JSON (jsonb) данных события: PUT и PATCH — {path, value}, DELETE — {path}, INFO — объект. */
+    val data: String,
+    val createdAt: Instant,
 )

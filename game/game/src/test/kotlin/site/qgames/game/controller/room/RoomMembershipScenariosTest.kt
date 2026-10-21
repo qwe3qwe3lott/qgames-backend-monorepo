@@ -102,7 +102,8 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
         val viewer = expectedOwner ?: ALICE
         val room = room(roomId, viewer)
         assertThat(room.ownerId).isEqualTo(expectedOwner)
-        assertThat(room.members.map { it.userId }).doesNotContain(leaver)
+        // Игрок идущей партии остаётся отсутствующим участником, остальные удаляются.
+        assertThat(room.members.filter { !it.leaving }.map { it.userId }).doesNotContain(leaver)
     }
 
     @Test
@@ -118,16 +119,6 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
         assertThat(room.ownerId).isEqualTo(DAVE)
         assertThat(room.members.single().role).isEqualTo(RoomRole.PLAYER)
         assertThat(emptySince(roomId)).isFalse()
-    }
-
-    @Test
-    fun `leaving a room you are not in is rejected`() {
-        val roomId = createRoom(ALICE).id
-
-        call(HttpMethod.POST, "/api/rooms/$roomId/leave", BOB).andExpect {
-            status { isForbidden() }
-            jsonPath("$.code") { value("NOT_ROOM_MEMBER") }
-        }
     }
 
     @ParameterizedTest(name = "{0}")
@@ -184,8 +175,7 @@ class RoomMembershipScenariosTest : BaseIntegrationTest() {
         @JvmStatic
         fun roomOperations(): Stream<Arguments> = Stream.of(
             arguments(HttpMethod.GET, "/api/rooms/{id}", null),
-            arguments(HttpMethod.POST, "/api/rooms/{id}/join", null),
-            arguments(HttpMethod.POST, "/api/rooms/{id}/leave", null),
+            arguments(HttpMethod.GET, "/api/rooms/{id}/events", null),
             arguments(HttpMethod.PUT, "/api/rooms/{id}/role", ChangeRoleRequest(RoomRole.SPECTATOR)),
             arguments(HttpMethod.POST, "/api/rooms/{id}/session", null),
             arguments(HttpMethod.DELETE, "/api/rooms/{id}/session", null),

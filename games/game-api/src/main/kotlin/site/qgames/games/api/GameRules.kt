@@ -1,16 +1,32 @@
 package site.qgames.games.api
 
-import java.time.Duration
+import site.qgames.games.api.core.MoveOption
+import site.qgames.games.api.session.SessionEvent
+import site.qgames.games.api.session.SessionState
+import site.qgames.games.api.session.ViewerKey
+import site.qgames.games.api.turns.TurnsState
 import java.util.UUID
 
 /**
- * Правила одной игры. Реализация — детерминированные чистые функции: одинаковые состояние и ход дают одинаковый
- * результат на любом инстансе и при переигрывании журнала ходов. Случайность берётся только из seed.
+ * Правила одной игры: описание, параметры и чистые функции. Одинаковые входы дают одинаковый результат на любом
+ * инстансе и при переигрывании журнала. Случайность берётся только из seed.
  *
- * Состояние, ход и настройки сериализуются сервисом game в JSON (jsonb), поэтому [S], [M] и [C] — простые data-классы
- * без вычисляемых свойств. При несовместимом изменении формата состояния увеличивается [stateSchemaVersion].
+ * Партия — журнал событий ([SessionEvent]): каждое событие — одна операция над документом партии `{status, meta, state}`
+ * (PUT, PATCH, DELETE или INFO по пути). Состояние не хранится, а собирается свёрткой журнала одним общим применителем
+ * ([site.qgames.games.api.session.SessionPatch]); своих редьюсеров у игры нет. Платформа
+ * ([site.qgames.games.api.session.SessionEngine]) подключает к игре модули core (игроки и их варианты ходов), turns
+ * (очерёдность и раунды) и timer (таймер хода, в том числе пауза) и сама добавляет их события. Игра решает, какие
+ * события происходят в ответ на ход ([decide]) и на истечение времени ([onTimeout]), и задаёт их коды.
+ *
+ * Поля игровой части состояния [G] лежат в документе в `state` рядом с блоками модулей (`players`, `timer`, `turns`) и
+ * не совпадают с ними по именам; события игры адресуют их путями от `state` (например, `PATCH ["state"] {moves}`).
+ * [G], ход [M] и настройки [C] — простые data-классы без вычисляемых свойств: сервис game пишет их в журнал как JSON.
+ * При несовместимом изменении формата событий увеличивается [stateSchemaVersion].
+ *
+ * Игроки партии закреплены до её конца: игрок, закрывший поток комнаты, остаётся игроком, а партия о его отсутствии
+ * не знает (время идёт, ходы по таймауту — как обычно). Хука на отсутствие игрока пока нет.
  */
-interface GameRules<S : Any, M : Any, C : Any> {
+interface GameRules<G : Any, M : Any, C : Any> {
 
     /**
      * Код игры, например `nothing`: совпадает с кодом в каталоге игр сервиса game (таблица game, enum GameCode)
@@ -19,19 +35,15 @@ interface GameRules<S : Any, M : Any, C : Any> {
     val code: String
     val minPlayers: Int
     val maxPlayers: Int
-    val stateClass: Class<S>
+
+    /** Класс игровой части состояния ([SessionState.game]). */
+    val gameStateClass: Class<G>
     val moveClass: Class<M>
     val settingsClass: Class<C>
     val stateSchemaVersion: Int
 
     /** Какие режимы времени поддерживает игра, их границы и режим по умолчанию. */
     val timeControl: TimeControlRules
-
-    /**
-     * Сколько игрок идущей партии может отсутствовать после выхода из комнаты, прежде чем перестанет считаться
-     * присутствующим (место в партии при этом сохраняется). На паузе партии отсчёт заморожен.
-     */
-    val reconnectGrace: Duration
 
     /** Настройки игры по умолчанию: ими заполняется форма создания комнаты. */
     val defaultSettings: C
@@ -42,32 +54,49 @@ interface GameRules<S : Any, M : Any, C : Any> {
     /** Нарушения в настройках игры; пустой список — настройки подходят. Поле — путь внутри [C], например `rounds`. */
     fun validateSettings(settings: C): List<SettingsViolation>
 
-    /** Игроки перечислены в порядке мест. Настройки уже проверены [validateSettings]. */
-    fun initialState(players: List<UUID>, seed: Long, settings: C): S
-
-    fun applyMove(state: S, player: UUID, move: M): MoveResult<S>
-
-    fun isFinished(state: S): Boolean
+    /**
+     * Начало партии: игровая часть состояния и очерёдность. Игроки перечислены в порядке мест, настройки уже
+     * проверены [validateSettings]. Из этого платформа собирает первое событие журнала `session-started`.
+     */
+    fun start(players: List<UUID>, seed: Long, settings: C): GameStart<G>
 
     /**
-     * Чей сейчас ход: на него идёт таймер хода, и от его имени в журнал пишется истечение времени.
-     * null — партия закончена или ход ничей.
+     * Ход игрока [playerId] в полном состоянии [state]: события игры (и модулей, которыми игра управляет сама, —
+     * например `turn-changed`) или отказ. Конец партии — событие `session-finished` в списке
+     * ([site.qgames.games.api.session.SessionEvents.finished]). Коды событий игры не совпадают с кодами платформы и
+     * модулей.
      */
-    fun playerToMove(state: S): UUID?
+    fun decide(state: SessionState<G>, playerId: UUID, move: M): Decision
 
-    /** Время хода [playerToMove] истекло. Что при этом происходит, решает игра (например, автоматический пропуск хода). */
-    fun onMoveTimeout(state: S): S
+    /** Время хода текущего игрока истекло. Пустой список — ничего не происходит (ход ничей). */
+    fun onTimeout(state: SessionState<G>): List<SessionEvent>
 
-    /** То, что видит конкретный участник (игрок или наблюдатель). Здесь скрывается чужая закрытая информация. */
-    fun view(state: S, viewer: UUID): Any
+    /** Что сейчас может сделать игрок: варианты ходов в том же конверте, что тело хода. */
+    fun moveOptions(state: SessionState<G>, playerId: UUID): List<MoveOption>
+
+    /**
+     * Собственное событие игры для проекции [viewer]: маскируется только значение (`value`), код, метод и путь
+     * остаются, событие доставляется. По умолчанию событие публичное.
+     */
+    fun mask(event: SessionEvent, viewer: ViewerKey): SessionEvent = event
+
+    /** Игровая часть начального состояния (событие `session-started`) для проекции [viewer]. По умолчанию публичная. */
+    fun maskGame(game: G, viewer: ViewerKey): G = game
 }
 
-sealed interface MoveResult<out S> {
+/** Начало партии: игровая часть состояния и очерёдность (модуль turns). */
+data class GameStart<G : Any>(
+    val game: G,
+    val turns: TurnsState,
+)
 
-    data class Applied<S>(val state: S) : MoveResult<S>
+/** Результат хода по правилам игры. */
+sealed interface Decision {
+
+    data class Accepted(val events: List<SessionEvent>) : Decision
 
     /** [code] — машиночитаемая причина, отдаётся клиенту. */
-    data class Rejected(val code: String, val message: String) : MoveResult<Nothing>
+    data class Rejected(val code: String, val message: String) : Decision
 }
 
 /** Нарушение в настройках игры: [field] — путь к полю внутри настроек игры, [message] — описание для клиента. */

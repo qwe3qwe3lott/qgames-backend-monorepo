@@ -5,6 +5,7 @@ import org.springframework.core.Ordered
 import org.springframework.core.annotation.Order
 import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
 import org.springframework.http.ProblemDetail
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
@@ -33,7 +34,8 @@ class DownstreamExceptionHandler {
         log.warn("Downstream service is unavailable", ex)
         val problem = ProblemDetail.forStatusAndDetail(HttpStatus.SERVICE_UNAVAILABLE, "Service is temporarily unavailable")
         problem.setProperty(ErrorCodes.CODE_PROPERTY, "SERVICE_UNAVAILABLE")
-        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(problem)
+        // Тип задан явно: запрос потока событий принимает только text/event-stream, а ошибка — всё равно ProblemDetail.
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).contentType(MediaType.APPLICATION_PROBLEM_JSON).body(problem)
     }
 
     companion object {

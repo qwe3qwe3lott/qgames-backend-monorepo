@@ -6,6 +6,7 @@ import site.qgames.game.entity.room.RoomMemberEntity
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomModel
+import site.qgames.game.model.room.RoomOwnerGraceModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
 import site.qgames.game.model.room.RoomTimeControlMode
@@ -18,6 +19,7 @@ class RoomEntityMapper {
         id = entity.id,
         gameCode = GameCode.fromCode(entity.gameCode) ?: error("Unknown game code '${entity.gameCode}'"),
         ownerId = entity.ownerId,
+        ownerGrace = entity.ownerGraceUserId?.let { RoomOwnerGraceModel(it, entity.ownerGraceDeadline!!) },
         status = RoomStatus.valueOf(entity.status),
         currentSessionId = entity.currentSessionId,
         emptySince = entity.emptySince,
@@ -30,6 +32,8 @@ class RoomEntityMapper {
         id = model.id,
         gameCode = model.gameCode.code,
         ownerId = model.ownerId,
+        ownerGraceUserId = model.ownerGrace?.userId,
+        ownerGraceDeadline = model.ownerGrace?.deadline,
         status = model.status.name,
         currentSessionId = model.currentSessionId,
         emptySince = model.emptySince,
@@ -44,7 +48,7 @@ class RoomEntityMapper {
         userId = entity.userId,
         role = RoomRole.valueOf(entity.role),
         joinedAt = entity.joinedAt,
-        leaveDeadline = entity.leaveDeadline,
+        leftAt = entity.leftAt,
     )
 
     fun toEntity(model: RoomMemberModel) = RoomMemberEntity(
@@ -52,6 +56,6 @@ class RoomEntityMapper {
         userId = model.userId,
         role = model.role.name,
         joinedAt = model.joinedAt,
-        leaveDeadline = model.leaveDeadline,
+        leftAt = model.leftAt,
     )
 }

@@ -33,7 +33,19 @@ import site.qgames.game.gatewayapi.dto.room.RoomRole
 import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
 import site.qgames.game.gatewayapi.dto.room.TimeControlDto
 import site.qgames.game.gatewayapi.dto.room.TimeControlMode
-import site.qgames.game.job.room.RoomLeaveJob
+import site.qgames.game.job.room.RoomOwnerGraceJob
+import site.qgames.game.repository.session.RoomSessionEventRepository
+import site.qgames.game.repository.session.RoomSessionRepository
+import site.qgames.game.service.session.SessionJournalService
+import site.qgames.game.service.session.SessionStateService
+import site.qgames.game.service.session.SessionStreamService
+import site.qgames.game.stream.room.RoomStreamRegistry
+import site.qgames.game.stream.session.SessionStreamRegistry
+import site.qgames.games.api.session.Session
+import site.qgames.games.api.session.ViewerKey
+import org.junit.jupiter.api.AfterEach
+import org.springframework.test.web.servlet.MvcResult
+import org.springframework.test.web.servlet.get
 import site.qgames.games.nothing.NothingGameRules
 import site.qgames.userauth.asyncapi.event.Avatar
 import site.qgames.userauth.asyncapi.event.UserProfileChanged
@@ -63,11 +75,41 @@ abstract class BaseIntegrationTest {
     protected lateinit var jdbcClient: JdbcClient
 
     @Autowired
-    protected lateinit var roomLeaveJob: RoomLeaveJob
+    protected lateinit var roomOwnerGraceJob: RoomOwnerGraceJob
+
+    @Autowired
+    protected lateinit var roomStreamRegistry: RoomStreamRegistry
+
+    @Autowired
+    protected lateinit var sessionStreamRegistry: SessionStreamRegistry
+
+    @Autowired
+    protected lateinit var sessionStateService: SessionStateService
+
+    @Autowired
+    protected lateinit var sessionJournalService: SessionJournalService
+
+    @Autowired
+    protected lateinit var roomSessionRepository: RoomSessionRepository
 
     /** Правила «игры в ничто»: шпион, чтобы проверять ветки, недостижимые с настоящими правилами (сброс — после теста). */
     @MockkSpyBean
     protected lateinit var nothingGameRules: NothingGameRules
+
+    /** Журнал партии: шпион, чтобы проверять, какие события дочитывает сборка состояния. */
+    @MockkSpyBean
+    protected lateinit var roomSessionEventRepository: RoomSessionEventRepository
+
+    /** Поток партии: шпион, чтобы вклиниваться между регистрацией подписчика и снапшотом (гонки). */
+    @MockkSpyBean
+    protected lateinit var sessionStreamService: SessionStreamService
+
+    /** Потоки, открытые тестом, закрываются после него (отключения от комнат — до очистки БД следующего теста). */
+    @AfterEach
+    fun closeRoomStreams() {
+        roomStreamRegistry.closeAll()
+        sessionStreamRegistry.closeAll()
+    }
 
     protected fun call(method: HttpMethod, path: String, userId: UUID?, body: Any? = null): ResultActionsDsl =
         mockMvc.request(method, path) {
@@ -91,10 +133,13 @@ abstract class BaseIntegrationTest {
     protected fun createRoomRequest(owner: UUID?, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
         call(HttpMethod.POST, "/api/games/$gameCode/rooms", owner, body)
 
-    protected fun createRoom(owner: UUID, settings: RoomSettingsDto = nothingSettings()): RoomResponse =
-        createRoomRequest(owner, CreateRoomRequest(settings))
+    /** Создаёт комнату и, как портал после создания, подключает владельца к её потоку. */
+    protected fun createRoom(owner: UUID, settings: RoomSettingsDto = nothingSettings()): RoomResponse {
+        val created: RoomResponse = createRoomRequest(owner, CreateRoomRequest(settings))
             .andExpect { status { isOk() } }
             .body()
+        return join(owner, created.id)
+    }
 
     protected fun updateSettingsRequest(user: UUID, roomId: UUID, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
         call(HttpMethod.PUT, "/api/games/$gameCode/rooms/$roomId/settings", user, body)
@@ -102,38 +147,83 @@ abstract class BaseIntegrationTest {
     protected fun room(roomId: UUID, viewer: UUID): RoomResponse =
         call(HttpMethod.GET, "/api/rooms/$roomId", viewer).andExpect { status { isOk() } }.body()
 
-    protected fun join(user: UUID, roomId: UUID): RoomResponse =
-        call(HttpMethod.POST, "/api/rooms/$roomId/join", user).andExpect { status { isOk() } }.body()
+    /** Открывает поток событий комнаты (SSE) — вход в комнату. Поток остаётся открытым до [leave] или конца теста. */
+    protected fun openStream(user: UUID, roomId: UUID): MvcResult =
+        mockMvc.get("/api/rooms/$roomId/events") {
+            header(QgamesHeaders.USER_ID, user.toString())
+            accept = MediaType.TEXT_EVENT_STREAM
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
 
+    /** Вход в комнату — подключение к её потоку; возвращает комнату глазами вошедшего. */
+    protected fun join(user: UUID, roomId: UUID): RoomResponse {
+        openStream(user, roomId)
+        return room(roomId, user)
+    }
+
+    /** Выход — закрытие всех потоков пользователя в комнате (все вкладки). */
     protected fun leave(user: UUID, roomId: UUID) {
-        call(HttpMethod.POST, "/api/rooms/$roomId/leave", user).andExpect { status { isOk() } }
+        streams(user, roomId).forEach { it.close() }
+    }
+
+    /** Открытые потоки пользователя в комнате на этом инстансе. */
+    protected fun streams(user: UUID, roomId: UUID) = roomStreamRegistry.subscribers(roomId).filter { it.userId == user }
+
+    /** Сообщения SSE потока [stream] к этому моменту: пары (тип события, data). Комментарии пропускаются. */
+    protected fun events(stream: MvcResult): List<Pair<String, String>> =
+        stream.response.getContentAsString(Charsets.UTF_8).split("\n\n")
+            .filter { it.isNotBlank() }
+            .mapNotNull { message ->
+                val lines = message.lines()
+                val type = lines.firstOrNull { it.startsWith("event:") }?.removePrefix("event:")?.trim() ?: return@mapNotNull null
+                type to lines.filter { it.startsWith("data:") }.joinToString("\n") { it.removePrefix("data:") }
+            }
+
+    /** Ждёт, пока в потоке не наберётся [count] событий, и возвращает их. */
+    protected fun awaitEvents(stream: MvcResult, count: Int): List<Pair<String, String>> {
+        awaitUntil("$count events in the stream") { events(stream).size >= count }
+        return events(stream)
     }
 
     /**
-     * Выход, доведённый до конца: срок выхода сдвигается в прошлое и RoomLeaveJob удаляет участника — так, как будто
-     * он не вернулся вовремя.
+     * Выход, доведённый до конца: пользователь закрыл потоки, а окно владения (если он был владельцем) истекло и
+     * RoomOwnerGraceJob передал владение — так, как будто он не вернулся вовремя.
      */
     protected fun leaveCompletely(user: UUID, roomId: UUID) {
         leave(user, roomId)
-        expireLeave(roomId, user)
-        roomLeaveJob.run()
+        expireOwnerGrace(roomId)
+        roomOwnerGraceJob.run()
     }
 
-    /** Сдвигает срок выхода участника в прошлое (по расписанию RoomLeaveJob в тестах выключен). */
-    protected fun expireLeave(roomId: UUID, user: UUID) {
+    /** Сдвигает срок окна владения комнаты в прошлое (по расписанию RoomOwnerGraceJob в тестах выключен). */
+    protected fun expireOwnerGrace(roomId: UUID) {
         jdbcClient.sql(
-            "UPDATE room_member SET leave_deadline = now() - interval '1 second' WHERE room_id = :roomId AND user_id = :userId",
+            "UPDATE room SET owner_grace_deadline = now() - interval '1 second' WHERE id = :roomId AND owner_grace_deadline IS NOT NULL",
         )
             .param("roomId", roomId)
-            .param("userId", user)
             .update()
     }
 
-    protected fun leaveDeadline(roomId: UUID, user: UUID): Instant? =
-        jdbcClient.sql("SELECT leave_deadline FROM room_member WHERE room_id = :roomId AND user_id = :userId")
+    /** Окно владения комнаты: (прежний владелец, срок) или null. */
+    protected fun ownerGrace(roomId: UUID): Pair<UUID, Instant>? =
+        jdbcClient.sql("SELECT owner_grace_user_id, owner_grace_deadline FROM room WHERE id = :roomId")
+            .param("roomId", roomId)
+            .query { rs, _ ->
+                rs.getObject("owner_grace_user_id", UUID::class.java)?.let { it to rs.getTimestamp("owner_grace_deadline").toInstant() }
+            }
+            .list()
+            .single()
+
+    protected fun isMember(roomId: UUID, user: UUID): Boolean =
+        countRows("room_member WHERE room_id = :roomId AND user_id = :userId", "roomId" to roomId, "userId" to user) == 1L
+
+    /** Когда игрок партии ушёл (room_member.left_at); null — присутствует. Участник должен быть в комнате. */
+    protected fun leftAt(roomId: UUID, user: UUID): Instant? =
+        jdbcClient.sql("SELECT left_at FROM room_member WHERE room_id = :roomId AND user_id = :userId")
             .param("roomId", roomId)
             .param("userId", user)
-            .query { rs, _ -> rs.getTimestamp("leave_deadline")?.toInstant() }
+            .query { rs, _ -> rs.getTimestamp("left_at")?.toInstant() }
             .list()
             .single()
 
@@ -143,26 +233,61 @@ abstract class BaseIntegrationTest {
     protected fun start(owner: UUID, roomId: UUID): RoomResponse =
         call(HttpMethod.POST, "/api/rooms/$roomId/session", owner).andExpect { status { isOk() } }.body()
 
-    protected fun cancel(owner: UUID, roomId: UUID): RoomResponse =
-        call(HttpMethod.DELETE, "/api/rooms/$roomId/session", owner).andExpect { status { isOk() } }.body()
+    protected fun cancel(owner: UUID, roomId: UUID) {
+        call(HttpMethod.DELETE, "/api/rooms/$roomId/session", owner).andExpect { status { isNoContent() } }
+    }
 
-    protected fun pause(owner: UUID, roomId: UUID): RoomResponse =
-        call(HttpMethod.POST, "/api/rooms/$roomId/session/pause", owner).andExpect { status { isOk() } }.body()
+    protected fun pause(owner: UUID, roomId: UUID) {
+        call(HttpMethod.POST, "/api/rooms/$roomId/session/pause", owner).andExpect { status { isNoContent() } }
+    }
 
-    protected fun resume(owner: UUID, roomId: UUID): RoomResponse =
-        call(HttpMethod.POST, "/api/rooms/$roomId/session/resume", owner).andExpect { status { isOk() } }.body()
+    protected fun resume(owner: UUID, roomId: UUID) {
+        call(HttpMethod.POST, "/api/rooms/$roomId/session/resume", owner).andExpect { status { isNoContent() } }
+    }
 
-    protected fun moveRequest(
+    protected fun moveRequest(user: UUID, roomId: UUID, type: String = PASS, gameCode: String = GameCodes.NOTHING) =
+        call(HttpMethod.POST, "/api/games/$gameCode/rooms/$roomId/moves", user, MoveRequest(type))
+
+    protected fun pass(user: UUID, roomId: UUID) {
+        moveRequest(user, roomId).andExpect { status { isNoContent() } }
+    }
+
+    // --- Партии ---
+
+    /** Id последней партии комнаты. */
+    protected fun sessionId(roomId: UUID): UUID =
+        jdbcClient.sql("SELECT id FROM room_session WHERE room_id = :roomId ORDER BY created_at DESC, id DESC LIMIT 1")
+            .param("roomId", roomId)
+            .query(UUID::class.java)
+            .single()
+
+    /** Полное состояние последней партии комнаты — свёртка журнала (как его видит сервер). */
+    protected fun fullState(roomId: UUID): Session = sessionJournalService.full(roomSessionRepository.findById(sessionId(roomId))!!).session
+
+    /** Полный документ последней партии комнаты {status, meta, state} — свёртка журнала. */
+    protected fun fullDocument(roomId: UUID): Map<String, Any?> =
+        sessionStateService.state(roomSessionRepository.findById(sessionId(roomId))!!, ViewerKey.Full).document
+
+    /** Журнал последней партии комнаты: пары (seq, код) по порядку. */
+    protected fun journal(roomId: UUID): List<Pair<Long, String>> =
+        jdbcClient.sql("SELECT seq, code FROM room_session_event WHERE session_id = :id ORDER BY seq")
+            .param("id", sessionId(roomId))
+            .query { rs, _ -> rs.getLong("seq") to rs.getString("code") }
+            .list()
+
+    /** Открывает поток партии (SSE). Поток остаётся открытым до конца партии или конца теста. */
+    protected fun openSessionStream(
         user: UUID,
         roomId: UUID,
-        type: String = PASS,
-        expectedVersion: Long? = null,
+        sessionId: UUID = sessionId(roomId),
         gameCode: String = GameCodes.NOTHING,
-    ) =
-        call(HttpMethod.POST, "/api/games/$gameCode/rooms/$roomId/moves", user, MoveRequest(type, expectedVersion = expectedVersion))
-
-    protected fun pass(user: UUID, roomId: UUID): RoomResponse =
-        moveRequest(user, roomId).andExpect { status { isOk() } }.body()
+    ): MvcResult =
+        mockMvc.get("/api/games/$gameCode/rooms/$roomId/sessions/$sessionId/events") {
+            header(QgamesHeaders.USER_ID, user.toString())
+            accept = MediaType.TEXT_EVENT_STREAM
+        }.andExpect {
+            request { asyncStarted() }
+        }.andReturn()
 
     /** Комната владельца [owner] с игроками [players] (в порядке входа) и, если нужно, начатой партией. */
     protected fun roomWith(

@@ -1,11 +1,13 @@
 package site.qgames.common.web.config
 
 import org.springdoc.core.customizers.OpenApiCustomizer
+import org.springdoc.core.utils.SpringDocUtils
 import org.springframework.boot.autoconfigure.AutoConfiguration
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.PropertySource
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import site.qgames.common.web.context.RequestUserContext
 import site.qgames.common.web.openapi.DiscriminatedUnionCustomizer
 import site.qgames.common.web.openapi.KotlinRequiredPropertiesConverter
@@ -21,6 +23,12 @@ class CommonWebAutoConfiguration {
     @Configuration(proxyBeanMethods = false)
     @ConditionalOnClass(OpenApiCustomizer::class)
     class OpenApiConfiguration {
+
+        init {
+            // Потоковый ответ (ResponseBodyEmitter) описывается явным @ApiResponse с content; без этого springdoc
+            // кладёт в components пустую схему ResponseBodyEmitter.
+            SpringDocUtils.getConfig().addResponseTypeToIgnore(ResponseBodyEmitter::class.java)
+        }
 
         @Bean
         fun problemDetailResponsesCustomizer() = ProblemDetailResponsesCustomizer()

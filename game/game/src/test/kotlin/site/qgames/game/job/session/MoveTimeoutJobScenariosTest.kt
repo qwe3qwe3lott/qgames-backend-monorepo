@@ -9,12 +9,14 @@ import site.qgames.game.gatewayapi.dto.room.SessionStatus
 import site.qgames.game.gatewayapi.dto.room.TimeControlMode
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
+import site.qgames.games.nothing.NothingGameState
 import java.time.Instant
 import java.util.UUID
 
 /**
- * Истечение времени хода: дедлайн сдвигается в прошлое через SQL, джоб вызывается напрямую (по расписанию он в тестах
- * выключен). В «игре в ничто» истечение времени — автоматический PASS игрока, чьё время вышло.
+ * Истечение времени хода: дедлайн-проекция сдвигается в прошлое через SQL, джоб вызывается напрямую (по расписанию он в
+ * тестах выключен). В «игре в ничто» истечение времени — автоматический PASS игрока, чьё время вышло; события идут в
+ * журнал тем же путём, что ход (пропуск — INFO player-passed, счётчик ходов не меняется).
  */
 class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
 
@@ -31,17 +33,24 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
         val after = Instant.now()
 
         assertThat(processed).isEqualTo(1)
-        val room = room(roomId, ALICE)
-        val session = room.session!!
-        assertThat(room.status).isEqualTo(RoomStatus.IN_GAME)
-        assertThat(session.version).isEqualTo(1)
-        assertThat(session.state).containsEntry("currentPlayer", BOB.toString())
-        assertThat(session.moveDeadline).isBetween(before.plusSeconds(30).minusMillis(1), after.plusSeconds(30))
-        val logged = jdbcClient.sql("SELECT seq, player_id, move::text AS move FROM room_session_move").query().singleRow()
-        assertThat(logged).containsEntry("seq", 1L).containsEntry("player_id", ALICE).containsEntry("move", """{"type": "TIMEOUT"}""")
+        assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.IN_GAME)
+        val state = fullState(roomId).state
+        assertThat(state.turns.currentPlayerId).isEqualTo(BOB)
+        assertThat(state.timer!!.deadline).isBetween(before.plusSeconds(30).minusMillis(1), after.plusSeconds(30))
+        assertThat(journal(roomId).map { it.second })
+            .containsExactly("session-started", "player-passed", "turn-changed", "move-options-changed", "move-options-changed", "timer-started")
+        // Пропуск по времени — INFO: в журнале, но счётчик ходов игры не меняется.
+        val passed = jdbcClient.sql("SELECT method, data::text AS data FROM room_session_event WHERE code = 'player-passed'")
+            .query { rs, _ -> rs.getString("method") to rs.getString("data") }
+            .single()
+        assertThat(passed.first).isEqualTo("INFO")
+        assertThat(state.game).isEqualTo(NothingGameState(moves = 0))
+        assertThat(jsonMapper.readTree(passed.second)).isEqualTo(
+            jsonMapper.readTree("""{"playerId": "$ALICE", "timeout": true}"""),
+        )
 
         // Следующий ход — уже обычный ход Боба.
-        assertThat(pass(BOB, roomId).session!!.version).isEqualTo(2)
+        pass(BOB, roomId)
     }
 
     @Test
@@ -54,7 +63,7 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
         val room = room(roomId, ALICE)
         assertThat(room.status).isEqualTo(RoomStatus.WAITING)
         assertThat(room.session!!.status).isEqualTo(SessionStatus.FINISHED)
-        assertThat(room.session!!.moveDeadline).isNull()
+        assertThat(journal(roomId).last().second).isEqualTo("session-finished")
         assertThat(countRows("room_session WHERE move_deadline IS NULL AND finished_at IS NOT NULL")).isEqualTo(1)
         assertThat(countRows("room WHERE current_session_id IS NULL AND status = 'WAITING'")).isEqualTo(1)
     }
@@ -71,9 +80,9 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
 
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_move")).isZero()
-        assertThat(room(withoutTimer, ALICE).session!!.moveDeadline).isNull()
-        assertThat(room(notExpired, BOB).session!!.version).isZero()
+        assertThat(countRows("room_session_event WHERE code = 'player-passed'")).isZero()
+        assertThat(fullState(withoutTimer).state.timer).isNull()
+        assertThat(journal(notExpired)).hasSize(1)
     }
 
     @Test
@@ -84,7 +93,7 @@ class MoveTimeoutJobScenariosTest : BaseIntegrationTest() {
         assertThat(moveTimeoutJob.run()).isEqualTo(1)
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("room_session_move")).isEqualTo(1)
+        assertThat(countRows("room_session_event WHERE code = 'player-passed'")).isEqualTo(1)
     }
 
     private fun perMove(seconds: Int, rounds: Int = 3) =

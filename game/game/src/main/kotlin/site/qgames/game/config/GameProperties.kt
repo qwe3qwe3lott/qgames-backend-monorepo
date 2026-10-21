@@ -19,26 +19,44 @@ data class GameProperties(
     )
 
     data class Room(
-        /** Комната без игроков и наблюдателей удаляется, когда пустует дольше этого времени. */
+        /**
+         * Комната без присутствующих участников удаляется, когда пустует дольше этого времени. Идущая партия, в которой
+         * остались только отсутствующие игроки, при этом отменяется.
+         */
         val emptyTtl: Duration,
         val cleanupInterval: Duration,
         /** Запуск EmptyRoomCleanupJob по расписанию. В тестах выключен: job вызывается напрямую. */
         val cleanupEnabled: Boolean = true,
-        /** Сколько вышедший участник ещё числится в комнате (кроме игроков идущей партии: им срок задаёт игра). */
-        val leaveGrace: LeaveGrace,
-        /** Как часто RoomLeaveJob ищет участников с истёкшим сроком выхода. */
-        val leaveCheckInterval: Duration,
-        /** Запуск RoomLeaveJob по расписанию. В тестах выключен: job вызывается напрямую. */
-        val leaveEnabled: Boolean = true,
-        /** Сколько комнат с истёкшими сроками выхода обрабатывается за один запуск, остальные — в следующих. */
-        val leaveBatchSize: Int = 100,
+        /** Сколько пустых комнат удаляется за один запуск, остальные — в следующих. */
+        val cleanupBatchSize: Int = 100,
+        /**
+         * Окно владения: столько ушедший владелец может вернуть владение, а у комнаты владельца нет. Потом владение
+         * получает присутствующий участник (RoomOwnerGraceJob).
+         */
+        val ownerGrace: Duration,
+        /** Как часто RoomOwnerGraceJob ищет комнаты с истёкшим окном владения. */
+        val ownerGraceCheckInterval: Duration,
+        /** Запуск RoomOwnerGraceJob по расписанию. В тестах выключен: job вызывается напрямую. */
+        val ownerGraceEnabled: Boolean = true,
+        /** Сколько комнат с истёкшим окном владения обрабатывается за один запуск, остальные — в следующих. */
+        val ownerGraceBatchSize: Int = 100,
+        /** Подключения к потоку событий комнаты (SSE): открытый поток и есть нахождение в комнате. */
+        val connection: Connection,
     )
 
-    data class LeaveGrace(
-        /** Владелец вне игры: комната ждёт или он не игрок идущей партии. */
-        val owner: Duration,
-        /** Остальные участники вне игры и наблюдатели. */
-        val member: Duration,
+    data class Connection(
+        /** Срок аренды подключения: инстанс, держащий поток, продлевает его каждые [heartbeatInterval]. */
+        val lease: Duration,
+        /** Как часто слать в потоки комментарий `: ping` и продлевать аренду подключений (RoomConnectionHeartbeatJob). */
+        val heartbeatInterval: Duration,
+        /** Запуск RoomConnectionHeartbeatJob по расписанию. В тестах выключен: job вызывается напрямую. */
+        val heartbeatEnabled: Boolean = true,
+        /** Как часто удалять подключения с истёкшей арендой — подключения упавших инстансов (RoomConnectionCleanupJob). */
+        val cleanupInterval: Duration,
+        /** Запуск RoomConnectionCleanupJob по расписанию. В тестах выключен: job вызывается напрямую. */
+        val cleanupEnabled: Boolean = true,
+        /** Сколько комнат с протухшими подключениями обрабатывается за один запуск, остальные — в следующих. */
+        val cleanupBatchSize: Int = 100,
     )
 
     data class Session(
@@ -48,5 +66,14 @@ data class GameProperties(
         val timeoutEnabled: Boolean = true,
         /** Сколько партий с истёкшим временем обрабатывается за один запуск, остальные — в следующих. */
         val timeoutBatchSize: Int = 100,
+        /** Кеш состояний партий по проекциям зрителей (SessionStateCache). */
+        val stateCache: StateCache = StateCache(),
+    )
+
+    data class StateCache(
+        /** Сколько состояний (партия × проекция) держит инстанс. */
+        val maxSize: Long = 10_000,
+        /** Состояние, которое так долго не читали, вытесняется. */
+        val expireAfterAccess: Duration = Duration.ofMinutes(30),
     )
 }
