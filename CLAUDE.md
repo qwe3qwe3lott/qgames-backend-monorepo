@@ -50,8 +50,9 @@ libs/                          общие ИНФРАСТРУКТУРНЫЕ мо�
   common-cdc-source            OutboxPublisher: запись событий в outbox_event в транзакции бизнес-изменения
   common-cdc-consumer          настройки потребителя CDC (consumer group, десериализаторы, обработка «ядовитых» сообщений)
 games/                         ПРАВИЛА ИГР (бизнес-логика, но без инфраструктуры)
-  game-api                     модель игры (GameRules, SessionEngine) и модули-механики core/turns/timer
+  game-api                     модель игры (GameRules, SessionEngine) и модули-механики core/turns/timer/result
   nothing-game                 «игра в ничто» — тестовая игра для проверки движка
+  checkers-game                шашки (вариант правил — настройка комнаты, сейчас доступны русские)
   <игра>                       правила конкретной игры (например, games/carcassonne)
 docker/                        Dockerfile, init-скрипты, dev-ключи, ACL Redis, конфиги Debezium Server
 ```
@@ -69,32 +70,40 @@ docker/                        Dockerfile, init-скрипты, dev-ключи, 
     - неподходящий путь или тип — `SessionPatchException` (на сервере — баг, на фронте — переподключение).
   - Применяет события **один общий применитель** `SessionPatch` (над JSON-деревом документа; `SessionCodec` переводит модели в дерево, реализация на Jackson — в сервисе, game-api без зависимостей). Своих редьюсеров у игр и модулей нет. Фронт применяет те же патчи той же семантикой.
 - `GameRules` — параметры и контекст (код, число игроков, настройки, режимы времени) плюс функции, которые **порождают** события через построители `SessionEvents.put/patch/delete/info`:
-  - `start` — начальное состояние; `SessionEngine` превращает его в первое событие журнала `session-started` = `PUT [] {status, meta: {game: {code, rules}}, state}`. `rules` — настройки, закреплённые при старте (нужны для повтора); версия игры в `meta.game` появится позже;
-  - `decide(state, playerId, move)` → `Rejected(code)` или `Accepted(events)`;
+  - `start` — начальное состояние (`GameStart`: игровая часть, очерёдность, поля игры у игроков); `SessionEngine` превращает его в первое событие журнала `session-started` = `PUT [] {status, meta: {game: {code, rules}, moveRules}, state}`. `rules` — настройки, закреплённые при старте (нужны для повтора); версия игры в `meta.game` появится позже;
+  - `moveRules(settings)` — правила хода для подсказок ввода на клиенте (`meta.moveRules`, например флаги шашек); по умолчанию `null`. Записываются в `session-started` и не меняются; клиент вариантов игры не знает, только эти флаги, ход окончательно проверяет сервер;
+  - `decide(state, settings, playerId, move)` → `Rejected(code)` или `Accepted(events)`; `settings` — настройки игры партии, платформа читает их из `meta.game.rules.gameSettings`;
   - `mask(event, viewerKey)` — маскирует только `value` для проекции (`Full`, `Public`, `Player(id)`); по умолчанию событие публично. Замаскированное событие доставляется со своим seq (у чужого игрока, например, `[{id: "c7"}]` вместо карты или `moveOptions: []`). После конца партии маски нет. Снапшот зрителя — свёртка его маскированных событий, отдельного `view` нет; инвариант «свёртка маскированных событий = маска полной свёртки» обязателен к тесту для каждой игры;
   - `moveOptions(state, playerId)` — допустимые действия игрока; фронт правил не знает и рисует только их;
   - `onTimeout(state)` — события при истечении времени хода.
-- **Модули-механики** (`games/game-api`: `core`, `turns`, `timer`) подключаются игрой и не дублируются между играми. У каждого модуля свой блок состояния, свои коды и маска:
+- **Модули-механики** (`games/game-api`: `core`, `turns`, `timer`, `result`) подключаются игрой и не дублируются между играми. У каждого модуля свой блок состояния, свои коды и маска:
   - `core` — `players: [{id, moveOptions, …}]`; код `move-options-changed` (`PUT ["state","players",{id},"moveOptions"]`). После каждого изменения платформа выдаёт его игрокам, у которых изменились варианты (в конце и при отмене партии — пустые). Чужим игрокам `moveOptions` маскируются в `[]`;
-  - `turns` — `{currentPlayerId, round, rounds}`, код `turn-changed` (`PUT ["state","turns"]`);
+    - **поля игры у игрока** (например, `color` в шашках): `PlayerState.game`, класс — `GameRules.playerClass` (по умолчанию `null` — полей нет), начальные значения — `GameStart.players` (обязательны для каждого игрока). В документе лежат прямо в объекте игрока (`{id, moveOptions, color}`), а не вложенным объектом; совпадение с полями модуля (`id`, `moveOptions`) — ошибка. Документ игрока собирает и читает `SessionEngine`, маска `moveOptions` на поля игры не влияет;
+  - `turns` — `{currentPlayerId, round, rounds}`, код `turn-changed` (`PUT ["state","turns"]`); первого игрока выбирает игра: `TurnsModule.initial(players, rounds, first)` («ничто» передаёт первое место);
   - `timer` — `{status: RUNNING|PAUSED|STOPPED, deadline, pausedAt}`, коды `timer-started`/`timer-stopped` (`PUT ["state","timer"]`), `game-paused`/`game-resumed` (`PATCH ["state","timer"]`). **Пауза — часть таймера**: в игре без таймера пауз нет (409 `SESSION_NOT_PAUSABLE`). В конце и при отмене партии таймер переходит в `STOPPED`. Атрибуты игрока (например, запас времени в шахматах) хранятся в `players`, таймер может их менять;
+  - `result` — итог партии `{outcome: WIN|DRAW, winnerIds, reason}` (`ResultState`; `reason` — машиночитаемая причина, набор задаёт игра), после старта `null`. Код `result-set` (`PUT ["state","result"]`, построители `ResultModule.set/win/draw`) — только один раз и только в том же наборе событий, что `session-finished`: это проверяет `SessionEngine`. У отменённой партии итога нет. Событие публичное. Блок `result` есть в состоянии каждой игры (в DTO — nullable `result`);
   - сессия (`SessionEngine`): `session-started` (`PUT []`), `session-finished`/`session-cancelled` (`PATCH [] {status}`);
-  - «ничто»: `player-passed` — `PATCH ["state"] {moves}`, по таймауту — `INFO {playerId, timeout: true}` (пропуски по времени в `moves` не считаются).
+  - «ничто»: `player-passed` — `PATCH ["state"] {moves}`, по таймауту — `INFO {playerId, timeout: true}` (пропуски по времени в `moves` не считаются). Итог не ставит (`result` всегда `null`);
+  - шашки: `piece-moved` (`PATCH ["state","pieces",{id}] {square}`), `piece-captured` (`DELETE` на каждую сбитую), `piece-crowned` (`PATCH {kind: KING}`), `last-move-changed` (`PUT ["state","lastMove"]`), `counters-changed` (`PATCH ["state"] {quietMoves}`), `player-resigned` и `move-timed-out` (`INFO {playerId}`). Ходы генерируются и проверяются только по флагам правил хода варианта (`CheckersMoveRules`, они же — `meta.moveRules`); `moveOptions` — только типы действий (`MOVE` у того, чей ход, `RESIGN` у обоих), пути не перечисляются. Окончания: `NO_PIECES`, `NO_MOVES`, `RESIGN` (вне очереди), `TIMEOUT` — победа; `DRAW_RULE` — 30 ходов подряд в сумме (по 15 у каждой стороны) только дамками без взятий. Цвета — случайно по seed.
   - Будущие механики (например, стадии игры) — новые модули со своими кодами.
 - Случайность (порядок тайлов, кубики) берётся из seed партии. Тогда события воспроизводимы на любом инстансе и при переигрывании журнала.
 - Сервис `game/game` подключает все модули `games/*` и отвечает за всё остальное: комнаты, хранение, очерёдность, таймеры, события.
 - Новая игра — это новый модуль `games/<игра>`. Кроме него нужны:
   - зависимость в `game/game/build.gradle.kts`;
   - бин правил в `GamesConfig`;
-  - DTO состояния (`<Игра>SessionStateDto`) как новый вариант `oneOf` `SessionStateDto` в `game-user-gateway-sync-api` (снапшот разбирается строго в DTO игры); новые коды событий контракт не меняют;
-  - значение в enum `GameCode` модели game и обоих контрактов (game и gateway), а также константа в `GameCodes`; `GameRules.code` модуля совпадает с кодом;
-  - строка в таблице `game` DML-миграцией `<дата>-INSERT-game` (см. §4 «Каталог игр»). Пока игра в разработке — статус `NOT_PUBLISHED`, модуль правил и DTO для неё ещё не обязательны;
-  - DTO настроек и границ (`<Игра>SettingsDto`, `<Игра>SettingsLimitsDto`) как новый вариант `oneOf` в обоих контрактах;
-  - ветки в `RoomSettingsResponseMapper` (game) и `RoomMapper` (gateway).
+  - DTO состояния (`<Игра>SessionStateDto`, с `result`; если у игрока есть поля игры — свой DTO игрока) как новый вариант `oneOf` `SessionStateDto` в `game-user-gateway-sync-api` и ветка в `SessionEventResponseMapper.stateClass` (снапшот разбирается строго в DTO игры); новые коды событий контракт не меняют, но дописываются в `SessionEventCodes.DESCRIPTION`;
+  - если игра задаёт `moveRules` — DTO (`<Игра>MoveRulesDto`) как новый вариант `oneOf` `SessionMoveRulesDto` (`SessionMetaDto.moveRules`, без дискриминатора) и ветка в `SessionEventResponseMapper.moveRulesClass`;
+  - если у хода есть параметры — DTO данных хода (`<Игра>MoveDataDto`) в `MoveDataSchemas.CLASSES` (см. §4 «Ручка хода»);
+  - значение в enum `GameCode` модели game и контракта `game-user-gateway-sync-api` (его использует и gateway), константа в `GameCodes` и код в `allowableValues` параметра `{gameCode}` (`GameApi`, `GameRoomApi`, `SessionEventsController`, `PublicGameApi`, `PublicGameRoomApi`); `GameRules.code` модуля совпадает с кодом;
+  - строка в таблице `game` DML-миграцией `<дата>-INSERT-game` (см. §4 «Каталог игр»), та же строка — в `init.sql` и `TestData` тестов. Пока игра в разработке — статус `NOT_PUBLISHED`, модуль правил и DTO для неё ещё не обязательны;
+  - DTO настроек и границ (`<Игра>SettingsDto`, `<Игра>SettingsLimitsDto`) как новый вариант `oneOf` `GameSettingsDto`/`GameSettingsLimitsDto` (`@JsonSubTypes`, `discriminatorMapping`);
+  - ветки в `RoomSettingsResponseMapper` (game);
+  - новые варианты union и enum — в `OpenApiContractScenariosTest` (gateway).
 
   Новый сервис и DDL-миграции для этого не нужны.
 - Что `GameRules` задаёт помимо функций:
   - **настройки игры:** класс, границы и значения по умолчанию (их отдаёт `GET /api/games/{gameCode}`), проверку;
+  - **поля игры у игрока** (`playerClass`) и **правила хода** для клиента (`moveRules(settings)`), если нужны;
   - **поддерживаемые режимы времени** и их границы. Сейчас есть `NONE` и `PER_MOVE`; расширение (`PER_ROUND`, `CHESS`) — новым значением `TimeControlMode`.
 - Игроки партии закреплены до её конца; на отсутствие игрока партия не реагирует (время идёт, таймауты как обычно, ход по REST принимается). Хук игры на отсутствие игрока (шахматы — поражение/отмена, квиз — ничего) — решить при первой такой игре.
 - Состояние и ход — простые data-классы без вычисляемых свойств; в журнал события попадают как JSON (`{path, value}`). Несовместимое изменение формата состояния или событий журнала — увеличить `stateSchemaVersion`.
@@ -197,7 +206,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
     Чистый `oneOf` + `discriminator` без цикла `allOf` от swagger-core даёт `DiscriminatedUnionCustomizer` из `libs/common-web`. Форму схемы проверяет `OpenApiContractScenariosTest` в gateway. `jackson-annotations` (версия из BOM) подключается в `*-sync-api`.
 
     Дискриминатор настроек игры (`gameSettings`, `gameSettingsLimits`) — поле `gameCode`, значения — коды игр (`nothing`), константы из `GameCodes`.
-- **Код игры — единственный идентификатор игры.** Enum `GameCode` в контрактах сериализуется строчным кодом (`@get:JsonValue val code`), поэтому в JSON и в OpenAPI значения — `nothing`, `carcassonne`, а не имена констант. Отдельного «типа игры» нет.
+- **Код игры — единственный идентификатор игры.** Enum `GameCode` в контрактах сериализуется строчным кодом (`@get:JsonValue val code`), поэтому в JSON и в OpenAPI значения — `nothing`, `carcassonne`, `checkers`, а не имена констант. Отдельного «типа игры» нет.
 - **Код игры — в пути.** Ручка, которой нужна игра, живёт под `/api/games/{gameCode}/...`, сначала `games`, потом `rooms`:
   - каталог игр — `GET /api/games`, игра с параметрами правил — `GET /api/games/{gameCode}`;
   - создание комнаты — `POST /api/games/{gameCode}/rooms`;
@@ -221,7 +230,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
     - Подписчик регистрируется до снапшота: события с `seq ≤ N` снапшота отбрасываются, пришедшие раньше снапшота копятся. Маркер не нужен.
     - `session-finished`/`session-cancelled` закрывают поток. Подписка на завершённую партию — снапшот `Full` и закрытие (так вошедший видит последнюю партию).
     - Рассылка — `pg_notify('session_events', {sessionId, fromSeq, toSeq})`; диспетчер читает события из журнала один раз на инстанс и маскирует один раз на проекцию. `RoomEventListener` слушает оба канала и при обрыве закрывает оба реестра.
-    - OpenAPI: union `SessionStreamEvent` по `type` (`SessionSnapshotEvent` и `SessionPatchStreamEvent`), внутри — `SessionPatchEvent` по `method` (`SessionEventPut/Patch/Delete/Info`); `PathSegment` = `string | {id}`; `code` — строка без enum (известные коды — в описании). `value` не типизирован: строго типизировано только состояние у снапшота — `oneOf` схем игр, игра определяется по `meta.game.code`.
+    - OpenAPI: union `SessionStreamEvent` по `type` (`SessionSnapshotEvent` и `SessionPatchStreamEvent`), внутри — `SessionPatchEvent` по `method` (`SessionEventPut/Patch/Delete/Info`); `PathSegment` = `string | {id}`; `code` — строка без enum (известные коды — в описании). `value` не типизирован: строго типизированы только состояние у снапшота (`SessionStateDto` — `oneOf` схем игр) и `meta.moveRules` (`SessionMoveRulesDto` — `oneOf` правил хода игр, `null` у игры без них), оба без дискриминатора: игра определяется по `meta.game.code`, и по нему `SessionEventResponseMapper` разбирает их строго.
   - Общая инфраструктура потоков: `SseWriter` (очередь и поток записи на подписчика), `StreamIndex`, `SseStreamProxy` в gateway.
   - Redis в real-time не участвует.
 - **WebSocket** — только для будущих игр с real-time перемещением игроков (сейчас таких нет).
@@ -319,9 +328,9 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - **Любое изменение партии** (старт, ход, таймаут, пауза, продолжение, конец, отмена) идёт через `SessionJournalService` под `lock(room)`: полное состояние на `last_seq` → события → `INSERT` в журнал с seq от `last_seq + 1`, обновление `last_seq`, статуса, `move_deadline` → `pg_notify`. На одно изменение может прийтись несколько событий, каждое со своим seq.
 - **Мутации партии** (ход, пауза, продолжение, отмена) отвечают **204**: результат приходит событиями потока. Старт возвращает комнату.
 - **Ручка хода одна на все игры:** `POST /api/games/{gameCode}/rooms/{roomId}/moves`.
-  - `gameCode` — строчный код игры (`GameCode.code`: `nothing`, `carcassonne`). Неизвестный код — 404 `GAME_NOT_FOUND` (gateway отклоняет сам), не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`.
-  - Тело — общий конверт `{type, data}` (тот же конверт, что варианты в `moveOptions`): `type` — вид действия (`PASS`, `PLACE_TILE`), `data` — его параметры в свободном формате. Сервис превращает `{type, data}` в класс хода игры (`GameRules.moveClass`); неподходящий формат — 400 `VALIDATION_ERROR`.
-  - Своих ручек у игр нет. Схема `data` в OpenAPI пока не типизируется — решить при появлении второй игры (Каркассон).
+  - `gameCode` — строчный код игры (`GameCode.code`: `nothing`, `carcassonne`, `checkers`). Неизвестный код — 404 `GAME_NOT_FOUND` (gateway отклоняет сам), не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`.
+  - Тело — общий конверт `{type, data}` (тот же конверт, что варианты в `moveOptions`): `type` — вид действия (`PASS`, `MOVE`, `RESIGN`), `data` — его параметры в формате игры. Сервис превращает `{type, data}` в класс хода игры (`GameRules.moveClass`); неподходящий формат — 400 `VALIDATION_ERROR`.
+  - Своих ручек у игр нет. `MoveRequest.data` в OpenAPI остаётся свободным объектом, а схемы параметров ходов игр (`CheckersMoveDataDto {path}`) перечислены в `MoveDataSchemas.CLASSES` (`game-user-gateway-sync-api`) и публикуются в components user-gateway через `OpenApiCustomizer` (`OpenApiConfig`): ни одна ручка на них не ссылается, поэтому springdoc сам их не выдаёт. Схемы строятся тем же набором конвертеров (`required` по Kotlin), клиент типизирует по ним `data` своей игры.
 - Ход проверяется по текущему полному состоянию под блокировкой комнаты, **без проверки версии**: если хода нет среди допустимых — 422 `MOVE_REJECTED` с машиночитаемой причиной в поле `reason` (например, `NOT_YOUR_TURN`).
 - **Таймер хода** (режим `PER_MOVE`, модуль `timer`):
   - старт и каждый ход ставят дедлайн `now + moveSeconds` (`timer-started`), конец и отмена партии останавливают таймер (`timer-stopped`, `STOPPED`);

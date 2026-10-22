@@ -20,6 +20,7 @@ data class GameModel(
 enum class GameCode(val code: String) {
     NOTHING("nothing"),
     CARCASSONNE("carcassonne"),
+    CHECKERS("checkers"),
     ;
 
     companion object {

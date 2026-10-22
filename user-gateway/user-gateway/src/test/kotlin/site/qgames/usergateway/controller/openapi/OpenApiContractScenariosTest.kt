@@ -14,33 +14,46 @@ import tools.jackson.databind.JsonNode
  */
 class OpenApiContractScenariosTest : BaseIntegrationTest() {
 
-    @ParameterizedTest(name = "{0}")
+    @ParameterizedTest(name = "{0}: {1}")
     @CsvSource(
-        "GameSettingsDto, NothingSettingsDto, rounds",
-        "GameSettingsLimitsDto, NothingSettingsLimitsDto, rounds",
+        "GameSettingsDto, NothingSettingsDto, nothing, rounds",
+        "GameSettingsDto, CheckersSettingsDto, checkers, variant",
+        "GameSettingsLimitsDto, NothingSettingsLimitsDto, nothing, rounds",
+        "GameSettingsLimitsDto, CheckersSettingsLimitsDto, checkers, variants",
     )
-    fun `polymorphic dto is a discriminated union`(union: String, variant: String, variantField: String) {
+    fun `polymorphic dto is a discriminated union`(union: String, variant: String, gameCode: String, variantField: String) {
         val schemas = apiDocs().path("components").path("schemas")
 
         val unionSchema = schemas.path(union)
-        assertThat(strings(unionSchema.path("oneOf")) { it.path("\$ref") }).containsExactly("#/components/schemas/$variant")
+        assertThat(strings(unionSchema.path("oneOf")) { it.path("\$ref") }).hasSize(2).contains("#/components/schemas/$variant")
         assertThat(unionSchema.path("discriminator").path("propertyName").asString()).isEqualTo("gameCode")
-        assertThat(unionSchema.path("discriminator").path("mapping").path("nothing").asString())
+        assertThat(unionSchema.path("discriminator").path("mapping").path(gameCode).asString())
             .isEqualTo("#/components/schemas/$variant")
         assertThat(unionSchema.has("properties")).isFalse()
 
         val variantSchema = schemas.path(variant)
         assertThat(variantSchema.has("allOf")).isFalse()
-        assertThat(strings(variantSchema.path("properties").path("gameCode").path("enum"))).containsExactly("nothing")
+        assertThat(strings(variantSchema.path("properties").path("gameCode").path("enum"))).containsExactly(gameCode)
         assertThat(strings(variantSchema.path("required"))).contains("gameCode", variantField)
+    }
+
+    /** Варианты правил шашек: все три в контракте, доступные — в границах настроек. */
+    @Test
+    fun `checkers settings list all variants`() {
+        val schemas = apiDocs().path("components").path("schemas")
+
+        assertThat(strings(schemas.path("CheckersSettingsDto").path("properties").path("variant").path("enum")))
+            .containsExactly("RUSSIAN", "INTERNATIONAL", "ENGLISH")
+        assertThat(strings(schemas.path("CheckersSettingsLimitsDto").path("properties").path("variants").path("items").path("enum")))
+            .containsExactly("RUSSIAN", "INTERNATIONAL", "ENGLISH")
     }
 
     /** Код игры — строчные коды (`@JsonValue`), а не имена значений enum. */
     @ParameterizedTest(name = "{0}.{1}")
     @CsvSource(
-        "RoomResponse, gameCode, nothing|carcassonne",
-        "GameSummaryDto, code, nothing|carcassonne",
-        "GameDetailsResponse, code, nothing|carcassonne",
+        "RoomResponse, gameCode, nothing|carcassonne|checkers",
+        "GameSummaryDto, code, nothing|carcassonne|checkers",
+        "GameDetailsResponse, code, nothing|carcassonne|checkers",
     )
     fun `game enums expose their public values`(schema: String, property: String, values: String) {
         val node = apiDocs().path("components").path("schemas").path(schema).path("properties").path(property)
@@ -58,8 +71,17 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(details.path("properties").has("publishStatus")).isFalse()
         assertThat(docs.path("components").path("schemas").path("GameSummaryDto").path("properties").has("publishStatus")).isFalse()
         assertThat(docs.path("components").path("schemas").has("GamePublishStatus")).isFalse()
-        val parameter = docs.path("paths").path("/api/games/{gameCode}").path("get").path("parameters").get(0)
-        assertThat(strings(parameter.path("schema").path("enum"))).containsExactly("nothing", "carcassonne")
+        listOf(
+            "/api/games/{gameCode}" to "get",
+            "/api/games/{gameCode}/rooms" to "post",
+            "/api/games/{gameCode}/rooms/{roomId}/settings" to "put",
+            "/api/games/{gameCode}/rooms/{roomId}/moves" to "post",
+            "/api/games/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events" to "get",
+        ).forEach { (path, method) ->
+            val parameters = docs.path("paths").path(path).path(method).path("parameters")
+            val parameter = (0 until parameters.size()).map(parameters::get).single { it.path("name").asString() == "gameCode" }
+            assertThat(strings(parameter.path("schema").path("enum"))).describedAs(path).containsExactly("nothing", "carcassonne", "checkers")
+        }
     }
 
     /** Поток событий комнаты: text/event-stream со схемой-union событий, конверты {type, data} в components. */
@@ -154,7 +176,8 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         val union = schemas.path("SessionPatchEvent")
         assertThat(union.path("discriminator").path("propertyName").asString()).isEqualTo("method")
         assertThat(union.has("properties")).isFalse()
-        assertThat(union.path("description").asString()).contains("session-started", "move-options-changed", "game-paused")
+        assertThat(union.path("description").asString())
+            .contains("session-started", "move-options-changed", "game-paused", "result-set", "piece-moved", "player-resigned")
         val variants = mapOf(
             "PUT" to ("SessionEventPut" to "PutData"),
             "PATCH" to ("SessionEventPatch" to "PatchData"),
@@ -198,15 +221,52 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
     }
 
     /** Состояние — union схем конкретных игр (игра — meta.game.code), без обратных ссылок. */
-    @ParameterizedTest(name = "{0}")
-    @CsvSource("SessionStateDto, NothingSessionStateDto, players|timer|turns|moves")
-    fun `game specific session state is a union of game schemas`(union: String, variant: String, properties: String) {
+    @ParameterizedTest(name = "{1}")
+    @CsvSource(
+        "SessionStateDto, NothingSessionStateDto, players|timer|turns|result|moves, players|turns|moves",
+        "SessionStateDto, CheckersSessionStateDto, players|timer|turns|result|pieces|lastMove|quietMoves, players|turns|pieces|quietMoves",
+        "SessionMoveRulesDto, CheckersMoveRulesDto, " +
+            "boardSize|firstColor|menMoveBackward|menCaptureBackward|flyingKings|captureRequired|maxCaptureRequired|" +
+            "promoteMidCapture|removeCapturedAfterMove, " +
+            "boardSize|firstColor|menMoveBackward|menCaptureBackward|flyingKings|captureRequired|maxCaptureRequired|" +
+            "promoteMidCapture|removeCapturedAfterMove",
+    )
+    fun `game specific session state is a union of game schemas`(union: String, variant: String, properties: String, required: String) {
         val schemas = apiDocs().path("components").path("schemas")
 
-        assertThat(strings(schemas.path(union).path("oneOf")) { it.path("\$ref") }).containsExactly("#/components/schemas/$variant")
+        assertThat(strings(schemas.path(union).path("oneOf")) { it.path("\$ref") }).contains("#/components/schemas/$variant")
+        assertThat(schemas.path(union).has("discriminator")).isFalse()
         val schema = schemas.path(variant)
         assertThat(schema.has("allOf")).isFalse()
         assertThat(schema.path("properties").propertyNames().toList()).containsExactlyInAnyOrder(*properties.split('|').toTypedArray())
+        assertThat(strings(schema.path("required"))).containsExactlyInAnyOrder(*required.split('|').toTypedArray())
+    }
+
+    /** Платформа партии: итог (модуль result), правила хода в meta, поля игры у игрока, схема параметров хода шашек. */
+    @Test
+    fun `session result, move rules and checkers schemas are in the contract`() {
+        val schemas = apiDocs().path("components").path("schemas")
+
+        assertThat(strings(schemas.path("SessionResultDto").path("required"))).containsExactlyInAnyOrder("outcome", "winnerIds", "reason")
+        assertThat(strings(schemas.path("SessionResultDto").path("properties").path("outcome").path("enum"))).containsExactly("WIN", "DRAW")
+        assertThat(schemas.path("SessionMetaDto").path("properties").propertyNames().toList()).containsExactlyInAnyOrder("game", "moveRules")
+        assertThat(strings(schemas.path("SessionMetaDto").path("required"))).containsExactly("game")
+        assertThat(strings(schemas.path("CheckersPlayerDto").path("required"))).containsExactlyInAnyOrder("id", "moveOptions", "color")
+        assertThat(strings(schemas.path("CheckersPlayerDto").path("properties").path("color").path("enum"))).containsExactly("WHITE", "BLACK")
+        assertThat(strings(schemas.path("CheckersPieceDto").path("properties").path("kind").path("enum"))).containsExactly("MAN", "KING")
+        assertThat(strings(schemas.path("CheckersPieceDto").path("required"))).containsExactlyInAnyOrder("id", "color", "kind", "square")
+        val square = schemas.path("CheckersPieceDto").path("properties").path("square")
+        assertThat(square.path("minItems").asInt()).isEqualTo(2)
+        assertThat(square.path("maxItems").asInt()).isEqualTo(2)
+        assertThat(strings(schemas.path("CheckersLastMoveDto").path("required"))).containsExactlyInAnyOrder("pieceId", "path", "captured")
+        // Параметры хода шашек — в components, общий конверт хода не меняется.
+        assertThat(strings(schemas.path("CheckersMoveDataDto").path("required"))).containsExactly("path")
+        assertThat(schemas.path("CheckersMoveDataDto").path("properties").path("path").path("items").path("items").path("type").asString())
+            .isEqualTo("integer")
+        val data = schemas.path("MoveRequest").path("properties").path("data")
+        assertThat(strings(data.path("type"))).containsExactlyInAnyOrder("object", "null")
+        assertThat(data.has("\$ref")).isFalse()
+        assertThat(data.path("description").asString()).contains("CheckersMoveDataDto")
     }
 
     @Test

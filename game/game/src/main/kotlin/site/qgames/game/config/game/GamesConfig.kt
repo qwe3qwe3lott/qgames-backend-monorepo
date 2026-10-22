@@ -4,6 +4,7 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import site.qgames.games.api.session.SessionCodec
 import site.qgames.games.api.session.SessionEngine
+import site.qgames.games.checkers.CheckersGameRules
 import site.qgames.games.nothing.NothingGameRules
 
 /**
@@ -15,6 +16,9 @@ class GamesConfig {
 
     @Bean
     fun nothingGameRules() = NothingGameRules()
+
+    @Bean
+    fun checkersGameRules() = CheckersGameRules()
 
     @Bean
     fun sessionEngine(sessionCodec: SessionCodec) = SessionEngine(sessionCodec)

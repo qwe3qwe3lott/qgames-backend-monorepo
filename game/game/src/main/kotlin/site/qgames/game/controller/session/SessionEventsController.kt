@@ -69,7 +69,7 @@ class SessionEventsController(
     )
     @GetMapping(SessionEventsApi.PATH, produces = [MediaType.TEXT_EVENT_STREAM_VALUE])
     fun sessionEvents(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @PathVariable sessionId: UUID,

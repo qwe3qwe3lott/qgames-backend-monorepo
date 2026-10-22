@@ -23,6 +23,7 @@ import site.qgames.common.test.container.PostgresTestContainer
 import site.qgames.common.test.container.RedpandaTestContainer
 import site.qgames.common.web.header.QgamesHeaders
 import site.qgames.game.gatewayapi.dto.room.ChangeRoleRequest
+import site.qgames.game.gatewayapi.dto.room.CheckersSettingsDto
 import site.qgames.game.gatewayapi.dto.room.CreateRoomRequest
 import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.game.GameCodes
@@ -133,9 +134,15 @@ abstract class BaseIntegrationTest {
     protected fun createRoomRequest(owner: UUID?, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
         call(HttpMethod.POST, "/api/games/$gameCode/rooms", owner, body)
 
-    /** Создаёт комнату и, как портал после создания, подключает владельца к её потоку. */
+    /**
+     * Создаёт комнату игры из настроек и, как портал после создания, подключает владельца к её потоку.
+     */
     protected fun createRoom(owner: UUID, settings: RoomSettingsDto = nothingSettings()): RoomResponse {
-        val created: RoomResponse = createRoomRequest(owner, CreateRoomRequest(settings))
+        val gameCode = when (settings.gameSettings) {
+            is NothingSettingsDto -> GameCodes.NOTHING
+            is CheckersSettingsDto -> GameCodes.CHECKERS
+        }
+        val created: RoomResponse = createRoomRequest(owner, CreateRoomRequest(settings), gameCode)
             .andExpect { status { isOk() } }
             .body()
         return join(owner, created.id)

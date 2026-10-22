@@ -32,3 +32,6 @@ databaseChangeLog:
   - include:
       file: DDL/2026-10-21-CREATE-room_session_event.yaml
       relativeToChangelogFile: true
+  - include:
+      file: DML/2026-10-22-INSERT-game.yaml
+      relativeToChangelogFile: true

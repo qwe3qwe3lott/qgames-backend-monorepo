@@ -18,7 +18,8 @@ import java.util.UUID
  * (очерёдность и раунды) и timer (таймер хода, в том числе пауза) и сама добавляет их события. Игра решает, какие
  * события происходят в ответ на ход ([decide]) и на истечение времени ([onTimeout]), и задаёт их коды.
  *
- * Поля игровой части состояния [G] лежат в документе в `state` рядом с блоками модулей (`players`, `timer`, `turns`) и
+ * Поля игровой части состояния [G] лежат в документе в `state` рядом с блоками модулей (`players`, `timer`, `turns`,
+ * `result`) и
  * не совпадают с ними по именам; события игры адресуют их путями от `state` (например, `PATCH ["state"] {moves}`).
  * [G], ход [M] и настройки [C] — простые data-классы без вычисляемых свойств: сервис game пишет их в журнал как JSON.
  * При несовместимом изменении формата событий увеличивается [stateSchemaVersion].
@@ -51,8 +52,20 @@ interface GameRules<G : Any, M : Any, C : Any> {
     /** Границы настроек игры для формы. Формат задаёт игра, сервис game переводит его в DTO контракта. */
     val settingsLimits: Any
 
+    /**
+     * Класс полей игры у игрока ([site.qgames.games.api.core.PlayerState.game]): в документе они лежат прямо в объекте
+     * игрока `state.players[]` рядом с `id` и `moveOptions` и не называются так же. null — своих полей у игрока нет.
+     */
+    val playerClass: Class<*>? get() = null
+
     /** Нарушения в настройках игры; пустой список — настройки подходят. Поле — путь внутри [C], например `rounds`. */
     fun validateSettings(settings: C): List<SettingsViolation>
+
+    /**
+     * Правила хода для клиента (`meta.moveRules`): по ним клиент подсказывает ввод хода, не зная правил игры. Задаются
+     * настройками, записываются в `session-started` и не меняются. null — подсказок нет.
+     */
+    fun moveRules(settings: C): Any? = null
 
     /**
      * Начало партии: игровая часть состояния и очерёдность. Игроки перечислены в порядке мест, настройки уже
@@ -63,10 +76,11 @@ interface GameRules<G : Any, M : Any, C : Any> {
     /**
      * Ход игрока [playerId] в полном состоянии [state]: события игры (и модулей, которыми игра управляет сама, —
      * например `turn-changed`) или отказ. Конец партии — событие `session-finished` в списке
-     * ([site.qgames.games.api.session.SessionEvents.finished]). Коды событий игры не совпадают с кодами платформы и
-     * модулей.
+     * ([site.qgames.games.api.session.SessionEvents.finished]); итог партии (`result-set`,
+     * [site.qgames.games.api.result.ResultModule]) — только в том же наборе событий. Коды событий игры не совпадают с
+     * кодами платформы и модулей. [settings] — настройки игры, закреплённые за партией при старте.
      */
-    fun decide(state: SessionState<G>, playerId: UUID, move: M): Decision
+    fun decide(state: SessionState<G>, settings: C, playerId: UUID, move: M): Decision
 
     /** Время хода текущего игрока истекло. Пустой список — ничего не происходит (ход ничей). */
     fun onTimeout(state: SessionState<G>): List<SessionEvent>
@@ -84,10 +98,12 @@ interface GameRules<G : Any, M : Any, C : Any> {
     fun maskGame(game: G, viewer: ViewerKey): G = game
 }
 
-/** Начало партии: игровая часть состояния и очерёдность (модуль turns). */
+/** Начало партии: игровая часть состояния, очерёдность (модуль turns) и поля игры у игроков. */
 data class GameStart<G : Any>(
     val game: G,
     val turns: TurnsState,
+    /** Поля игры у каждого игрока (объекты [GameRules.playerClass]); пусто — у игры их нет. */
+    val players: Map<UUID, Any> = emptyMap(),
 )
 
 /** Результат хода по правилам игры. */

@@ -66,7 +66,7 @@ interface PublicGameRoomApi {
     )
     @PostExchange("/{gameCode}/rooms")
     fun createRoom(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @Valid @RequestBody request: CreateRoomRequest,
     ): RoomResponse
@@ -101,7 +101,7 @@ interface PublicGameRoomApi {
     )
     @PutExchange("/{gameCode}/rooms/{roomId}/settings")
     fun updateRoomSettings(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: RoomSettingsDto,
@@ -110,7 +110,8 @@ interface PublicGameRoomApi {
     @Operation(
         summary = "Сделать ход",
         description = "Ручка одна на все игры: код игры — в пути, ход — общий конверт `{type, data}`. `type` — вид " +
-            "действия (`PASS` в «игре в ничто»), `data` — его параметры в формате игры; допустимые сейчас ходы игрока — " +
+            "действия (`PASS` в «игре в ничто», `MOVE` и `RESIGN` в шашках), `data` — его параметры в формате игры " +
+            "(схема в components: у шашек — CheckersMoveDataDto, полный путь шашки); допустимые сейчас ходы игрока — " +
             "moveOptions его игрока в состоянии партии. Код игры должен совпадать с игрой комнаты. Ходить может только " +
             "игрок партии, находящийся в комнате. Ход проверяется по текущему состоянию партии. Ответ без тела: " +
             "изменения (ход, очерёдность, варианты ходов, таймер, конец партии) приходят событиями потока партии. Когда " +
@@ -139,14 +140,15 @@ interface PublicGameRoomApi {
         ),
         ApiResponse(
             responseCode = "422",
-            description = "Ход нарушает правила игры (MOVE_REJECTED, причина — в поле reason, например NOT_YOUR_TURN)",
+            description = "Ход нарушает правила игры (MOVE_REJECTED, причина — в поле reason: NOT_YOUR_TURN, " +
+                "UNKNOWN_MOVE, GAME_FINISHED; в шашках ещё ILLEGAL_MOVE — путь не по правилам)",
         ),
         ApiResponse(responseCode = "503", description = "Игровой сервис недоступен (SERVICE_UNAVAILABLE)"),
     )
     @PostExchange("/{gameCode}/rooms/{roomId}/moves")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun makeMove(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: MoveRequest,
@@ -159,8 +161,9 @@ interface PublicGameRoomApi {
             "дискриминатор type).\n\n" +
             "Первое сообщение — snapshot: документ партии для этого зрителя `{seq, status, serverTime, meta, state}`; " +
             "так же после каждого переподключения. meta.game — код игры и правила партии, закреплённые при старте; по " +
-            "meta.game.code клиент выбирает схему состояния (NothingSessionStateDto). state — блоки модулей (players с " +
-            "moveOptions, timer, turns) и поля игры.\n\n" +
+            "meta.game.code клиент выбирает схему состояния (NothingSessionStateDto, CheckersSessionStateDto) и правил " +
+            "хода meta.moveRules (CheckersMoveRulesDto; null — у игры их нет). state — блоки модулей (players с " +
+            "moveOptions и полями игры, timer, turns, result — итог партии) и поля игры.\n\n" +
             "Дальше — события журнала партии `{seq, at, method, code, data}` (SessionPatchEvent), тип сообщения — " +
             "method в нижнем регистре (put, patch, delete, info). seq непрерывен и продолжает seq снапшота: дыра " +
             "означает потерю (переподключиться), повтор с уже применённым seq отбрасывается. Каждое событие — одна " +
@@ -193,7 +196,7 @@ interface PublicGameRoomApi {
     )
     @GetExchange("/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events", accept = [MediaType.TEXT_EVENT_STREAM_VALUE])
     fun sessionEvents(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @PathVariable sessionId: UUID,

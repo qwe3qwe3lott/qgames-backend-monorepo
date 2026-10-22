@@ -252,6 +252,15 @@ object SessionEventCodes {
         "- game-paused — PATCH [\"state\", \"timer\"] {status: PAUSED, pausedAt}: пауза;\n" +
         "- game-resumed — PATCH [\"state\", \"timer\"] {status: RUNNING, deadline, pausedAt: null}: продолжение;\n" +
         "- timer-stopped — PUT [\"state\", \"timer\"]: таймер остановлен перед концом или отменой партии;\n" +
+        "- result-set — PUT [\"state\", \"result\"] {outcome, winnerIds, reason}: итог партии, только перед " +
+        "session-finished;\n" +
         "- player-passed («игра в ничто») — PATCH [\"state\"] {moves}: игрок пропустил ход; по истечении времени — " +
-        "INFO {playerId, timeout: true}."
+        "INFO {playerId, timeout: true};\n" +
+        "- piece-moved (шашки) — PATCH [\"state\", \"pieces\", {id}] {square}: шашка встала на последнюю клетку пути;\n" +
+        "- piece-captured (шашки) — DELETE [\"state\", \"pieces\", {id}]: шашка сбита (на каждую сбитую);\n" +
+        "- piece-crowned (шашки) — PATCH [\"state\", \"pieces\", {id}] {kind: KING}: шашка стала дамкой;\n" +
+        "- last-move-changed (шашки) — PUT [\"state\", \"lastMove\"] {pieceId, path, captured}: последний ход;\n" +
+        "- counters-changed (шашки) — PATCH [\"state\"] {quietMoves}: счётчик ходов дамками без взятий;\n" +
+        "- player-resigned (шашки) — INFO {playerId}: игрок сдался;\n" +
+        "- move-timed-out (шашки) — INFO {playerId}: время хода игрока вышло (поражение)."
 }

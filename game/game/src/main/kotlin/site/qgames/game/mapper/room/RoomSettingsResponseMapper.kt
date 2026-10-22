@@ -2,7 +2,13 @@ package site.qgames.game.mapper.room
 
 import org.springframework.stereotype.Component
 import site.qgames.game.gatewayapi.dto.game.GameCode
+import site.qgames.game.gatewayapi.dto.room.CheckersSettingsDto
+import site.qgames.game.gatewayapi.dto.room.CheckersSettingsLimitsDto
 import site.qgames.game.gatewayapi.dto.room.GameSettingsDto
+import site.qgames.games.checkers.CheckersSettings
+import site.qgames.games.checkers.CheckersSettingsLimits
+import site.qgames.games.checkers.CheckersVariant
+import site.qgames.game.gatewayapi.dto.room.CheckersVariant as CheckersVariantDto
 import site.qgames.game.gatewayapi.dto.room.GameSettingsLimitsDto
 import site.qgames.game.gatewayapi.dto.room.IntRangeDto
 import site.qgames.game.gatewayapi.dto.room.NothingSettingsDto
@@ -27,6 +33,7 @@ class RoomSettingsResponseMapper {
         timeControl = RoomTimeControlModel(RoomTimeControlMode.valueOf(dto.timeControl.mode.name), dto.timeControl.moveSeconds),
         gameSettings = when (val settings = dto.gameSettings) {
             is NothingSettingsDto -> NothingSettings(rounds = settings.rounds)
+            is CheckersSettingsDto -> CheckersSettings(CheckersVariant.valueOf(settings.variant.name))
         },
     )
 
@@ -37,6 +44,10 @@ class RoomSettingsResponseMapper {
 
     fun toLimitsResponse(limits: Any): GameSettingsLimitsDto = when (limits) {
         is NothingSettingsLimits -> NothingSettingsLimitsDto(gameCode = GameCode.NOTHING, rounds = toDto(limits.rounds))
+        is CheckersSettingsLimits -> CheckersSettingsLimitsDto(
+            gameCode = GameCode.CHECKERS,
+            variants = limits.variants.map { CheckersVariantDto.valueOf(it.name) },
+        )
         else -> error("No DTO for game settings limits ${limits::class.qualifiedName}")
     }
 
@@ -44,6 +55,7 @@ class RoomSettingsResponseMapper {
 
     private fun toResponse(settings: Any): GameSettingsDto = when (settings) {
         is NothingSettings -> NothingSettingsDto(gameCode = GameCode.NOTHING, rounds = settings.rounds)
+        is CheckersSettings -> CheckersSettingsDto(gameCode = GameCode.CHECKERS, variant = CheckersVariantDto.valueOf(settings.variant.name))
         else -> error("No DTO for game settings ${settings::class.qualifiedName}")
     }
 }

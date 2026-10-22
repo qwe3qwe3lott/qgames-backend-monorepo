@@ -3,7 +3,11 @@ package site.qgames.game.mapper.session
 import org.springframework.stereotype.Component
 import site.qgames.game.gatewayapi.dto.game.GameCode
 import site.qgames.game.gatewayapi.dto.room.SessionStatus
+import site.qgames.game.gatewayapi.dto.session.CheckersMoveRulesDto
+import site.qgames.game.gatewayapi.dto.session.CheckersSessionStateDto
 import site.qgames.game.gatewayapi.dto.session.DeleteData
+import site.qgames.game.gatewayapi.dto.session.SessionGameDto
+import site.qgames.game.gatewayapi.dto.session.SessionMoveRulesDto
 import site.qgames.game.gatewayapi.dto.session.NothingSessionStateDto
 import site.qgames.game.gatewayapi.dto.session.PatchData
 import site.qgames.game.gatewayapi.dto.session.PutData
@@ -42,7 +46,7 @@ class SessionEventResponseMapper(
 
     fun toSnapshot(snapshot: SessionSnapshotModel): SessionSnapshotDto {
         val document = snapshot.state.document
-        val meta = strict(document[SessionEngine.META], SessionMetaDto::class.java)
+        val meta = meta(document[SessionEngine.META])
         return SessionSnapshotDto(
             seq = snapshot.state.seq,
             status = SessionStatus.valueOf(document[SessionEngine.STATUS] as String),
@@ -67,9 +71,28 @@ class SessionEventResponseMapper(
         }
     }
 
+    /**
+     * meta разбирается строго, а правила хода — схемой игры из game.code: у union без дискриминатора Jackson вид сам не
+     * выберет.
+     */
+    private fun meta(tree: Any?): SessionMetaDto {
+        @Suppress("UNCHECKED_CAST")
+        val meta = tree as? Map<String, Any?> ?: error("Session meta must be an object")
+        val unknown = meta.keys - setOf(GAME, MOVE_RULES)
+        check(unknown.isEmpty()) { "Unknown fields $unknown in the session meta" }
+        val game = strict(meta[GAME], SessionGameDto::class.java)
+        return SessionMetaDto(game, meta[MOVE_RULES]?.let { strict(it, moveRulesClass(game.code)) })
+    }
+
     private fun stateClass(gameCode: GameCode): Class<out SessionStateDto> = when (gameCode) {
         GameCode.NOTHING -> NothingSessionStateDto::class.java
+        GameCode.CHECKERS -> CheckersSessionStateDto::class.java
         else -> error("No DTO for the state of game $gameCode")
+    }
+
+    private fun moveRulesClass(gameCode: GameCode): Class<out SessionMoveRulesDto> = when (gameCode) {
+        GameCode.CHECKERS -> CheckersMoveRulesDto::class.java
+        else -> error("No DTO for the move rules of game $gameCode")
     }
 
     private fun <T : Any> strict(tree: Any?, type: Class<T>): T =
@@ -80,4 +103,9 @@ class SessionEventResponseMapper(
     @Suppress("UNCHECKED_CAST")
     private fun objectOf(event: SessionEvent): Map<String, Any?> =
         event.value as? Map<String, Any?> ?: error("Value of ${event.method} ${event.code} must be an object")
+
+    private companion object {
+        const val GAME = "game"
+        const val MOVE_RULES = "moveRules"
+    }
 }

@@ -18,7 +18,8 @@ import java.util.UUID
  * «Игра в ничто»: игроки по очереди делают ход PASS, после [NothingSettings.rounds] кругов партия заканчивается
  * без победителя. Нужна, чтобы проверить движок целиком: очерёдность, журнал, таймеры, конец партии.
  *
- * Модули: core (варианты ходов — PASS у того, чей ход), turns (ход по кругу, раунды из настроек), timer.
+ * Модули: core (варианты ходов — PASS у того, чей ход), turns (ход по кругу, раунды из настроек), timer, result
+ * (итог не ставится: `result` всегда null).
  * Собственный код события один — `player-passed`: ход игрока — `PATCH ["state"] {moves}` (счётчик ходов), пропуск по
  * истечении времени — `INFO {playerId, timeout: true}` (состояние игры не меняется). Скрытой информации нет, маски не
  * нужны.
@@ -31,7 +32,7 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
     override val gameStateClass = NothingGameState::class.java
     override val moveClass = NothingMove::class.java
     override val settingsClass = NothingSettings::class.java
-    override val stateSchemaVersion = 3
+    override val stateSchemaVersion = 4
 
     override val timeControl = TimeControlRules(
         modes = setOf(TimeControlMode.NONE, TimeControlMode.PER_MOVE),
@@ -51,9 +52,9 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
         }
 
     override fun start(players: List<UUID>, seed: Long, settings: NothingSettings) =
-        GameStart(NothingGameState(moves = 0), TurnsModule.initial(players, settings.rounds))
+        GameStart(NothingGameState(moves = 0), TurnsModule.initial(players, settings.rounds, first = players.first()))
 
-    override fun decide(state: SessionState<NothingGameState>, playerId: UUID, move: NothingMove): Decision {
+    override fun decide(state: SessionState<NothingGameState>, settings: NothingSettings, playerId: UUID, move: NothingMove): Decision {
         val current = state.turns.currentPlayerId
         return when {
             current == null -> Decision.Rejected("GAME_FINISHED", "The game is already finished")

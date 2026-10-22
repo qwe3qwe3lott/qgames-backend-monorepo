@@ -1,5 +1,6 @@
 package site.qgames.game.gatewayapi.dto.room
 
+import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
@@ -44,10 +45,14 @@ data class ChangeRoleRequest(
 )
 
 data class MoveRequest(
-    /** Вид действия, например `PASS` или `PLACE_TILE`. Набор видов задаёт игра. */
+    /** Вид действия, например `PASS` или `MOVE`. Набор видов задаёт игра. */
     @field:NotBlank
     val type: String,
-    /** Параметры действия в свободном формате, их разбирает правило игры. У `PASS` их нет. */
+    /** Параметры действия в формате игры, их разбирает правило игры. У `PASS` и `RESIGN` их нет. */
+    @field:Schema(
+        description = "Параметры действия в формате игры; у PASS и RESIGN их нет. Схемы по играм — в components: " +
+            "шашки, MOVE — CheckersMoveDataDto",
+    )
     val data: Map<String, Any?>? = null,
 )
 
