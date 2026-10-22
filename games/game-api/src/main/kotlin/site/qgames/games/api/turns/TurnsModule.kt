@@ -26,8 +26,14 @@ object TurnsModule {
     /** Ключ блока в состоянии. */
     const val TURNS = "turns"
 
-    /** Первый ход — у первого игрока. */
-    fun initial(players: List<UUID>, rounds: Int?) = TurnsState(players.first(), round = 1, rounds = rounds)
+    /**
+     * Очерёдность новой партии: первым ходит [first] (игрок партии), раунд — первый. Порядок дальнейших ходов — по
+     * местам ([next]).
+     */
+    fun initial(players: List<UUID>, rounds: Int?, first: UUID): TurnsState {
+        require(first in players) { "First player $first is not a player of the session" }
+        return TurnsState(first, round = 1, rounds = rounds)
+    }
 
     /**
      * Ход переходит к следующему по месту; после последнего начинается новый раунд. Если раунды кончились, ход ничей

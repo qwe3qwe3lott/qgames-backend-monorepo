@@ -1,12 +1,19 @@
 package site.qgames.games.nothing
 
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
+import site.qgames.games.api.Decision
 import site.qgames.games.api.GameRules
+import site.qgames.games.api.result.ResultModule
+import site.qgames.games.api.result.ResultOutcome
+import site.qgames.games.api.result.ResultState
+import site.qgames.games.api.session.SessionEvents
+import site.qgames.games.api.session.SessionState
 import site.qgames.games.api.TimeControl
 import site.qgames.games.api.TimeControlMode
 import site.qgames.games.api.session.MoveOutcome
@@ -54,11 +61,13 @@ class NothingSessionScenariosTest {
                             "gameSettings" to mapOf("gameCode" to "nothing", "rounds" to 2),
                         ),
                     ),
+                    "moveRules" to null,
                 ),
                 "state" to mapOf(
                     "players" to listOf(player(ALICE, listOf(PASS)), player(BOB, emptyList())),
                     "timer" to mapOf("status" to "RUNNING", "deadline" to "2026-10-21T10:00:30Z", "pausedAt" to null),
                     "turns" to mapOf("currentPlayerId" to ALICE.toString(), "round" to 1, "rounds" to 2),
+                    "result" to null,
                     "moves" to 0,
                 ),
             ),
@@ -102,6 +111,42 @@ class NothingSessionScenariosTest {
         assertThat(finished.state.turns).isEqualTo(TurnsState(null, round = 1, rounds = 1))
         assertThat(finished.state.players.single().moveOptions).isEmpty()
         assertThat(finished.state.game).isEqualTo(NothingGameState(moves = 1))
+        assertThat(finished.state.result).isNull()
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("misplacedResults")
+    fun `result can be set only once and only together with session-finished`(case: String, events: List<SessionEvent>) {
+        val nothing = NothingGameRules()
+        @Suppress("UNCHECKED_CAST")
+        val setsResult = object : GameRules<NothingGameState, NothingMove, NothingSettings> by nothing {
+            override fun decide(state: SessionState<NothingGameState>, settings: NothingSettings, playerId: UUID, move: NothingMove) = Decision.Accepted(events)
+        } as GameRules<Any, Any, Any>
+
+        assertThatThrownBy { engine.move(setsResult, fold(journal()), ALICE, NothingMove("PASS"), NOW) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("result-set")
+    }
+
+    @Test
+    fun `result set together with session-finished is the final result of the game`() {
+        val nothing = NothingGameRules()
+        @Suppress("UNCHECKED_CAST")
+        val drawn = object : GameRules<NothingGameState, NothingMove, NothingSettings> by nothing {
+            override fun decide(state: SessionState<NothingGameState>, settings: NothingSettings, playerId: UUID, move: NothingMove) =
+                Decision.Accepted(listOf(ResultModule.draw("AGREED"), SessionEvents.finished()))
+        } as GameRules<Any, Any, Any>
+        val journal = journal()
+
+        val events = (engine.move(drawn, fold(journal), ALICE, NothingMove("PASS"), NOW) as MoveOutcome.Accepted).events
+
+        assertThat(events.map { it.code }).containsExactly("result-set", "move-options-changed", "session-finished")
+        assertThat(events.first().path).isEqualTo(listOf(key("state"), key("result")))
+        assertThat(events.first().value).isEqualTo(mapOf("outcome" to "DRAW", "winnerIds" to emptyList<Any>(), "reason" to "AGREED"))
+        assertThat(engine.mask(rules, events.first(), ViewerKey.Public)).isEqualTo(events.first())
+        val session = fold(journal + events).session
+        assertThat(session.status).isEqualTo(SessionStatus.FINISHED)
+        assertThat(session.state.result).isEqualTo(ResultState(ResultOutcome.DRAW, emptyList(), "AGREED"))
     }
 
     @Test
@@ -253,6 +298,12 @@ class NothingSessionScenariosTest {
 
         @JvmStatic
         fun viewers(): Stream<ViewerKey> = Stream.of(ViewerKey.Full, ViewerKey.Public, ViewerKey.Player(ALICE), ViewerKey.Player(BOB))
+
+        @JvmStatic
+        fun misplacedResults(): Stream<Arguments> = Stream.of(
+            arguments("result without session-finished", listOf(ResultModule.win(ALICE, "X"))),
+            arguments("result twice", listOf(ResultModule.win(ALICE, "X"), ResultModule.draw("Y"), SessionEvents.finished())),
+        )
 
         @JvmStatic
         fun rejections(): Stream<Arguments> = Stream.of(

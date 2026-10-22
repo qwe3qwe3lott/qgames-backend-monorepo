@@ -37,12 +37,18 @@ data class RoomSettingsDto(
 
 /** Настройки конкретной игры. Вид определяется полем gameCode, оно должно совпадать с игрой комнаты. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameCode", visible = true)
-@JsonSubTypes(JsonSubTypes.Type(value = NothingSettingsDto::class, name = GameCodes.NOTHING))
+@JsonSubTypes(
+    JsonSubTypes.Type(value = NothingSettingsDto::class, name = GameCodes.NOTHING),
+    JsonSubTypes.Type(value = CheckersSettingsDto::class, name = GameCodes.CHECKERS),
+)
 @Schema(
     description = "Настройки конкретной игры, вид — по полю gameCode",
-    oneOf = [NothingSettingsDto::class],
+    oneOf = [NothingSettingsDto::class, CheckersSettingsDto::class],
     discriminatorProperty = "gameCode",
-    discriminatorMapping = [DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSettingsDto::class)],
+    discriminatorMapping = [
+        DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSettingsDto::class),
+        DiscriminatorMapping(value = GameCodes.CHECKERS, schema = CheckersSettingsDto::class),
+    ],
 )
 sealed interface GameSettingsDto
 
@@ -62,12 +68,18 @@ data class IntRangeDto(
 
 /** Границы настроек конкретной игры, вид — по полю gameCode. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameCode", visible = true)
-@JsonSubTypes(JsonSubTypes.Type(value = NothingSettingsLimitsDto::class, name = GameCodes.NOTHING))
+@JsonSubTypes(
+    JsonSubTypes.Type(value = NothingSettingsLimitsDto::class, name = GameCodes.NOTHING),
+    JsonSubTypes.Type(value = CheckersSettingsLimitsDto::class, name = GameCodes.CHECKERS),
+)
 @Schema(
     description = "Границы настроек конкретной игры, вид — по полю gameCode",
-    oneOf = [NothingSettingsLimitsDto::class],
+    oneOf = [NothingSettingsLimitsDto::class, CheckersSettingsLimitsDto::class],
     discriminatorProperty = "gameCode",
-    discriminatorMapping = [DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSettingsLimitsDto::class)],
+    discriminatorMapping = [
+        DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSettingsLimitsDto::class),
+        DiscriminatorMapping(value = GameCodes.CHECKERS, schema = CheckersSettingsLimitsDto::class),
+    ],
 )
 sealed interface GameSettingsLimitsDto
 
@@ -76,4 +88,32 @@ data class NothingSettingsLimitsDto(
     @field:Schema(type = "string", allowableValues = [GameCodes.NOTHING])
     val gameCode: GameCode,
     val rounds: IntRangeDto,
+) : GameSettingsLimitsDto
+
+/** Вариант правил шашек. Доступные в настройках варианты — в границах настроек игры (CheckersSettingsLimitsDto.variants). */
+enum class CheckersVariant {
+    /** Русские шашки. */
+    RUSSIAN,
+
+    /** Международные (100-клеточные) шашки. */
+    INTERNATIONAL,
+
+    /** Английские шашки (чекерс). */
+    ENGLISH,
+}
+
+/** Настройки шашек. */
+data class CheckersSettingsDto(
+    @field:Schema(type = "string", allowableValues = [GameCodes.CHECKERS])
+    val gameCode: GameCode,
+    /** Вариант правил: один из доступных (CheckersSettingsLimitsDto.variants). */
+    val variant: CheckersVariant,
+) : GameSettingsDto
+
+/** Границы настроек шашек. */
+data class CheckersSettingsLimitsDto(
+    @field:Schema(type = "string", allowableValues = [GameCodes.CHECKERS])
+    val gameCode: GameCode,
+    /** Варианты правил, которые можно выбрать. */
+    val variants: List<CheckersVariant>,
 ) : GameSettingsLimitsDto

@@ -51,7 +51,7 @@ interface GameApi {
     )
     @GetExchange("/{gameCode}")
     fun getGame(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
     ): GameDetailsResponse
 }

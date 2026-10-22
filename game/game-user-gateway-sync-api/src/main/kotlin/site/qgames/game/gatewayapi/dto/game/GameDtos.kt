@@ -13,6 +13,9 @@ enum class GameCode(@get:JsonValue val code: String) {
 
     /** Каркассон. */
     CARCASSONNE(GameCodes.CARCASSONNE),
+
+    /** Шашки: вариант правил — настройка комнаты. */
+    CHECKERS(GameCodes.CHECKERS),
     ;
 
     companion object {
@@ -24,6 +27,7 @@ enum class GameCode(@get:JsonValue val code: String) {
 object GameCodes {
     const val NOTHING = "nothing"
     const val CARCASSONNE = "carcassonne"
+    const val CHECKERS = "checkers"
 }
 
 /** Каталог игр в порядке показа, без скрытых (HIDDEN) и неопубликованных (NOT_PUBLISHED). */

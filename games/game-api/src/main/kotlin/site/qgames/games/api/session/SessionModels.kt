@@ -2,6 +2,7 @@ package site.qgames.games.api.session
 
 import site.qgames.games.api.TimeControl
 import site.qgames.games.api.core.PlayerState
+import site.qgames.games.api.result.ResultState
 import site.qgames.games.api.timer.TimerState
 import site.qgames.games.api.turns.TurnsState
 import java.util.UUID
@@ -71,6 +72,8 @@ data class SessionState<G : Any>(
     val timer: TimerState?,
     /** Модуль turns: очерёдность и раунды. */
     val turns: TurnsState,
+    /** Модуль result: итог партии; null — партия не закончена по правилам (идёт или отменена). */
+    val result: ResultState?,
     val game: G,
 )
 
@@ -90,6 +93,8 @@ enum class SessionStatus {
 /** Неизменное описание партии, закреплённое при старте: нужно и для повтора. */
 data class SessionMeta(
     val game: GameMeta,
+    /** Правила хода для подсказок клиенту (GameRules.moveRules) как JSON-дерево; null — у игры их нет. */
+    val moveRules: Any? = null,
 )
 
 /** Игра партии: код и правила (настройки) на момент старта. */

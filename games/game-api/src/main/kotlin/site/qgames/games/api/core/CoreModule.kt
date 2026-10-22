@@ -7,12 +7,25 @@ import site.qgames.games.api.session.SessionState
 import site.qgames.games.api.session.ViewerKey
 import java.util.UUID
 
-/** Игрок партии (модуль core). Другие модули дописывают сюда свои атрибуты игрока (например, запас времени). */
+/**
+ * Игрок партии (модуль core). Другие модули и игра дописывают сюда свои атрибуты игрока (например, цвет в шашках).
+ *
+ * Поля игры ([game], объект класса GameRules.playerClass) в документе лежат прямо в объекте игрока рядом с полями
+ * модуля (`{id, moveOptions, color}`), а не вложенным объектом, и не совпадают с ними по именам ([FIELDS]). Документ
+ * собирает и читает SessionEngine; сам [PlayerState] в JSON напрямую не переводится.
+ */
 data class PlayerState(
     val id: UUID,
     /** Что игрок может сделать сейчас; чужим зрителям — пустой список. */
     val moveOptions: List<MoveOption>,
-)
+    /** Поля игры у игрока; null — у игры их нет. */
+    val game: Any? = null,
+) {
+    companion object {
+        /** Поля модуля core в объекте игрока: поля игры не могут называться так же. */
+        val FIELDS = setOf("id", "moveOptions")
+    }
+}
 
 /** Вариант хода: тот же конверт, что тело хода (`type` и параметры `data`). */
 data class MoveOption(
@@ -35,7 +48,9 @@ object CoreModule {
 
     private const val MOVE_OPTIONS = "moveOptions"
 
-    fun initialPlayers(players: List<UUID>): List<PlayerState> = players.map { PlayerState(it, emptyList()) }
+    /** Игроки новой партии в порядке мест; [game] — поля игры у игрока (у игры без полей игрока — пусто). */
+    fun initialPlayers(players: List<UUID>, game: Map<UUID, Any> = emptyMap()): List<PlayerState> =
+        players.map { PlayerState(it, emptyList(), game[it]) }
 
     /** События `move-options-changed` для игроков, у которых варианты ходов в [state] отличаются от [options]. */
     fun <G : Any> changes(state: SessionState<G>, options: (UUID) -> List<MoveOption>): List<SessionEvent> =

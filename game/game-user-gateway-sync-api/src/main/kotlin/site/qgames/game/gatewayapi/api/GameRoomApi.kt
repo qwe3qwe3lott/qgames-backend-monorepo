@@ -54,7 +54,7 @@ interface GameRoomApi {
     )
     @PostExchange("/{gameCode}/rooms")
     fun createRoom(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @Valid @RequestBody request: CreateRoomRequest,
     ): RoomResponse
@@ -87,7 +87,7 @@ interface GameRoomApi {
     )
     @PutExchange("/{gameCode}/rooms/{roomId}/settings")
     fun updateRoomSettings(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: RoomSettingsDto,
@@ -123,13 +123,14 @@ interface GameRoomApi {
         ),
         ApiResponse(
             responseCode = "422",
-            description = "Ход нарушает правила игры (MOVE_REJECTED, причина — в поле reason, например NOT_YOUR_TURN)",
+            description = "Ход нарушает правила игры (MOVE_REJECTED, причина — в поле reason: NOT_YOUR_TURN, " +
+                "UNKNOWN_MOVE, GAME_FINISHED; в шашках ещё ILLEGAL_MOVE — путь не по правилам)",
         ),
     )
     @PostExchange("/{gameCode}/rooms/{roomId}/moves")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun makeMove(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: MoveRequest,

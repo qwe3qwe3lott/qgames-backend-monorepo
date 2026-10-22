@@ -10,6 +10,7 @@ dependencies {
     implementation(project(":user-auth:user-auth-internal-async-api"))
     // Правила игр. Новая игра — новый модуль games/* здесь и его бин в GamesConfig.
     implementation(project(":games:nothing-game"))
+    implementation(project(":games:checkers-game"))
 
     implementation("org.springframework.boot:spring-boot-starter-data-jdbc")
     implementation("org.springframework.boot:spring-boot-starter-liquibase")

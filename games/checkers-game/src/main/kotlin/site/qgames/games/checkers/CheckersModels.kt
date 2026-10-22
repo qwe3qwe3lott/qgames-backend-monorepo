@@ -1,0 +1,126 @@
+package site.qgames.games.checkers
+
+/** Вариант правил: настройка комнаты. Сейчас доступен только [RUSSIAN] (см. [CheckersMoveRules.of]). */
+enum class CheckersVariant {
+    RUSSIAN,
+    INTERNATIONAL,
+    ENGLISH,
+}
+
+enum class CheckersColor {
+    WHITE,
+    BLACK,
+    ;
+
+    fun opponent(): CheckersColor = if (this == WHITE) BLACK else WHITE
+}
+
+enum class CheckersPieceKind {
+    /** Простая. */
+    MAN,
+
+    /** Дамка. */
+    KING,
+}
+
+/** Настройки партии. */
+data class CheckersSettings(
+    val variant: CheckersVariant,
+)
+
+/** Границы настроек для формы: доступные варианты правил. */
+data class CheckersSettingsLimits(
+    val variants: List<CheckersVariant>,
+)
+
+/**
+ * Правила хода варианта (`meta.moveRules`): по этим флагам клиент подсказывает путь, а сервер генерирует и проверяет
+ * ходы. Клиент вариантов не знает — только флаги.
+ */
+data class CheckersMoveRules(
+    /** Размер доски. */
+    val boardSize: Int,
+    /** Кто ходит первым. */
+    val firstColor: CheckersColor,
+    /** Тихий ход простой назад. */
+    val menMoveBackward: Boolean,
+    /** Взятие простой назад. */
+    val menCaptureBackward: Boolean,
+    /** Дамка ходит и бьёт на любое число клеток. */
+    val flyingKings: Boolean,
+    /** Взятие обязательно. */
+    val captureRequired: Boolean,
+    /** Брать только ветку с наибольшим числом сбитых. */
+    val maxCaptureRequired: Boolean,
+    /** Ставшая дамкой посреди взятия бьёт дальше как дамка. */
+    val promoteMidCapture: Boolean,
+    /** Турецкий удар: сбитые снимаются после хода, через сбитую шашку второй раз не прыгать. */
+    val removeCapturedAfterMove: Boolean,
+) {
+    companion object {
+
+        /** Русские шашки. */
+        val RUSSIAN = CheckersMoveRules(
+            boardSize = 8,
+            firstColor = CheckersColor.WHITE,
+            menMoveBackward = false,
+            menCaptureBackward = true,
+            flyingKings = true,
+            captureRequired = true,
+            maxCaptureRequired = false,
+            promoteMidCapture = true,
+            removeCapturedAfterMove = true,
+        )
+
+        /**
+         * Правила хода варианта. Реализованы только варианты из [CheckersGameRules.VARIANTS]: другие настройки не
+         * проходят проверку и до старта партии не доходят.
+         */
+        fun of(variant: CheckersVariant): CheckersMoveRules = when (variant) {
+            CheckersVariant.RUSSIAN -> RUSSIAN
+            CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH -> error("Checkers variant $variant is not supported yet")
+        }
+    }
+}
+
+/** Игровая часть состояния (в документе — поля `state.pieces`, `state.lastMove`, `state.quietMoves`). */
+data class CheckersGameState(
+    /** Шашки на доске; сбитые удаляются. */
+    val pieces: List<CheckersPiece>,
+    /** Последний ход; null — ходов ещё не было. */
+    val lastMove: CheckersLastMove?,
+    /** Сколько ходов подряд сделано только дамками без взятий (для ничьей). */
+    val quietMoves: Int,
+)
+
+/** Шашка: элемент массива `state.pieces`, адресуется по [id] (`w1…`, `b1…`). */
+data class CheckersPiece(
+    val id: String,
+    val color: CheckersColor,
+    val kind: CheckersPieceKind,
+    /** Клетка `[x, y]`, отсчёт с 1; `[1, 1]` — тёмная клетка в углу белых. */
+    val square: List<Int>,
+)
+
+/** Последний ход: шашка, полный путь (с начальной клеткой) и клетки сбитых шашек. */
+data class CheckersLastMove(
+    val pieceId: String,
+    val path: List<List<Int>>,
+    val captured: List<List<Int>>,
+)
+
+/** Поля игры у игрока (`state.players[]`): цвет. */
+data class CheckersPlayer(
+    val color: CheckersColor,
+)
+
+/** Ход: `{type: "MOVE", data: {path}}` или `{type: "RESIGN"}`. */
+data class CheckersMove(
+    val type: String,
+    val data: CheckersMoveData? = null,
+)
+
+/** Параметры хода MOVE: полный путь шашки, включая начальную клетку, клетки — `[x, y]`. */
+data class CheckersMoveData(
+    val path: List<List<Int>>,
+)
