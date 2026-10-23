@@ -26,7 +26,7 @@ class RefreshTokenScenariosTest : BaseIntegrationTest() {
         val second = refresh(first.tokens.refreshToken).andExpect { status { isOk() } }.body<AuthResponse>()
 
         assertThat(listOf(session, first, second).map { it.tokens.refreshToken }).doesNotHaveDuplicates()
-        assertThat(second.user.id).isEqualTo(TestData.Verified.ID)
+        assertThat(second.user.id).isEqualTo(TestData.PasswordOnly.ID)
         assertThat(countRows("refresh_token WHERE revoked_at IS NULL")).isEqualTo(1)
     }
 
@@ -54,7 +54,7 @@ class RefreshTokenScenariosTest : BaseIntegrationTest() {
         if (accepted) {
             // Вторая вкладка получила свою пару той же сессии; обе ветки продолжают работать.
             val parallel = replay.andExpect { status { isOk() } }.body<AuthResponse>()
-            assertThat(parallel.user.id).isEqualTo(TestData.Verified.ID)
+            assertThat(parallel.user.id).isEqualTo(TestData.PasswordOnly.ID)
             refresh(rotated.tokens.refreshToken).andExpect { status { isOk() } }
             refresh(parallel.tokens.refreshToken).andExpect { status { isOk() } }
         } else {

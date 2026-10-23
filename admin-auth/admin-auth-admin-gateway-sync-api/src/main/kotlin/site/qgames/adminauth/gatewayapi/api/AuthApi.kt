@@ -16,8 +16,8 @@ import site.qgames.adminauth.gatewayapi.dto.auth.RefreshTokenRequest
  * Аутентификация администраторов. Токены возвращаются в теле ответа: превращать их в куки — задача admin-gateway.
  */
 @Tag(
-    name = "Аутентификация администраторов (для gateway)",
-    description = "Внутренние ручки для admin-gateway, наружу не публикуются. Токены возвращаются в теле ответа, " +
+    name = "auth",
+    description = "Аутентификация администраторов (для gateway). Внутренние ручки для admin-gateway, наружу не публикуются. Токены возвращаются в теле ответа, " +
         "в куки их превращает gateway.",
 )
 @HttpExchange("/api/auth")

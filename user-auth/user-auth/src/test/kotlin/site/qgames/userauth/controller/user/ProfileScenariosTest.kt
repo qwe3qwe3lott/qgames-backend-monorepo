@@ -10,6 +10,7 @@ import org.springframework.test.web.servlet.patch
 import org.springframework.http.MediaType
 import site.qgames.userauth.BaseIntegrationTest
 import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
+import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
 import site.qgames.userauth.gatewayapi.dto.user.Avatar
 import site.qgames.userauth.gatewayapi.dto.user.UserResponse
 import site.qgames.userauth.support.GoogleIdTokens
@@ -28,27 +29,27 @@ class ProfileScenariosTest : BaseIntegrationTest() {
         expectedNickname: String,
         expectedAvatar: Avatar,
     ) {
-        val response = patchProfile(body, TestData.Verified.ID).andExpect { status { isOk() } }.body<UserResponse>()
+        val response = patchProfile(body, TestData.PasswordOnly.ID).andExpect { status { isOk() } }.body<UserResponse>()
 
         assertThat(response.nickname).isEqualTo(expectedNickname)
         assertThat(response.avatar).isEqualTo(expectedAvatar)
         val stored = jdbcClient.sql("""SELECT nickname, avatar FROM "user" WHERE id = :id""")
-            .param("id", TestData.Verified.ID)
+            .param("id", TestData.PasswordOnly.ID)
             .query()
             .singleRow()
         assertThat(stored).containsEntry("nickname", expectedNickname).containsEntry("avatar", expectedAvatar.name)
 
         val event = publishedProfileEvents().single()
-        assertThat(event.userId).isEqualTo(TestData.Verified.ID.toString())
+        assertThat(event.userId).isEqualTo(TestData.PasswordOnly.ID.toString())
         assertThat(event.nickname).isEqualTo(expectedNickname)
         assertThat(event.avatar).isEqualTo(AvatarProto.valueOf("AVATAR_${expectedAvatar.name}"))
-        assertThat(event.version).isEqualTo(1).isEqualTo(storedVersion(TestData.Verified.ID))
+        assertThat(event.version).isEqualTo(1).isEqualTo(storedVersion(TestData.PasswordOnly.ID))
     }
 
     @Test
     fun `every profile change increases the version carried by the event`() {
-        patchProfile(mapOf("nickname" to "First"), TestData.Verified.ID).andExpect { status { isOk() } }
-        patchProfile(mapOf("nickname" to "Second"), TestData.Verified.ID).andExpect { status { isOk() } }
+        patchProfile(mapOf("nickname" to "First"), TestData.PasswordOnly.ID).andExpect { status { isOk() } }
+        patchProfile(mapOf("nickname" to "Second"), TestData.PasswordOnly.ID).andExpect { status { isOk() } }
 
         assertThat(publishedProfileEvents().map { it.nickname to it.version }).containsExactly("First" to 1L, "Second" to 2L)
     }
@@ -56,26 +57,26 @@ class ProfileScenariosTest : BaseIntegrationTest() {
     @ParameterizedTest(name = "{0}")
     @MethodSource("invalidUpdates")
     fun `invalid profile update changes nothing and publishes nothing`(case: String, body: Map<String, Any?>) {
-        patchProfile(body, TestData.Verified.ID).andExpect {
+        patchProfile(body, TestData.PasswordOnly.ID).andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("VALIDATION_ERROR") }
         }
 
         assertThat(publishedProfileEvents()).isEmpty()
-        getJson("/api/users/me", TestData.Verified.ID).andExpect { jsonPath("$.nickname") { value("Player") } }
+        getJson("/api/users/me", TestData.PasswordOnly.ID).andExpect { jsonPath("$.nickname") { value("Player") } }
     }
 
     @Test
     fun `update with the same values publishes nothing`() {
-        patchProfile(mapOf("nickname" to "Player", "avatar" to "CAT"), TestData.Verified.ID).andExpect { status { isOk() } }
+        patchProfile(mapOf("nickname" to "Player", "avatar" to "CAT"), TestData.PasswordOnly.ID).andExpect { status { isOk() } }
 
         assertThat(publishedProfileEvents()).isEmpty()
-        assertThat(storedVersion(TestData.Verified.ID)).isZero()
+        assertThat(storedVersion(TestData.PasswordOnly.ID)).isZero()
     }
 
     @Test
     fun `nickname is not unique`() {
-        patchProfile(mapOf("nickname" to "Both"), TestData.Verified.ID).andExpect {
+        patchProfile(mapOf("nickname" to "Both"), TestData.PasswordOnly.ID).andExpect {
             status { isOk() }
             jsonPath("$.nickname") { value("Both") }
         }
@@ -114,7 +115,11 @@ class ProfileScenariosTest : BaseIntegrationTest() {
 
     @Test
     fun `linking google to an existing account publishes nothing`() {
-        loginWithGoogle(GoogleIdTokens.idToken("google-new", TestData.Verified.EMAIL)).andExpect { status { isOk() } }
+        postJson(
+            "/api/users/me/login-methods/google",
+            GoogleIdTokenRequest(GoogleIdTokens.idToken("google-new", "other@gmail.com")),
+            TestData.PasswordOnly.ID,
+        ).andExpect { status { isOk() } }
 
         assertThat(publishedProfileEvents()).isEmpty()
     }

@@ -23,7 +23,6 @@ import site.qgames.userauth.gatewayapi.dto.auth.RefreshTokenRequest
 import site.qgames.usergateway.BaseIntegrationTest
 import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
 import site.qgames.userauth.gatewayapi.dto.auth.LoginRequest
-import site.qgames.userauth.gatewayapi.dto.auth.VerifyEmailRequest
 import site.qgames.userauth.gatewayapi.dto.user.ChangePasswordRequest
 import java.time.Instant
 import java.util.stream.Stream
@@ -178,26 +177,6 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `registration is proxied without starting a session`() {
-        stubUserAuthPost("/api/auth/register", 200, mapOf("userId" to USER_ID, "email" to "player@example.com"))
-
-        val result = mockMvc.post("/api/auth/register") {
-            contentType = MediaType.APPLICATION_JSON
-            content = """{"email":"player@example.com","password":"correct-horse-1","nickname":"Player","avatar":"CAT"}"""
-        }.andExpect {
-            status { isOk() }
-            jsonPath("$.userId") { value(USER_ID.toString()) }
-        }
-
-        assertThat(result.andReturn().response.getHeaders("Set-Cookie")).isEmpty()
-        userAuth.verify(
-            postRequestedFor(urlEqualTo("/api/auth/register")).withRequestBody(
-                equalToJson("""{"email":"player@example.com","password":"correct-horse-1","nickname":"Player","avatar":"CAT"}"""),
-            ),
-        )
-    }
-
-    @Test
     fun `unreachable user-auth yields service unavailable`() {
         userAuth.stubFor(post(urlEqualTo("/api/auth/login")).willReturn(aResponse().withFault(Fault.CONNECTION_RESET_BY_PEER)))
 
@@ -217,7 +196,6 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
         @JvmStatic
         fun sessionEndpoints(): Stream<Arguments> = Stream.of(
             arguments("password login", "/api/auth/login", LoginRequest("player@example.com", "correct-horse-1")),
-            arguments("email verification", "/api/auth/verify-email", VerifyEmailRequest("player@example.com", "123456")),
             arguments("google login", "/api/auth/google", GoogleIdTokenRequest("google-id-token")),
         )
 
@@ -225,8 +203,6 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
         fun downstreamErrors(): Stream<Arguments> = Stream.of(
             arguments(400, "VALIDATION_ERROR"),
             arguments(401, "INVALID_CREDENTIALS"),
-            arguments(403, "EMAIL_NOT_VERIFIED"),
-            arguments(429, "TOO_MANY_VERIFICATION_ATTEMPTS"),
         )
 
         @JvmStatic

@@ -307,14 +307,54 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         val docs = apiDocs()
 
         assertThat(docs.path("components").path("schemas").propertyNames().toList())
-            .contains("UserResponse", "RegistrationResponse", "LoginRequest")
+            .contains("UserResponse", "LoginRequest")
             .doesNotContain("AuthResponse", "TokenPair", "RefreshTokenRequest")
         listOf("/api/auth/refresh", "/api/auth/logout").forEach { path ->
             assertThat(docs.path("paths").path(path).path("post").has("requestBody")).describedAs(path).isFalse()
         }
     }
 
-    /** Снапшот API на фронте не должен меняться без изменения контракта (springdoc.writer-with-order-by-keys). */
+    /** Регистрации по email нет: аккаунт создаёт только вход через Google, подтверждения email тоже нет. */
+    @Test
+    fun `email registration and verification are gone`() {
+        val docs = apiDocs()
+
+        assertThat(docs.path("paths").propertyNames().toList())
+            .contains("/api/auth/login", "/api/auth/google")
+            .doesNotContain("/api/auth/register", "/api/auth/verify-email", "/api/auth/resend-code")
+        assertThat(docs.path("components").path("schemas").propertyNames().toList())
+            .doesNotContain("RegisterRequest", "RegistrationResponse", "VerifyEmailRequest", "ResendCodeRequest")
+        assertThat(docs.path("components").path("schemas").path("UserResponse").path("properties").has("emailVerified")).isFalse()
+        assertThat(docs.path("paths").path("/api/auth/login").path("post").path("responses").has("403")).isFalse()
+        assertThat(docs.toString()).doesNotContain(
+            "(EMAIL_NOT_VERIFIED)", "EMAIL_ALREADY_REGISTERED", "EMAIL_ALREADY_VERIFIED", "INVALID_VERIFICATION_CODE",
+            "VERIFICATION_CODE_EXPIRED", "TOO_MANY_VERIFICATION_ATTEMPTS", "RESEND_COOLDOWN",
+        )
+    }
+
+    /**
+     * Имена тегов — латиница kebab-case (из них Orval в режиме tags-split строит имена файлов), русское название —
+     * в описании. У каждой операции тег объявлен, одноимённых тегов нет.
+     */
+    @Test
+    fun `tags are latin kebab-case with russian descriptions`() {
+        val docs = apiDocs()
+        val tags = docs.path("tags")
+        val names = (0 until tags.size()).map { tags.get(it).path("name").asString() }
+
+        assertThat(names).containsExactlyInAnyOrder("auth", "users", "games", "rooms")
+        (0 until tags.size()).map(tags::get).forEach { tag ->
+            assertThat(tag.path("name").asString()).matches(TAG_NAME)
+            assertThat(tag.path("description").asString()).describedAs(tag.path("name").asString()).containsPattern("\\p{IsCyrillic}")
+        }
+        docs.path("paths").properties().forEach { (path, operations) ->
+            operations.properties().forEach { (method, operation) ->
+                assertThat(strings(operation.path("tags"))).describedAs("$method $path").isNotEmpty().allMatch { it in names }
+            }
+        }
+    }
+
+    /** Сгенерированный клиент на фронте не должен меняться без изменения контракта (springdoc.writer-with-order-by-keys). */
     @ParameterizedTest(name = "{0}")
     @CsvSource("paths", "components.schemas")
     fun `openapi keys are sorted`(section: String) {
@@ -323,6 +363,10 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
         val keys = node.propertyNames().toList()
 
         assertThat(keys).isNotEmpty().isSorted()
+    }
+
+    private companion object {
+        const val TAG_NAME = "[a-z]+(-[a-z]+)*"
     }
 
     private fun strings(array: JsonNode, item: (JsonNode) -> JsonNode = { it }): List<String> =

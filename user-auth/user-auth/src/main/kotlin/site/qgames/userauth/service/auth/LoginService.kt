@@ -41,15 +41,13 @@ class LoginService(
             throw AuthErrors.invalidCredentials()
         }
         val user = userRepository.findById(identity.userId) ?: throw AuthErrors.invalidCredentials()
-        if (!user.emailVerified) {
-            throw AuthErrors.emailNotVerified()
-        }
         return startSession(user)
     }
 
     /**
-     * Вход через Google. Если по email уже есть аккаунт, Google привязывается к нему автоматически
-     * только когда email подтверждён и у нас, и в Google — иначе возможен захват чужого аккаунта.
+     * Вход через Google — единственный способ создать аккаунт. Автопривязки по email нет: если аккаунт с таким email
+     * уже есть, Google к нему привязывается только явно, из залогиненной сессии (ACCOUNT_LINK_REQUIRED).
+     * Email в Google должен быть подтверждён: он становится логином для входа по паролю.
      */
     @Transactional
     fun loginWithGoogle(idToken: String): AuthResultModel {
@@ -61,18 +59,13 @@ class LoginService(
         if (!google.emailVerified) {
             throw AuthErrors.googleEmailNotVerified()
         }
-        val now = clock.instant()
-        val existing = userRepository.findByEmail(google.email)
-        val user = if (existing != null) {
-            if (!existing.emailVerified || userIdentityRepository.existsByUserIdAndProvider(existing.id, IdentityProvider.GOOGLE)) {
-                throw AuthErrors.accountLinkRequired()
-            }
-            existing
-        } else {
-            // Формы регистрации нет: ник генерируется, пользователь сменит его в профиле.
-            userRepository.insert(google.email, emailVerified = true, nickname = Nicknames.generate(), avatar = UserAvatar.CAT, now = now)
-                .also(userProfilePublisher::publish)
+        if (userRepository.findByEmail(google.email) != null) {
+            throw AuthErrors.accountLinkRequired()
         }
+        val now = clock.instant()
+        // Формы регистрации нет: ник генерируется, пользователь сменит его в профиле.
+        val user = userRepository.insert(google.email, nickname = Nicknames.generate(), avatar = UserAvatar.CAT, now = now)
+        userProfilePublisher.publish(user)
         userIdentityRepository.insert(user.id, IdentityProvider.GOOGLE, google.subject, passwordHash = null, now = now)
         return startSession(user)
     }

@@ -16,8 +16,8 @@ import site.qgames.adminauth.gatewayapi.dto.auth.LoginRequest
  * (admin_access_token, admin_refresh_token), refresh и logout читают refresh-токен из куки.
  */
 @Tag(
-    name = "Аутентификация",
-    description = "Вход и выход администратора. Регистрации нет. Токены выдаются только в HttpOnly-куках " +
+    name = "auth",
+    description = "Аутентификация. Вход и выход администратора. Регистрации нет. Токены выдаются только в HttpOnly-куках " +
         "admin_access_token и admin_refresh_token, в теле ответа их нет.",
 )
 @HttpExchange("/api/auth")

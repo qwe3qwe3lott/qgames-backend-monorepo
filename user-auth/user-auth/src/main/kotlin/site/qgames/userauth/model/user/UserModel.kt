@@ -6,7 +6,6 @@ import java.util.UUID
 data class UserModel(
     val id: UUID,
     val email: String,
-    val emailVerified: Boolean,
     /** Не уникален, игроки различаются по id. */
     val nickname: String,
     val avatar: UserAvatar,

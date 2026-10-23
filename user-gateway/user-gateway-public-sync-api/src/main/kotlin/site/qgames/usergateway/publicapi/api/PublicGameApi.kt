@@ -16,7 +16,7 @@ import site.qgames.game.gatewayapi.dto.game.GameListResponse
 /**
  * Каталог игр. Доступен без аутентификации.
  */
-@Tag(name = "Игры", description = "Каталог игр портала и параметры игры. Ручки доступны без аутентификации.")
+@Tag(name = "games", description = "Игры. Каталог игр портала и параметры игры. Ручки доступны без аутентификации.")
 @HttpExchange("/api/games")
 interface PublicGameApi {
 

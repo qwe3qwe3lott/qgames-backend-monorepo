@@ -19,7 +19,4 @@ object Hashing {
 
     fun randomHex(bytes: Int): String =
         HexFormat.of().formatHex(ByteArray(bytes).also(secureRandom::nextBytes))
-
-    fun randomDigits(length: Int): String =
-        (1..length).joinToString("") { secureRandom.nextInt(10).toString() }
 }

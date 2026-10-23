@@ -11,10 +11,6 @@ import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
 import site.qgames.userauth.gatewayapi.dto.auth.GoogleIdTokenRequest
 import site.qgames.userauth.gatewayapi.dto.auth.LoginRequest
 import site.qgames.userauth.gatewayapi.dto.auth.RefreshTokenRequest
-import site.qgames.userauth.gatewayapi.dto.auth.RegisterRequest
-import site.qgames.userauth.gatewayapi.dto.auth.RegistrationResponse
-import site.qgames.userauth.gatewayapi.dto.auth.ResendCodeRequest
-import site.qgames.userauth.gatewayapi.dto.auth.VerifyEmailRequest
 import site.qgames.userauth.gatewayapi.dto.user.UserResponse
 import site.qgames.usergateway.cookie.AuthCookies
 import site.qgames.usergateway.publicapi.api.PublicAuthApi
@@ -31,12 +27,6 @@ class AuthGatewayController(
     private val httpRequest: HttpServletRequest,
     private val httpResponse: HttpServletResponse,
 ) : PublicAuthApi {
-
-    override fun register(request: RegisterRequest): RegistrationResponse = authApi.register(request)
-
-    override fun verifyEmail(request: VerifyEmailRequest): UserResponse = startSession(authApi.verifyEmail(request))
-
-    override fun resendCode(request: ResendCodeRequest) = authApi.resendCode(request)
 
     override fun login(request: LoginRequest): UserResponse = startSession(authApi.login(request))
 

@@ -13,8 +13,8 @@ import site.qgames.adminauth.gatewayapi.dto.admin.AdminResponse
  * Администраторы. Требует аутентификации (access-токен в куке или заголовке Authorization).
  */
 @Tag(
-    name = "Администраторы",
-    description = "Текущий администратор и список всех администраторов. Требуется аутентификация: кука " +
+    name = "admins",
+    description = "Администраторы. Текущий администратор и список всех администраторов. Требуется аутентификация: кука " +
         "admin_access_token (или заголовок Authorization: Bearer).",
 )
 @HttpExchange("/api/admins")

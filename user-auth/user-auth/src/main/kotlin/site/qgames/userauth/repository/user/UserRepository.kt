@@ -14,11 +14,9 @@ class UserRepository(
     private val userEntityMapper: UserEntityMapper,
 ) {
 
-    fun insert(email: String, emailVerified: Boolean, nickname: String, avatar: UserAvatar, now: Instant): UserModel =
+    fun insert(email: String, nickname: String, avatar: UserAvatar, now: Instant): UserModel =
         userEntityMapper.toModel(
-            userPostgresqlRepository.save(
-                UserEntity(email = email, emailVerified = emailVerified, nickname = nickname, avatar = avatar.name, createdAt = now),
-            ),
+            userPostgresqlRepository.save(UserEntity(email = email, nickname = nickname, avatar = avatar.name, createdAt = now)),
         )
 
     /** Сохраняет изменения и увеличивает version; при параллельном изменении — OptimisticLockingFailureException (409). */
@@ -28,6 +26,4 @@ class UserRepository(
     fun findById(id: UUID): UserModel? = userPostgresqlRepository.findById(id).orElse(null)?.let(userEntityMapper::toModel)
 
     fun findByEmail(email: String): UserModel? = userPostgresqlRepository.findByEmail(email)?.let(userEntityMapper::toModel)
-
-    fun markEmailVerified(id: UUID): Int = userPostgresqlRepository.markEmailVerified(id)
 }

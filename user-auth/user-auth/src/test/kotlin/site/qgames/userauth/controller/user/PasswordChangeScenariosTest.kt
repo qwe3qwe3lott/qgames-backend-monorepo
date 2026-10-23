@@ -19,21 +19,21 @@ class PasswordChangeScenariosTest : BaseIntegrationTest() {
     fun `password change ends every session, starts a new one and leaves the user row untouched`() {
         val firstDevice = startSession()
         val secondDevice = startSession()
-        val userBefore = userRow(TestData.Verified.ID)
+        val userBefore = userRow(TestData.PasswordOnly.ID)
 
-        val changed = putJson(PASSWORD_PATH, ChangePasswordRequest(TestData.PASSWORD, NEW_PASSWORD), TestData.Verified.ID)
+        val changed = putJson(PASSWORD_PATH, ChangePasswordRequest(TestData.PASSWORD, NEW_PASSWORD), TestData.PasswordOnly.ID)
             .andExpect { status { isOk() } }
             .body<AuthResponse>()
 
-        assertThat(changed.user.id).isEqualTo(TestData.Verified.ID)
-        assertThat(verifiedClaims(changed.tokens.accessToken).subject).isEqualTo(TestData.Verified.ID.toString())
+        assertThat(changed.user.id).isEqualTo(TestData.PasswordOnly.ID)
+        assertThat(verifiedClaims(changed.tokens.accessToken).subject).isEqualTo(TestData.PasswordOnly.ID.toString())
         listOf(firstDevice, secondDevice).forEach { refresh(it.tokens.refreshToken).andExpect { status { isUnauthorized() } } }
         refresh(changed.tokens.refreshToken).andExpect { status { isOk() } }
 
-        login(TestData.Verified.EMAIL, TestData.PASSWORD).andExpect { jsonPath("$.code") { value("INVALID_CREDENTIALS") } }
-        login(TestData.Verified.EMAIL, NEW_PASSWORD).andExpect { status { isOk() } }
+        login(TestData.PasswordOnly.EMAIL, TestData.PASSWORD).andExpect { jsonPath("$.code") { value("INVALID_CREDENTIALS") } }
+        login(TestData.PasswordOnly.EMAIL, NEW_PASSWORD).andExpect { status { isOk() } }
 
-        assertThat(userRow(TestData.Verified.ID)).isEqualTo(userBefore)
+        assertThat(userRow(TestData.PasswordOnly.ID)).isEqualTo(userBefore)
         assertThat(publishedProfileEvents()).isEmpty()
     }
 
@@ -61,7 +61,7 @@ class PasswordChangeScenariosTest : BaseIntegrationTest() {
 
     @Test
     fun `too short new password is a validation error`() {
-        putJson(PASSWORD_PATH, ChangePasswordRequest(TestData.PASSWORD, "short"), TestData.Verified.ID).andExpect {
+        putJson(PASSWORD_PATH, ChangePasswordRequest(TestData.PASSWORD, "short"), TestData.PasswordOnly.ID).andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("VALIDATION_ERROR") }
             jsonPath("$.errors.newPassword") { exists() }
@@ -80,7 +80,7 @@ class PasswordChangeScenariosTest : BaseIntegrationTest() {
 
         @JvmStatic
         fun rejectedChanges(): Stream<Arguments> = Stream.of(
-            arguments("wrong current password", TestData.Verified.ID, "wrong-password", 400, "INVALID_CURRENT_PASSWORD"),
+            arguments("wrong current password", TestData.PasswordOnly.ID, "wrong-password", 400, "INVALID_CURRENT_PASSWORD"),
             arguments("account without password", TestData.GoogleOnly.ID, TestData.PASSWORD, 409, "PASSWORD_NOT_SET"),
             arguments("unknown user", UUID.randomUUID(), TestData.PASSWORD, 404, "USER_NOT_FOUND"),
         )

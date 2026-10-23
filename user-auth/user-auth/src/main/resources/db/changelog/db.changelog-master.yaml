@@ -8,9 +8,6 @@ databaseChangeLog:
       file: DDL/2026-10-17-CREATE-user_identity.yaml
       relativeToChangelogFile: true
   - include:
-      file: DDL/2026-10-17-CREATE-email_verification.yaml
-      relativeToChangelogFile: true
-  - include:
       file: DDL/2026-10-17-CREATE-refresh_token.yaml
       relativeToChangelogFile: true
   - include:

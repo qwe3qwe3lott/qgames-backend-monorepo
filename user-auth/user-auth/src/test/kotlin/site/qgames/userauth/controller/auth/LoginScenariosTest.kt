@@ -72,21 +72,17 @@ class LoginScenariosTest : BaseIntegrationTest() {
     companion object {
         @JvmStatic
         fun credentials(): Stream<Arguments> = Stream.of(
-            arguments("correct credentials", TestData.Verified.EMAIL, PASSWORD, HttpStatus.OK, null, TestData.Verified.ID),
-            arguments("email in different case", "PLAYER@example.com", PASSWORD, HttpStatus.OK, null, TestData.Verified.ID),
+            arguments("correct credentials", TestData.PasswordOnly.EMAIL, PASSWORD, HttpStatus.OK, null, TestData.PasswordOnly.ID),
+            arguments("email in different case", "PLAYER@example.com", PASSWORD, HttpStatus.OK, null, TestData.PasswordOnly.ID),
             arguments(
                 "user with both login methods",
                 TestData.PasswordAndGoogle.EMAIL, PASSWORD, HttpStatus.OK, null, TestData.PasswordAndGoogle.ID,
             ),
-            arguments("wrong password", TestData.Verified.EMAIL, "wrong-password", HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null),
+            arguments("wrong password", TestData.PasswordOnly.EMAIL, "wrong-password", HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null),
             arguments("unknown email looks like wrong password", "ghost@example.com", PASSWORD, HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null),
             arguments(
                 "google-only account has no password",
                 TestData.GoogleOnly.EMAIL, PASSWORD, HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null,
-            ),
-            arguments(
-                "unverified email",
-                TestData.Unverified.EMAIL, PASSWORD, HttpStatus.FORBIDDEN, "EMAIL_NOT_VERIFIED", null,
             ),
         )
     }

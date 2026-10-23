@@ -13,8 +13,8 @@ import site.qgames.adminauth.gatewayapi.dto.admin.AdminResponse
  * Администраторы. Текущий администратор определяется по заголовку X-User-Id, который ставит admin-gateway.
  */
 @Tag(
-    name = "Администраторы (для gateway)",
-    description = "Внутренние ручки для admin-gateway. Текущий администратор определяется по заголовку X-User-Id, " +
+    name = "admins",
+    description = "Администраторы (для gateway). Внутренние ручки для admin-gateway. Текущий администратор определяется по заголовку X-User-Id, " +
         "который gateway ставит из проверенного JWT.",
 )
 @HttpExchange("/api/admins")

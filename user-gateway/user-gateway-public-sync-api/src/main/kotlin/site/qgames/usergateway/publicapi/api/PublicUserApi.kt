@@ -21,8 +21,8 @@ import site.qgames.userauth.gatewayapi.dto.user.UserResponse
  * Текущий пользователь. Требует аутентификации (access-токен в куке или заголовке Authorization).
  */
 @Tag(
-    name = "Текущий пользователь",
-    description = "Профиль и способы входа. Требуется аутентификация: кука access_token " +
+    name = "users",
+    description = "Текущий пользователь. Профиль и способы входа. Требуется аутентификация: кука access_token " +
         "(или заголовок Authorization: Bearer).",
 )
 @HttpExchange("/api/users/me")
@@ -30,7 +30,7 @@ interface PublicUserApi {
 
     @Operation(
         summary = "Данные текущего пользователя",
-        description = "Email, статус его подтверждения и привязанные способы входа. Подходит, чтобы проверить, " +
+        description = "Email, ник, аватар и привязанные способы входа. Подходит, чтобы проверить, " +
             "залогинен ли пользователь.",
     )
     @ApiResponses(
@@ -64,7 +64,7 @@ interface PublicUserApi {
 
     @Operation(
         summary = "Добавить вход по паролю",
-        description = "Для аккаунта без пароля (например, созданного через Google).",
+        description = "Для аккаунта без пароля. После этого можно входить по email аккаунта и паролю.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Пароль добавлен, возвращены обновлённые данные пользователя"),

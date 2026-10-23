@@ -13,9 +13,6 @@ spring:
     password: ${DB_PASSWORD:user_auth}
   liquibase:
     change-log: classpath:db/changelog/db.changelog-master.yaml
-  mail:
-    host: ${MAIL_HOST:localhost}
-    port: ${MAIL_PORT:1025}
 
 management:
   endpoints:
@@ -37,12 +34,6 @@ qgames:
       access-token-ttl: 15m
     refresh-token-ttl: 30d
     refresh-reuse-grace: 10s
-    verification:
-      code-ttl: 15m
-      max-attempts: 5
-      resend-cooldown: 60s
-    mail:
-      from: no-reply@qgames.site
     google:
       client-ids: ${GOOGLE_CLIENT_IDS:}
       jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs

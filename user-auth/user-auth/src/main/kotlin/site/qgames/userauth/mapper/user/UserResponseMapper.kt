@@ -16,7 +16,6 @@ class UserResponseMapper {
         return UserResponse(
             id = user.id,
             email = user.email,
-            emailVerified = user.emailVerified,
             nickname = user.nickname,
             avatar = Avatar.valueOf(user.avatar.name),
             loginMethods = details.loginMethods.map { LoginMethod.valueOf(it.name) },

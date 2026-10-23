@@ -14,7 +14,7 @@ import tools.jackson.databind.JsonNode
  */
 class OpenApiContractScenariosTest : BaseIntegrationTest() {
 
-    /** Снапшот API на фронте не должен меняться без изменения контракта (springdoc.writer-with-order-by-keys). */
+    /** Сгенерированный клиент на фронте не должен меняться без изменения контракта (springdoc.writer-with-order-by-keys). */
     @ParameterizedTest(name = "{0}")
     @CsvSource("paths", "components.schemas")
     fun `openapi keys are sorted`(section: String) {
@@ -70,6 +70,34 @@ class OpenApiContractScenariosTest : BaseIntegrationTest() {
 
         assertThat((0 until required.size()).map { required.get(it).asString() })
             .containsExactlyInAnyOrder(*fields.split('|').toTypedArray())
+    }
+
+    /**
+     * Имена тегов — латиница kebab-case (из них Orval в режиме tags-split строит имена файлов), русское название —
+     * в описании. У каждой операции тег объявлен, одноимённых тегов нет.
+     */
+    @Test
+    fun `tags are latin kebab-case with russian descriptions`() {
+        val docs = apiDocs()
+        val tags = docs.path("tags")
+        val names = (0 until tags.size()).map { tags.get(it).path("name").asString() }
+
+        assertThat(names).containsExactlyInAnyOrder("auth", "admins")
+        (0 until tags.size()).map(tags::get).forEach { tag ->
+            assertThat(tag.path("name").asString()).matches(TAG_NAME)
+            assertThat(tag.path("description").asString()).describedAs(tag.path("name").asString()).containsPattern("\\p{IsCyrillic}")
+        }
+        docs.path("paths").properties().forEach { (path, operations) ->
+            operations.properties().forEach { (method, operation) ->
+                val operationTags = operation.path("tags")
+                assertThat((0 until operationTags.size()).map { operationTags.get(it).asString() })
+                    .describedAs("$method $path").isNotEmpty().allMatch { it in names }
+            }
+        }
+    }
+
+    private companion object {
+        const val TAG_NAME = "[a-z]+(-[a-z]+)*"
     }
 
     private fun apiDocs(): JsonNode =

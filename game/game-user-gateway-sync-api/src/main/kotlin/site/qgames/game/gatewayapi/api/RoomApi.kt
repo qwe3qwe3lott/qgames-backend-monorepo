@@ -22,12 +22,7 @@ import java.util.UUID
  * Игровые комнаты и партии: ручки, которым не нужен тип игры. Создание комнаты, настройки и ходы — в [GameRoomApi].
  * Пользователь определяется по заголовку X-User-Id от gateway.
  */
-@Tag(
-    name = "Игровые комнаты (для gateway)",
-    description = "Внутренние ручки для user-gateway. Публичные комнаты: вход по ссылке с id комнаты для любого " +
-        "авторизованного пользователя. Пользователь находится в комнате, пока открыт её поток событий " +
-        "(GET /api/rooms/{roomId}/events). Пользователь определяется по заголовку X-User-Id.",
-)
+@Tag(name = RoomApi.TAG, description = RoomApi.TAG_DESCRIPTION)
 @HttpExchange("/api/rooms")
 interface RoomApi {
 
@@ -164,4 +159,15 @@ interface RoomApi {
     @PostExchange("/{roomId}/session/resume")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun resumeSession(@PathVariable roomId: UUID)
+
+    companion object {
+        /**
+         * Тег всех ручек комнат и партий ([RoomApi], [GameRoomApi] и контроллеров потоков). Описание у одноимённых
+         * тегов должно совпадать, иначе в OpenAPI окажется несколько тегов с одним именем.
+         */
+        const val TAG = "rooms"
+        const val TAG_DESCRIPTION = "Игровые комнаты (для gateway). Внутренние ручки для user-gateway. Публичные комнаты: " +
+            "вход по ссылке с id комнаты для любого авторизованного пользователя. Пользователь находится в комнате, " +
+            "пока открыт её поток событий (GET /api/rooms/{roomId}/events). Пользователь определяется по заголовку X-User-Id."
+    }
 }

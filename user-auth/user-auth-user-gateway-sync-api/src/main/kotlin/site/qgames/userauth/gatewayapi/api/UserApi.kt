@@ -22,16 +22,16 @@ import site.qgames.userauth.gatewayapi.dto.user.UserResponse
  * Операции над текущим пользователем. Идентификатор пользователя приходит в заголовке X-User-Id от gateway.
  */
 @Tag(
-    name = "Текущий пользователь (для gateway)",
-    description = "Внутренние ручки для user-gateway. Пользователь определяется по заголовку X-User-Id, " +
-        "который gateway ставит из проверенного JWT.",
+    name = "users",
+    description = "Текущий пользователь (для gateway). Внутренние ручки для user-gateway. Пользователь определяется " +
+        "по заголовку X-User-Id, который gateway ставит из проверенного JWT.",
 )
 @HttpExchange("/api/users/me")
 interface UserApi {
 
     @Operation(
         summary = "Данные текущего пользователя",
-        description = "Возвращает email, статус его подтверждения и привязанные способы входа.",
+        description = "Возвращает email, ник, аватар и привязанные способы входа.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Данные пользователя"),
@@ -60,7 +60,7 @@ interface UserApi {
 
     @Operation(
         summary = "Добавить вход по паролю",
-        description = "Для аккаунта, у которого ещё нет пароля (например, созданного через Google).",
+        description = "Для аккаунта без пароля. После этого можно входить по email аккаунта и паролю.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Пароль добавлен, возвращены обновлённые данные пользователя"),

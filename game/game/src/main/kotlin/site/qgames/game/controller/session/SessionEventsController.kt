@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import site.qgames.common.web.context.RequestUserContext
 import site.qgames.game.exception.room.RoomErrors
+import site.qgames.game.gatewayapi.api.RoomApi
 import site.qgames.game.gatewayapi.api.SessionEventsApi
 import site.qgames.game.gatewayapi.dto.game.GameCodes
 import site.qgames.game.gatewayapi.dto.session.SessionStreamEvent
@@ -34,7 +35,7 @@ import java.util.UUID
  * Порядок подключения: проверка доступа (ошибки — обычным ProblemDetail) → регистрация подписчика → снапшот зрителя на
  * последнем seq N (кеш + доигрывание) → события, пришедшие раньше снапшота, с seq ≤ N отбрасываются.
  */
-@Tag(name = "Игровые комнаты (для gateway)")
+@Tag(name = RoomApi.TAG, description = RoomApi.TAG_DESCRIPTION)
 @RestController
 class SessionEventsController(
     private val registry: SessionStreamRegistry,

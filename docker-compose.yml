@@ -1,6 +1,6 @@
 # Локальный запуск всего проекта: docker compose up --build
 # Наружу публикуются user-gateway (8080) и admin-gateway (8083), Swagger сервисов (8081, 8082, 8084 — только для
-# локальной разработки), Mailpit UI (8025), PostgreSQL (5432) и Redpanda для IDE (19092).
+# локальной разработки), PostgreSQL (5432) и Redpanda для IDE (19092).
 
 x-service-build: &service-build
   context: .
@@ -55,31 +55,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-
-  # Один Redis на весь стенд (и на одном VPS): кеш сервисов и шина pub/sub для SSE fan-out.
-  # В коде это два независимых подключения (cache и bus), права разведены ACL — разнести по инстансам можно конфигом.
-  # Без персистентности: кеш восстановим, события шины не хранятся.
-  redis:
-    image: redis:8.2-alpine
-    command:
-      - redis-server
-      - --aclfile
-      - /usr/local/etc/redis/users.acl
-      - --maxmemory
-      - 256mb
-      - --maxmemory-policy
-      - allkeys-lru
-      - --save
-      - ""
-      - --appendonly
-      - "no"
-    volumes:
-      - ./docker/redis/users.acl:/usr/local/etc/redis/users.acl:ro
-    healthcheck:
-      test: ["CMD", "redis-cli", "--user", "healthcheck", "--pass", "healthcheck", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 10
 
   # Брокер с протоколом Kafka. Топики создаёт redpanda-init (автосоздание выключено, чтобы настройки топиков были явными).
   redpanda:
@@ -143,11 +118,6 @@ services:
       retries: 12
       start_period: 20s
 
-  mailpit:
-    image: axllent/mailpit:v1.27
-    ports:
-      - "8025:8025"
-
   user-auth:
     build:
       <<: *service-build
@@ -157,8 +127,6 @@ services:
       DB_URL: jdbc:postgresql://postgres:5432/user_auth
       DB_USERNAME: user_auth
       DB_PASSWORD: user_auth
-      MAIL_HOST: mailpit
-      MAIL_PORT: 1025
       JWT_KEY_ID: dev-key-1
       JWT_PRIVATE_KEY_LOCATION: file:/keys/jwt-private.pem
       JWT_PUBLIC_KEY_LOCATION: file:/keys/jwt-public.pem
@@ -170,8 +138,6 @@ services:
     depends_on:
       postgres-init:
         condition: service_completed_successfully
-      mailpit:
-        condition: service_started
     healthcheck:
       <<: *service-healthcheck
       test: ["CMD", "curl", "-fs", "http://localhost:8081/actuator/health/readiness"]

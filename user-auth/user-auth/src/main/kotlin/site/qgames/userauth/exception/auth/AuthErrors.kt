@@ -3,36 +3,13 @@ package site.qgames.userauth.exception.auth
 import site.qgames.common.exception.exception.ClientException
 import site.qgames.common.exception.exception.ConflictException
 import site.qgames.common.exception.exception.ErrorCodes
-import site.qgames.common.exception.exception.ForbiddenException
 import site.qgames.common.exception.exception.NotFoundException
-import site.qgames.common.exception.exception.TooManyRequestsException
 import site.qgames.common.exception.exception.UnauthorizedException
 
 /**
  * Каталог ошибок аутентификации. Коды — часть контракта с фронтом, их нельзя переименовывать без миграции клиента.
  */
 object AuthErrors {
-
-    fun emailAlreadyRegistered() =
-        ConflictException("EMAIL_ALREADY_REGISTERED", "Email is already registered")
-
-    fun emailAlreadyVerified() =
-        ConflictException("EMAIL_ALREADY_VERIFIED", "Email is already verified")
-
-    fun emailNotVerified() =
-        ForbiddenException("EMAIL_NOT_VERIFIED", "Email is not verified")
-
-    fun invalidVerificationCode() =
-        ClientException("INVALID_VERIFICATION_CODE", "Verification code is invalid")
-
-    fun verificationCodeExpired() =
-        ClientException("VERIFICATION_CODE_EXPIRED", "Verification code has expired")
-
-    fun tooManyVerificationAttempts() =
-        TooManyRequestsException("TOO_MANY_VERIFICATION_ATTEMPTS", "Too many verification attempts, request a new code")
-
-    fun resendCooldown() =
-        TooManyRequestsException("RESEND_COOLDOWN", "Verification code was sent recently")
 
     fun invalidCredentials() =
         UnauthorizedException("INVALID_CREDENTIALS", "Invalid email or password")

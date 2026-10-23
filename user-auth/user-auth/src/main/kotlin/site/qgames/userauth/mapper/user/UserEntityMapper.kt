@@ -14,7 +14,6 @@ class UserEntityMapper {
     fun toModel(entity: UserEntity) = UserModel(
         id = entity.id!!,
         email = entity.email,
-        emailVerified = entity.emailVerified,
         nickname = entity.nickname,
         avatar = UserAvatar.valueOf(entity.avatar),
         createdAt = entity.createdAt,
@@ -24,7 +23,6 @@ class UserEntityMapper {
     fun toEntity(model: UserModel) = UserEntity(
         id = model.id,
         email = model.email,
-        emailVerified = model.emailVerified,
         nickname = model.nickname,
         avatar = model.avatar.name,
         createdAt = model.createdAt,

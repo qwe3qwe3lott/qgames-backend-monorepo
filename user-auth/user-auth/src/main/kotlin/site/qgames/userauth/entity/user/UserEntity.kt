@@ -11,7 +11,6 @@ data class UserEntity(
     @Id
     val id: UUID? = null,
     val email: String,
-    val emailVerified: Boolean,
     val nickname: String,
     val avatar: String,
     val createdAt: Instant,

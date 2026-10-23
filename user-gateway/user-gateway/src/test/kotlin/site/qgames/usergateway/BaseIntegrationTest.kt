@@ -116,7 +116,6 @@ abstract class BaseIntegrationTest {
             UserResponse(
                 id = id,
                 email = "player@example.com",
-                emailVerified = true,
                 nickname = "Player",
                 avatar = Avatar.CAT,
                 loginMethods = listOf(LoginMethod.PASSWORD),

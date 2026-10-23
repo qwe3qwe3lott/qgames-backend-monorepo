@@ -18,8 +18,8 @@ import site.qgames.game.gatewayapi.dto.game.GameListResponse
  * Доступен без пользователя (X-User-Id не нужен).
  */
 @Tag(
-    name = "Игры (для gateway)",
-    description = "Внутренние ручки для user-gateway: каталог игр и параметры игры для формы настроек комнаты. " +
+    name = "games",
+    description = "Игры (для gateway). Внутренние ручки для user-gateway: каталог игр и параметры игры для формы настроек комнаты. " +
         "Пользователь не нужен.",
 )
 @HttpExchange("/api/games")

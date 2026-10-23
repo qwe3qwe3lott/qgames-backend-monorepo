@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController
  * Публичные ключи подписи access-токенов администраторов. admin-gateway кеширует их и проверяет JWT локально.
  * Для ротации ключей сюда добавляется новый ключ с другим kid, старый удаляется после истечения его токенов.
  */
-@Tag(name = "Ключи подписи", description = "Публичные ключи, которыми проверяются access-токены администраторов")
+@Tag(name = "jwks", description = "Ключи подписи. Публичные ключи, которыми проверяются access-токены администраторов")
 @RestController
 class JwksController(jwtSigningKey: ECKey) {
 

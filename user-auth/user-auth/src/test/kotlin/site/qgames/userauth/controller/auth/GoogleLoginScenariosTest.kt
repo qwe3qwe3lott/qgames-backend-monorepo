@@ -6,9 +6,9 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
-import org.springframework.http.HttpStatus
 import site.qgames.userauth.BaseIntegrationTest
 import site.qgames.userauth.gatewayapi.dto.auth.AuthResponse
+import site.qgames.userauth.gatewayapi.dto.user.Avatar
 import site.qgames.userauth.gatewayapi.dto.user.LoginMethod
 import site.qgames.userauth.support.GoogleIdTokens
 import site.qgames.userauth.support.TestData
@@ -30,17 +30,19 @@ class GoogleLoginScenariosTest : BaseIntegrationTest() {
     }
 
     @Test
-    fun `first google login creates a verified account without password and next logins reuse it`() {
+    fun `first google login creates an account without password and next logins reuse it`() {
         val idToken = GoogleIdTokens.idToken(subject = NEW_SUB, email = "Newcomer@Gmail.com")
 
         val first = loginWithGoogle(idToken).andExpect { status { isOk() } }.body<AuthResponse>()
         val second = loginWithGoogle(idToken).andExpect { status { isOk() } }.body<AuthResponse>()
 
         assertThat(first.user.email).isEqualTo("newcomer@gmail.com")
-        assertThat(first.user.emailVerified).isTrue()
+        assertThat(first.user.nickname).matches("player-[0-9a-f]{6}")
+        assertThat(first.user.avatar).isEqualTo(Avatar.CAT)
         assertThat(first.user.loginMethods).containsExactly(LoginMethod.GOOGLE)
         assertThat(second.user.id).isEqualTo(first.user.id)
         assertThat(countRows("\"user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT + 1)
+        assertThat(publishedProfileEvents().map { it.userId }).containsExactly(first.user.id.toString())
     }
 
     @ParameterizedTest(name = "{0}")
@@ -69,28 +71,31 @@ class GoogleLoginScenariosTest : BaseIntegrationTest() {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("existingAccounts")
-    fun `google login against an existing account with the same email`(
+    fun `unlinked google account with an email of an existing account is not linked automatically`(
         case: String,
         email: String,
-        expectedStatus: HttpStatus,
-        expectedCode: String?,
-        expectedUserId: UUID?,
+        userId: UUID,
     ) {
-        val result = loginWithGoogle(GoogleIdTokens.idToken(subject = NEW_SUB, email = email)).andExpect {
-            status { isEqualTo(expectedStatus.value()) }
-            if (expectedCode != null) jsonPath("$.code") { value(expectedCode) }
+        val methodsBefore = loginMethodsOf(userId)
+
+        loginWithGoogle(GoogleIdTokens.idToken(subject = NEW_SUB, email = email)).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("ACCOUNT_LINK_REQUIRED") }
         }
 
-        if (expectedUserId != null) {
-            val auth = result.body<AuthResponse>()
-            assertThat(auth.user.id).isEqualTo(expectedUserId)
-            assertThat(auth.user.loginMethods).containsExactly(LoginMethod.PASSWORD, LoginMethod.GOOGLE)
-            login(email).andExpect { status { isOk() } }
-        } else {
-            assertThat(countRows("user_identity WHERE subject = '$NEW_SUB'")).isZero()
-        }
+        assertThat(countRows("user_identity WHERE subject = '$NEW_SUB'")).isZero()
+        assertThat(loginMethodsOf(userId)).isEqualTo(methodsBefore)
         assertThat(countRows("\"user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT)
+        assertThat(countRows("refresh_token")).isZero()
+        assertThat(publishedProfileEvents()).isEmpty()
     }
+
+    private fun loginMethodsOf(userId: UUID): List<String> =
+        jdbcClient.sql("SELECT provider FROM user_identity WHERE user_id = :userId ORDER BY provider")
+            .param("userId", userId)
+            .query(String::class.java)
+            .list()
+            .filterNotNull()
 
     companion object {
         private const val NEW_SUB = "google-new"
@@ -112,18 +117,10 @@ class GoogleLoginScenariosTest : BaseIntegrationTest() {
 
         @JvmStatic
         fun existingAccounts(): Stream<Arguments> = Stream.of(
-            arguments(
-                "verified password account is linked automatically",
-                TestData.Verified.EMAIL, HttpStatus.OK, null, TestData.Verified.ID,
-            ),
-            arguments(
-                "unverified password account requires explicit linking",
-                TestData.Unverified.EMAIL, HttpStatus.CONFLICT, "ACCOUNT_LINK_REQUIRED", null,
-            ),
-            arguments(
-                "account already linked to another google account requires explicit linking",
-                TestData.PasswordAndGoogle.EMAIL, HttpStatus.CONFLICT, "ACCOUNT_LINK_REQUIRED", null,
-            ),
+            arguments("password-only account", TestData.PasswordOnly.EMAIL, TestData.PasswordOnly.ID),
+            arguments("account linked to another google account", TestData.PasswordAndGoogle.EMAIL, TestData.PasswordAndGoogle.ID),
+            arguments("google-only account linked to another google account", TestData.GoogleOnly.EMAIL, TestData.GoogleOnly.ID),
+            arguments("email in different case", "PLAYER@Example.com", TestData.PasswordOnly.ID),
         )
     }
 }

@@ -25,11 +25,7 @@ import java.util.UUID
  * Ручки комнат, которым нужен тип игры: он берётся из кода игры в пути (`/api/games/{gameCode}/rooms/…`).
  * Ход — общий конверт `{type, data}`, параметры которого разбирает модуль игры.
  */
-@Tag(
-    name = "Игровые комнаты (для gateway)",
-    description = "Внутренние ручки для user-gateway. Публичные комнаты: вход по ссылке с id комнаты для любого " +
-        "авторизованного пользователя. Пользователь определяется по заголовку X-User-Id.",
-)
+@Tag(name = RoomApi.TAG, description = RoomApi.TAG_DESCRIPTION)
 @HttpExchange("/api/games")
 interface GameRoomApi {
 

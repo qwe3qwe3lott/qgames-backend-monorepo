@@ -12,6 +12,7 @@ import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import site.qgames.common.web.context.RequestUserContext
+import site.qgames.game.gatewayapi.api.RoomApi
 import site.qgames.game.gatewayapi.api.RoomEventsApi
 import site.qgames.game.gatewayapi.dto.room.RoomStreamEvent
 import site.qgames.game.gatewayapi.dto.room.RoomStreamEventType
@@ -29,7 +30,7 @@ import java.util.UUID
  * транзакции подключения и отбрасывает события до своего маркера; маркер публикуется в той же транзакции после чтения
  * снапшота; снапшот уходит первым, следом — события после маркера.
  */
-@Tag(name = "Игровые комнаты (для gateway)")
+@Tag(name = RoomApi.TAG, description = RoomApi.TAG_DESCRIPTION)
 @RestController
 class RoomEventsController(
     private val registry: RoomStreamRegistry,
