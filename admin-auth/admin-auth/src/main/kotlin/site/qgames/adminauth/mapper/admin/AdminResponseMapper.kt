@@ -1,11 +1,11 @@
 package site.qgames.adminauth.mapper.admin
 
 import org.springframework.stereotype.Component
-import site.qgames.adminauth.gatewayapi.dto.admin.AdminListResponse
-import site.qgames.adminauth.gatewayapi.dto.admin.AdminResponse
+import site.qgames.adminauth.api.dto.admin.AdminListResponse
+import site.qgames.adminauth.api.dto.admin.AdminResponse
 import site.qgames.adminauth.model.admin.AdminModel
 
-/** Модели администраторов → DTO контракта для gateway. Хеш пароля наружу не попадает. */
+/** Модели администраторов → DTO контракта. Хеш пароля наружу не попадает. */
 @Component
 class AdminResponseMapper {
 

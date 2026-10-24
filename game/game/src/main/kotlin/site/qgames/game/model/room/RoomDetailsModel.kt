@@ -21,6 +21,6 @@ data class RoomDetailsModel(
 
 data class RoomMemberDetailsModel(
     val member: RoomMemberModel,
-    /** Нет, если профиль ещё не доставлен по CDC. */
+    /** Нет, если профиль ещё не доставлен событием профиля. */
     val profile: UserAuthUserModel?,
 )

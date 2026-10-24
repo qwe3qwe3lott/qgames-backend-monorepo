@@ -14,11 +14,11 @@ class UserAuthUserPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun upsert(user: UserAuthUserEntity): Boolean =
         jdbcClient.sql(
             """
-            INSERT INTO "user_auth#user" (id, nickname, avatar, version)
+            INSERT INTO "game#user_auth#user" (id, nickname, avatar, version)
             VALUES (:id, :nickname, :avatar, :version)
             ON CONFLICT (id) DO UPDATE
                 SET nickname = EXCLUDED.nickname, avatar = EXCLUDED.avatar, version = EXCLUDED.version
-                WHERE "user_auth#user".version < EXCLUDED.version
+                WHERE "game#user_auth#user".version < EXCLUDED.version
             """,
         )
             .param("id", user.id)
@@ -28,7 +28,7 @@ class UserAuthUserPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .update() > 0
 
     fun findByIds(ids: Collection<UUID>): List<UserAuthUserEntity> =
-        jdbcClient.sql("""SELECT * FROM "user_auth#user" WHERE id IN (:ids)""")
+        jdbcClient.sql("""SELECT * FROM "game#user_auth#user" WHERE id IN (:ids)""")
             .param("ids", ids)
             .query(mapper)
             .list()

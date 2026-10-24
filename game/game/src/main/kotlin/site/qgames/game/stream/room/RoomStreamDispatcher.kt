@@ -2,7 +2,7 @@ package site.qgames.game.stream.room
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import site.qgames.game.gatewayapi.dto.room.RoomStreamEventType
+import site.qgames.game.api.dto.room.RoomStreamEventType
 import site.qgames.game.mapper.room.RoomEventResponseMapper
 import site.qgames.game.model.room.RoomEventModel
 import site.qgames.game.model.room.RoomEventType

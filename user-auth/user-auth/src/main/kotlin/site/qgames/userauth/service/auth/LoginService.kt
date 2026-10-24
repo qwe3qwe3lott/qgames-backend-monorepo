@@ -1,5 +1,7 @@
 package site.qgames.userauth.service.auth
 
+import org.springframework.beans.factory.annotation.Qualifier
+import site.qgames.userauth.config.CryptoConfig
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -19,7 +21,7 @@ import java.time.Clock
 class LoginService(
     private val userRepository: UserRepository,
     private val userIdentityRepository: UserIdentityRepository,
-    private val passwordEncoder: PasswordEncoder,
+    @Qualifier(CryptoConfig.PASSWORD_ENCODER) private val passwordEncoder: PasswordEncoder,
     private val googleIdTokenVerifier: GoogleIdTokenVerifier,
     private val tokenService: TokenService,
     private val userService: UserService,

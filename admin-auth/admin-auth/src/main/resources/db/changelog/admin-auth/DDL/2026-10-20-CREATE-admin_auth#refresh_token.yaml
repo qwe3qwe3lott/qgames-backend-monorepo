@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-20-CREATE-admin_auth#refresh_token
+      author: Sparta_16
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: SQL/2026-10-20-CREATE-admin_auth#refresh_token.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            path: SQL/2026-10-20-CREATE-admin_auth#refresh_token-rollback.sql
+            relativeToChangelogFile: true

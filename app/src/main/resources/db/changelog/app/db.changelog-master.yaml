@@ -1,0 +1,5 @@
+# Служебные таблицы приложения. Правила: CLAUDE.md, раздел «Миграции».
+databaseChangeLog:
+  - include:
+      file: DDL/2026-10-24-CREATE-event_publication.yaml
+      relativeToChangelogFile: true

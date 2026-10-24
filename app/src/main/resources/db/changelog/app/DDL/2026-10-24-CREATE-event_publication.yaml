@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-24-CREATE-event_publication
+      author: Sparta_16
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: SQL/2026-10-24-CREATE-event_publication.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            path: SQL/2026-10-24-CREATE-event_publication-rollback.sql
+            relativeToChangelogFile: true

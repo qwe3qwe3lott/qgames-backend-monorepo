@@ -1,6 +1,5 @@
 package site.qgames.game.job.room
 
-import net.javacrumbs.shedlock.spring.annotation.SchedulerLock
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
@@ -11,7 +10,7 @@ import java.time.Clock
 
 /**
  * Удаляет комнаты, в которых нет присутствующих участников дольше qgames.game.room.empty-ttl. Отсутствующие игроки
- * идущей партии комнату не держат: их партия отменяется. Запускается на всех инстансах, выполняется одним (ShedLock).
+ * идущей партии комнату не держат: их партия отменяется.
  * Комнаты выбираются без блокировки, затем каждая блокируется (FOR UPDATE SKIP LOCKED) с перепроверкой в своей
  * транзакции. По расписанию — только при qgames.game.room.cleanup-enabled.
  */
@@ -24,7 +23,6 @@ class EmptyRoomCleanupJob(
 ) {
 
     @Scheduled(fixedDelayString = "\${qgames.game.room.cleanup-interval}")
-    @SchedulerLock(name = "empty-room-cleanup", lockAtMostFor = "PT5M")
     fun scheduledRun() {
         if (properties.room.cleanupEnabled) {
             run()

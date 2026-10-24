@@ -6,7 +6,7 @@ import java.time.Instant
 import java.util.UUID
 
 /** Строка таблицы refresh_token. */
-@Table("refresh_token")
+@Table("user_auth#refresh_token")
 data class RefreshTokenEntity(
     @Id
     val id: UUID? = null,

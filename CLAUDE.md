@@ -1,66 +1,66 @@
 # CLAUDE.md — правила разработки qgames-backend
 
-Бэкенд игрового портала qgames: микросервисы на Kotlin + Spring Boot в одном монорепозитории. Фронтенд — отдельный репозиторий `qgames-frontend-monorepo`, оркестратор агентов — `qgames-workspace`. Все три репозитория лежат рядом в одной родительской папке, поэтому фронтенд доступен по относительному пути `../qgames-frontend-monorepo`.
+Бэкенд игрового портала qgames: модульный монолит (Spring Modulith) на Kotlin + Spring Boot в одном монорепозитории. Фронтенд — отдельный репозиторий `qgames-frontend-monorepo`, оркестратор агентов — `qgames-workspace`. Все три репозитория лежат рядом в одной родительской папке, поэтому фронтенд доступен по относительному пути `../qgames-frontend-monorepo`.
 
 ## 0. Процесс принятия решений (главное правило)
 
-- **Архитектурные решения не принимаются без пользователя.** Новый сервис, технология, протокол, схема хранения, формат контракта, изменение границ сервисов, способ деплоя и т.п. — сначала вопрос пользователю с вариантами и рекомендацией, затем реализация.
+- **Архитектурные решения не принимаются без пользователя.** Новый модуль приложения, технология, протокол, схема хранения, формат контракта, изменение границ модулей, способ деплоя и т.п. — сначала вопрос пользователю с вариантами и рекомендацией, затем реализация.
 - Если правило здесь противоречит задаче — спросить, а не обходить молча.
 - **Не замалчивать проблемы.** Если по ходу работы что-то смущает (риск безопасности, противоречие правилам или ранее сказанному, сомнительное поведение, техдолг, расхождение кода и документации), сразу сказать пользователю и спросить, как поступить, предложив варианты. Не чинить молча и не откладывать «на потом» без согласования.
 - **Git:** рабочая и основная ветка — `master` (`main` не используется). Коммиты делает пользователь; без явной просьбы не коммитить и не пушить.
 
 ### Как вести этот файл
 
-- **Разделы 1–11 — принятые решения**, то есть действующие правила. Согласованное решение записывается в профильный раздел.
-- **Раздел 12 — отклонённые решения.** Варианты, которые обсуждались и были отвергнуты, с причиной и тем, что выбрано вместо. Повторно такой вариант предлагать только с новым аргументом, и этот аргумент нужно назвать явно.
-- **Журнала изменений и дат нет:** файл описывает текущее состояние. Если решение меняется, профильный раздел переписывается на месте, а прежнее решение переносится в раздел 12 с причиной отказа.
+- **Разделы 1–10 — принятые решения**, то есть действующие правила. Согласованное решение записывается в профильный раздел.
+- **Раздел 11 — отклонённые решения.** Варианты, которые обсуждались и были отвергнуты, с причиной и тем, что выбрано вместо. Повторно такой вариант предлагать только с новым аргументом, и этот аргумент нужно назвать явно.
+- **Журнала изменений и дат нет:** файл описывает текущее состояние. Если решение меняется, профильный раздел переписывается на месте, а прежнее решение переносится в раздел 11 с причиной отказа.
 - Отложенные вопросы записываются в профильном разделе пометкой «решить при …», а не в отклонённых.
-- **От технологии, приложения или фичи отказались — сведения о ней удаляются целиком**, включая отклонённые решения о ней в разделе 12. В разделе 12 остаются только альтернативы действующим решениям.
+- **От технологии, приложения или фичи отказались — сведения о ней удаляются целиком**, включая отклонённые решения о ней в разделе 11. В разделе 11 остаются только альтернативы действующим решениям.
 
-## 1. Сервисы
+## 1. Модули приложения
 
-| Сервис | Назначение | Порт (HTTP) |
+Бэкенд — **модульный монолит** (Spring Modulith): одно приложение `app` (один процесс, порт **8080**) из модулей с явными границами. Модули общаются только через публичный контракт друг друга (`<m>-api`) и события; модуль можно вынести обратно в отдельный сервис.
+
+| Модуль | Назначение | Пути API |
 |---|---|---|
-| `user-gateway` | Публичная точка входа для пользователей портала. Аутентификация по JWT из куки, проксирование в сервисы, в том числе SSE-потоков | 8080 |
-| `user-auth` | Аккаунты, способы входа (Google; пароль, добавленный в профиле), выпуск JWT, JWKS | 8081 |
-| `game` | Единый игровой сервис: комнаты, партии **всех** игр, реплика профилей игроков (CDC из user-auth). Правила конкретных игр подключаются модулями `games/*` | 8082 |
-| `admin-gateway` | Публичная точка входа админ-панели. Аутентификация по JWT admin-auth из куки, проксирование в сервисы | 8083 |
-| `admin-auth` | Аккаунты администраторов (логин и пароль, без регистрации), выпуск JWT, JWKS | 8084 |
+| `user-auth` | Аккаунты игроков, способы входа (Google; пароль, добавленный в профиле), выпуск JWT игроков, куки сессии портала | `/api/auth/*`, `/api/users/me/*` |
+| `game` | Комнаты и партии **всех** игр, реплика профилей игроков (событие модуля user-auth). Правила конкретных игр подключаются модулями `games/*` | `/api/games/*`, `/api/rooms/*` |
+| `admin-auth` | Аккаунты администраторов (логин и пароль, без регистрации), выпуск JWT администраторов, куки сессии админки | `/api/admin/auth/*`, `/api/admin/admins/*` |
+| `app` | Приложение: `@SpringBootApplication`, Security (две цепочки), CORS, группы OpenAPI, `application.yml`, сводный Liquibase-master, Docker-образ | — |
 
-Отдельный сервис на каждую игру **не заводим**. Новая игра — новый модуль в `games/` (см. §2).
+Отдельный модуль на каждую игру **не заводим**. Новая игра — новый модуль в `games/` (см. §2).
 
-**Админ-панель** (`admin-gateway` + `admin-auth`):
-- админка — CSR SPA на `http://localhost:3001`, в проде — отдельный поддомен того же домена (same-site). Браузер ходит в admin-gateway напрямую: CORS с `allowCredentials` и точным origin админки (§5);
-- соглашения те же, что у user-gateway (§3): REST/JSON, ошибки — ProblemDetail с `code`, Swagger на русском, без дублей DTO: `admin-gateway-public-sync-api` отдаёт DTO `admin-auth-admin-gateway-sync-api` (§3), OpenAPI на `/v3/api-docs` (permitAll). Фронт генерирует по нему отдельный клиент Orval;
-- пути `/api/auth/*` (`login`, `refresh`, `logout`) и 401 `UNAUTHENTICATED` совпадают с user-gateway: на этом держится общий fetch-mutator фронта;
-- текущий админ — `GET /api/admins/me` (по нему фронт определяет, вошёл ли админ), список админов — `GET /api/admins`;
+**Портал и админка — два фронта одного приложения:**
+- портал — `/api/**` (кроме `/api/admin/**`), OpenAPI-группа `portal` (`/v3/api-docs/portal`); админка — `/api/admin/**`, группа `admin` (`/v3/api-docs/admin`). Swagger UI один, с выбором группы. Фронт генерирует по каждой группе свой клиент Orval;
+- админка — CSR SPA на `http://localhost:3001`, в проде — отдельный поддомен того же домена (same-site). Ходит в приложение напрямую: CORS с `allowCredentials` и точным origin админки (§5);
+- соглашения у обеих групп одинаковые (§3): REST/JSON, ошибки — ProblemDetail с `code`, Swagger на русском;
+- пути аутентификации (`…/auth/login`, `…/auth/refresh`, `…/auth/logout`) и 401 `UNAUTHENTICATED` устроены одинаково, отличается только префикс (`/api/auth`, `/api/admin/auth`): на этом держится общий fetch-mutator фронта;
+- текущий админ — `GET /api/admin/admins/me` (по нему фронт определяет, вошёл ли админ), список админов — `GET /api/admin/admins`;
 - ролей нет, все админы равны;
-- admin-auth и admin-gateway — упрощённая копия user-auth и user-gateway (без email, Google и CDC): имена классов и раскладка те же.
-
-gRPC-порты появятся вместе с первым internal API (план: 90xx, отдельный от HTTP порт).
+- admin-auth — упрощённая копия user-auth (без email, Google и событий): имена классов и раскладка те же.
 
 ## 2. Структура репозитория и модулей
 
 ```
-buildSrc/                      convention-плагины: qgames.kotlin-library, qgames.spring-service
-gradle/libs.versions.toml      версии; всё, чем управляет Spring Boot BOM, без версий
+buildSrc/                      convention-плагины: qgames.kotlin-library, qgames.spring-module, qgames.spring-service
+gradle/libs.versions.toml      версии; всё, чем управляет Spring Boot BOM, без версий (Spring Modulith — своим BOM)
 libs/                          общие ИНФРАСТРУКТУРНЫЕ модули (без бизнес-логики)
   common-exception             иерархия ошибок (QgamesException → ClientException/ServerException → …) и их обработчики, подключаются автоматически
-  common-web                   X-User-Id, RequestUserContext, OpenAPI-кастомизация (тянет common-exception через api)
-  common-test                  Testcontainers (singleton: PostgreSQL, Redpanda), WireMock
-  common-cdc-source            OutboxPublisher: запись событий в outbox_event в транзакции бизнес-изменения
-  common-cdc-consumer          настройки потребителя CDC (consumer group, десериализаторы, обработка «ядовитых» сообщений)
+  common-web                   RequestUserContext, OpenAPI-кастомизация (тянет common-exception через api)
+  common-test                  Testcontainers (singleton PostgreSQL), WireMock
 games/                         ПРАВИЛА ИГР (бизнес-логика, но без инфраструктуры)
-  game-api                     модель игры (GameRules, SessionEngine) и модули-механики core/turns/timer/result
+  games-api                    модель игры (GameRules, SessionEngine) и модули-механики core/turns/timer/result
   nothing-game                 «игра в ничто» — тестовая игра для проверки движка
   checkers-game                шашки (вариант правил — настройка комнаты, сейчас доступны русские)
   <игра>                       правила конкретной игры (например, games/carcassonne)
-docker/                        Dockerfile, init-скрипты, dev-ключи, конфиги Debezium Server
+user-auth/, admin-auth/, game/ МОДУЛИ ПРИЛОЖЕНИЯ: <m>/<m> (реализация) и <m>/<m>-api (публичный контракт)
+app/                           приложение: собирает модули; Security, CORS, OpenAPI, конфигурация, миграции, все интеграционные тесты
+docker/                        Dockerfile приложения, init-скрипт PostgreSQL, dev-ключи
 ```
 
 ### Модули игр (`games/`)
 
-- Модуль игры — **чистый Kotlin**: без Spring, БД, сети и прочего IO. Зависит только от `games/game-api`.
+- Модуль игры — **чистый Kotlin**: без Spring, БД, сети и прочего IO. Зависит только от `games/games-api`.
 - **Модель игры — журнал событий-патчей и чистые функции.** Событие — `SessionEvent(code, method, path, value)`:
   - **`code`** — говорящее, детерминированное название произошедшего (`player-passed`, `turn-changed`, `game-paused`…). Его задаёт модуль-механика или игра, разные версии игры могут отличаться набором кодов. Состояние по `code` никто не меняет: он для журнала, логов и повтора;
   - **`method` + `path` + `value`** — как меняется документ партии `{status, meta, state}`. `path` — сегменты: строка — ключ объекта, `{id}` — элемент массива по id (у элементов адресуемых массивов обязателен `id`, в том числе у замаскированных). Одно событие — одна операция; действие, которое меняет несколько мест, — несколько событий со своими seq и кодами:
@@ -69,7 +69,7 @@ docker/                        Dockerfile, init-скрипты, dev-ключи, 
     - `DELETE` — удалить поле или элемент по id, путь должен существовать;
     - `INFO` — состояние не меняется, `value` — данные для журнала;
     - неподходящий путь или тип — `SessionPatchException` (на сервере — баг, на фронте — переподключение).
-  - Применяет события **один общий применитель** `SessionPatch` (над JSON-деревом документа; `SessionCodec` переводит модели в дерево, реализация на Jackson — в сервисе, game-api без зависимостей). Своих редьюсеров у игр и модулей нет. Фронт применяет те же патчи той же семантикой.
+  - Применяет события **один общий применитель** `SessionPatch` (над JSON-деревом документа; `SessionCodec` переводит модели в дерево, реализация на Jackson — в модуле game, games-api без зависимостей). Своих редьюсеров у игр и модулей нет. Фронт применяет те же патчи той же семантикой.
 - `GameRules` — параметры и контекст (код, число игроков, настройки, режимы времени) плюс функции, которые **порождают** события через построители `SessionEvents.put/patch/delete/info`:
   - `start` — начальное состояние (`GameStart`: игровая часть, очерёдность, поля игры у игроков); `SessionEngine` превращает его в первое событие журнала `session-started` = `PUT [] {status, meta: {game: {code, rules}, moveRules}, state}`. `rules` — настройки, закреплённые при старте (нужны для повтора); версия игры в `meta.game` появится позже;
   - `moveRules(settings)` — правила хода для подсказок ввода на клиенте (`meta.moveRules`, например флаги шашек); по умолчанию `null`. Записываются в `session-started` и не меняются; клиент вариантов игры не знает, только эти флаги, ход окончательно проверяет сервер;
@@ -77,7 +77,7 @@ docker/                        Dockerfile, init-скрипты, dev-ключи, 
   - `mask(event, viewerKey)` — маскирует только `value` для проекции (`Full`, `Public`, `Player(id)`); по умолчанию событие публично. Замаскированное событие доставляется со своим seq (у чужого игрока, например, `[{id: "c7"}]` вместо карты или `moveOptions: []`). После конца партии маски нет. Снапшот зрителя — свёртка его маскированных событий, отдельного `view` нет; инвариант «свёртка маскированных событий = маска полной свёртки» обязателен к тесту для каждой игры;
   - `moveOptions(state, playerId)` — допустимые действия игрока; фронт правил не знает и рисует только их;
   - `onTimeout(state)` — события при истечении времени хода.
-- **Модули-механики** (`games/game-api`: `core`, `turns`, `timer`, `result`) подключаются игрой и не дублируются между играми. У каждого модуля свой блок состояния, свои коды и маска:
+- **Модули-механики** (`games/games-api`: `core`, `turns`, `timer`, `result`) подключаются игрой и не дублируются между играми. У каждого модуля свой блок состояния, свои коды и маска:
   - `core` — `players: [{id, moveOptions, …}]`; код `move-options-changed` (`PUT ["state","players",{id},"moveOptions"]`). После каждого изменения платформа выдаёт его игрокам, у которых изменились варианты (в конце и при отмене партии — пустые). Чужим игрокам `moveOptions` маскируются в `[]`;
     - **поля игры у игрока** (например, `color` в шашках): `PlayerState.game`, класс — `GameRules.playerClass` (по умолчанию `null` — полей нет), начальные значения — `GameStart.players` (обязательны для каждого игрока). В документе лежат прямо в объекте игрока (`{id, moveOptions, color}`), а не вложенным объектом; совпадение с полями модуля (`id`, `moveOptions`) — ошибка. Документ игрока собирает и читает `SessionEngine`, маска `moveOptions` на поля игры не влияет;
   - `turns` — `{currentPlayerId, round, rounds}`, код `turn-changed` (`PUT ["state","turns"]`); первого игрока выбирает игра: `TurnsModule.initial(players, rounds, first)` («ничто» передаёт первое место);
@@ -88,52 +88,49 @@ docker/                        Dockerfile, init-скрипты, dev-ключи, 
   - шашки: `piece-moved` (`PATCH ["state","pieces",{id}] {square}`), `piece-captured` (`DELETE` на каждую сбитую), `piece-crowned` (`PATCH {kind: KING}`), `last-move-changed` (`PUT ["state","lastMove"]`), `counters-changed` (`PATCH ["state"] {quietMoves}`), `player-resigned` и `move-timed-out` (`INFO {playerId}`). Ходы генерируются и проверяются только по флагам правил хода варианта (`CheckersMoveRules`, они же — `meta.moveRules`); `moveOptions` — только типы действий (`MOVE` у того, чей ход, `RESIGN` у обоих), пути не перечисляются. Окончания: `NO_PIECES`, `NO_MOVES`, `RESIGN` (вне очереди), `TIMEOUT` — победа; `DRAW_RULE` — 30 ходов подряд в сумме (по 15 у каждой стороны) только дамками без взятий. Цвета — случайно по seed.
   - Будущие механики (например, стадии игры) — новые модули со своими кодами.
 - Случайность (порядок тайлов, кубики) берётся из seed партии. Тогда события воспроизводимы на любом инстансе и при переигрывании журнала.
-- Сервис `game/game` подключает все модули `games/*` и отвечает за всё остальное: комнаты, хранение, очерёдность, таймеры, события.
+- Модуль приложения `game/game` подключает все модули `games/*` и отвечает за всё остальное: комнаты, хранение, очерёдность, таймеры, события.
 - Новая игра — это новый модуль `games/<игра>`. Кроме него нужны:
   - зависимость в `game/game/build.gradle.kts`;
   - бин правил в `GamesConfig`;
-  - DTO состояния (`<Игра>SessionStateDto`, с `result`; если у игрока есть поля игры — свой DTO игрока) как новый вариант `oneOf` `SessionStateDto` в `game-user-gateway-sync-api` и ветка в `SessionEventResponseMapper.stateClass` (снапшот разбирается строго в DTO игры); новые коды событий контракт не меняют, но дописываются в `SessionEventCodes.DESCRIPTION`;
+  - DTO состояния (`<Игра>SessionStateDto`, с `result`; если у игрока есть поля игры — свой DTO игрока) как новый вариант `oneOf` `SessionStateDto` в `game-api` и ветка в `SessionEventResponseMapper.stateClass` (снапшот разбирается строго в DTO игры); новые коды событий контракт не меняют, но дописываются в `SessionEventCodes.DESCRIPTION`;
   - если игра задаёт `moveRules` — DTO (`<Игра>MoveRulesDto`) как новый вариант `oneOf` `SessionMoveRulesDto` (`SessionMetaDto.moveRules`, без дискриминатора) и ветка в `SessionEventResponseMapper.moveRulesClass`;
   - если у хода есть параметры — DTO данных хода (`<Игра>MoveDataDto`) в `MoveDataSchemas.CLASSES` (см. §4 «Ручка хода»);
-  - значение в enum `GameCode` модели game и контракта `game-user-gateway-sync-api` (его использует и gateway), константа в `GameCodes` и код в `allowableValues` параметра `{gameCode}` (`GameApi`, `GameRoomApi`, `SessionEventsController`, `PublicGameApi`, `PublicGameRoomApi`); `GameRules.code` модуля совпадает с кодом;
-  - строка в таблице `game` DML-миграцией `<дата>-INSERT-game` (см. §4 «Каталог игр»), та же строка — в `init.sql` и `TestData` тестов. Пока игра в разработке — статус `NOT_PUBLISHED`, модуль правил и DTO для неё ещё не обязательны;
+  - значение в enum `GameCode` модели game и контракта `game-api`, константа в `GameCodes` и код в `allowableValues` параметра `{gameCode}` (`GameApi`, `GameRoomApi`); `GameRules.code` модуля совпадает с кодом;
+  - строка в таблице `"game#game"` DML-миграцией `<дата>-INSERT-game#game` (см. §4 «Каталог игр»), та же строка — в `init/game.sql` и `TestData` тестов. Пока игра в разработке — статус `NOT_PUBLISHED`, модуль правил и DTO для неё ещё не обязательны;
   - DTO настроек и границ (`<Игра>SettingsDto`, `<Игра>SettingsLimitsDto`) как новый вариант `oneOf` `GameSettingsDto`/`GameSettingsLimitsDto` (`@JsonSubTypes`, `discriminatorMapping`);
   - ветки в `RoomSettingsResponseMapper` (game);
-  - новые варианты union и enum — в `OpenApiContractScenariosTest` (gateway).
+  - новые варианты union и enum — в `PortalOpenApiContractScenariosTest` (app).
 
-  Новый сервис и DDL-миграции для этого не нужны.
+  Новый модуль приложения и DDL-миграции для этого не нужны.
 - Что `GameRules` задаёт помимо функций:
   - **настройки игры:** класс, границы и значения по умолчанию (их отдаёт `GET /api/games/{gameCode}`), проверку;
   - **поля игры у игрока** (`playerClass`) и **правила хода** для клиента (`moveRules(settings)`), если нужны;
   - **поддерживаемые режимы времени** и их границы. Сейчас есть `NONE` и `PER_MOVE`; расширение (`PER_ROUND`, `CHESS`) — новым значением `TimeControlMode`.
 - Игроки партии закреплены до её конца; на отсутствие игрока партия не реагирует (время идёт, таймауты как обычно, ход по REST принимается). Хук игры на отсутствие игрока (шахматы — поражение/отмена, квиз — ничего) — решить при первой такой игре.
 - Состояние и ход — простые data-классы без вычисляемых свойств; в журнал события попадают как JSON (`{path, value}`). Несовместимое изменение формата состояния или событий журнала — увеличить `stateSchemaVersion`.
-- Если игре нужен отдельный процесс (real-time с WebSocket, особая нагрузка), для неё заводится отдельный сервис, который переиспользует тот же модуль из `games/`. Это архитектурное решение, только по согласованию.
+- Если игре нужен отдельный процесс (real-time с WebSocket, особая нагрузка), для неё заводится отдельное приложение (сервис), которое переиспользует тот же модуль из `games/`. Это архитектурное решение, только по согласованию.
 - `games/carcassonne` создаётся, когда начнём писать правила Каркассона (пустые модули не заводим).
 
-### Модули сервиса: целевая схема, создаются по необходимости
+### Модули приложения: `<m>` и `<m>-api`
 
-| Модуль | Содержимое | Когда создаётся |
-|---|---|---|
-| `<svc>/<svc>` | само приложение | всегда |
-| `<svc>/<svc>-public-sync-api` | `@HttpExchange`-интерфейсы ручек, открытых наружу (фронт, внешние клиенты). Собственные DTO — только там, где gateway не просто проксирует (см. §3) | когда у сервиса появляются внешние ручки (сейчас только gateway'и) |
-| `<svc>/<svc>-<gateway>-sync-api` | HTTP-интерфейсы (`@HttpExchange`) + DTO для gateway: `<svc>-user-gateway-sync-api` для user-gateway, `<svc>-admin-gateway-sync-api` для admin-gateway | когда gateway начинает проксировать в сервис |
-| `<svc>/<svc>-internal-sync-api` | gRPC: `.proto` + стабы (без авторизации, защищает mesh) | при первом gRPC-методе |
-| `<svc>/<svc>-internal-async-api` | Protobuf-контракты Kafka-событий | при первом событии |
+| Gradle-модуль | Содержимое |
+|---|---|
+| `<m>/<m>` | реализация модуля: контроллеры, сервисы, репозитории, джобы, слушатели, changelog'и миграций. Библиотека (convention `qgames.spring-module`) без `@SpringBootApplication` и `bootJar` |
+| `<m>/<m>-api` | публичный контракт модуля: REST-интерфейсы контроллеров (`@HttpExchange` со Swagger-аннотациями), DTO, события, константы и интерфейсы, которые модуль даёт другим модулям и app |
+| `app` | приложение (convention `qgames.spring-service`): `QgamesApplication` (пакет `site.qgames`), Security, CORS, OpenAPI-группы, `application.yml`, сводный Liquibase-master, `bootJar`, все интеграционные тесты |
 
-- **Пустые модули «на вырост» не заводим.** Модуль появляется вместе с первым содержимым и удаляется, если опустел.
-- Модули явно перечисляются в `settings.gradle.kts`.
-- Сейчас есть: `user-auth/{user-auth, user-auth-user-gateway-sync-api, user-auth-internal-async-api}`, `user-gateway/{user-gateway, user-gateway-public-sync-api}`, `game/{game, game-user-gateway-sync-api}`, `admin-auth/{admin-auth, admin-auth-admin-gateway-sync-api}`, `admin-gateway/{admin-gateway, admin-gateway-public-sync-api}`.
-- Контроллеры реализуют интерфейсы своего `*-sync-api` модуля, маршруты объявляются только в интерфейсе. Если контроллеру нужны `HttpServletRequest`/`HttpServletResponse`, они внедряются в конструктор (request-scoped прокси), а не попадают в сигнатуру контракта.
-  - **Исключение — SSE-ручки сервиса.** Клиент HTTP Interface стримит только при типе `InputStream`, а сервер отдаёт поток через `SseEmitter`, поэтому одним методом это не выразить. SSE-ручка объявляется отдельным интерфейсом (`RoomEventsApi`: `@GetExchange(PATH, accept = text/event-stream)`, возвращает `InputStream`, путь — константа `PATH`), по нему gateway строит клиент. Контроллер сервиса интерфейс не реализует: он объявляет `@GetMapping(Api.PATH, produces = text/event-stream)` с `SseEmitter` и аннотирует Swagger на себе. Совпадение пути проверяет тест.
-- Proto-модули собираются convention-плагином `qgames.proto-api` (protobuf-gradle-plugin, Java + Kotlin DSL; версия protoc — как protobuf-java в Spring Boot BOM). gRPC-генерация добавится в него вместе с первым gRPC-методом.
-- CDC вынесен в два модуля: `libs/common-cdc-source` (outbox у источника) и `libs/common-cdc-consumer` (приём у потребителя).
-- В KDoc не писать `games/*`, `libs/*` и т.п.: в Kotlin `/*` внутри комментария открывает вложенный комментарий и ломает компиляцию.
-- Сервис может зависеть только от `libs/*` и от `*-api` модулей других сервисов, **никогда** от `<other>/<other>`.
+- Сейчас есть: `user-auth/{user-auth, user-auth-api}`, `admin-auth/{admin-auth, admin-auth-api}`, `game/{game, game-api}`, `app`. Модули явно перечисляются в `settings.gradle.kts`.
+- **Модуль зависит только от `libs/*`, `games/*` и `<other>-api` других модулей, никогда от `<other>/<other>`** (сейчас game → `user-auth-api` ради события профиля). app зависит от всех модулей.
+- **Границы проверяет Spring Modulith:** модули — прямые подпакеты `site.qgames` (`userauth`, `adminauth`, `game`, `app`), внутренние пакеты закрыты. Пакеты `-api` открыты как именованный интерфейс `api`: в каждом пакете `-api` с классами лежит `package-info.java` с `@NamedInterface("api")` (у пакета без классов аннотацию Modulith не видит). `site.qgames.common` (libs) и `site.qgames.games` (правила игр) модулями не считаются. Проверка — `ModularityTest` (`ApplicationModules.of(...).verify()`) в app.
+- **Пустые модули «на вырост» не заводим.** `-api` появляется вместе с первым содержимым.
+- **Имена бинов — полные имена классов** (`FullyQualifiedAnnotationBeanNameGenerator` у `@SpringBootApplication`, у каждого `@EnableJdbcRepositories` модуля — свой генератор): в модулях есть одноимённые классы (`AuthController`, `TokenService`). Бины одного типа в разных модулях (`PasswordEncoder`, ключ и кодировщик JWT) — именованные, внедряются через `@Qualifier` с константами `CryptoConfig` модуля. Общие бины (`Clock`) объявляет только app.
+- Каждый модуль с Spring Data-репозиториями объявляет свой `@EnableJdbcRepositories(basePackages = [<модуль>.repository])` (`PersistenceConfig`).
+- Контроллеры реализуют интерфейсы своего `<m>-api`, маршруты объявляются только в интерфейсе. Если контроллеру нужны `HttpServletRequest`/`HttpServletResponse`, они внедряются в конструктор (request-scoped прокси), а не попадают в сигнатуру контракта. SSE-ручки — тоже в интерфейсе: возвращают `ResponseEntity<ResponseBodyEmitter>` (`@GetExchange(…, accept = text/event-stream)`), контроллер отдаёт `SseEmitter` через `SseResponses.stream` (заголовки `Cache-Control: no-cache`, `X-Accel-Buffering: no`).
+- В KDoc не писать `games/*`, `libs/*`, `/api/**` и т.п.: в Kotlin `/*` внутри комментария открывает вложенный комментарий и ломает компиляцию.
 
 ### Пакеты: type-sliced
 
-Корень: `site.qgames.<svc без дефисов>` (`site.qgames.userauth`). Сначала тип, потом фича:
+Корень модуля: `site.qgames.<модуль без дефисов>` (`site.qgames.userauth`), приложения — `site.qgames.app` (`QgamesApplication` — в `site.qgames`), контракта модуля — `site.qgames.<модуль>.api.<тип>` (`api.web.AuthApi`, `api.dto.user.UserResponse`, `api.event.user.UserProfileChanged`, `api.cookie.AuthCookieNames`). Сначала тип, потом фича:
 
 ```
 controller/auth/AuthController.kt      ✅
@@ -149,17 +146,17 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 ### Слои: entity, модель, репозиторий
 
 - **Entity** (`entity/<фича>/<Имя>Entity`) — строка таблицы, ровно как в БД: перечисления хранятся `String`, nullable `id`/`version` для Spring Data JDBC. Entity живёт только в `entity/`, `mapper/` и `repository/`.
-- **Модель** (`model/<фича>/<Имя>Model`) — то, с чем работают сервисы, контроллеры, листенеры, джобы и паблишеры. Перечисления — enum модели с префиксом сущности (`GameCode`, `RoomStatus`, `UserAvatar`). Id не nullable: модель существует только для сохранённой строки.
+- **Модель** (`model/<фича>/<Имя>Model`) — то, с чем работают сервисы, контроллеры, слушатели, джобы и паблишеры. Перечисления — enum модели с префиксом сущности (`GameCode`, `RoomStatus`, `UserAvatar`). Id не nullable: модель существует только для сохранённой строки.
 - **Маппер** entity ↔ модель — ручной `@Component` `mapper/<фича>/<Имя>EntityMapper` (`toModel`/`toEntity`), без кодогенерации.
-- **DTO** контрактов (`*-sync-api`) живут только в контроллерах и их мапперах `mapper/<фича>/<Имя>ResponseMapper` (модель → DTO, DTO-enum → enum модели). Сервисы принимают и возвращают модели и примитивы, а составные ответы — композитными моделями (`RoomDetailsModel`, `AuthResultModel`). Данные для такой модели собирает сервис (`RoomDetailsService`); маппер в репозитории не ходит.
+- **DTO** контрактов (`<m>-api`) живут только в контроллерах и их мапперах `mapper/<фича>/<Имя>ResponseMapper` (модель → DTO, DTO-enum → enum модели). Сервисы принимают и возвращают модели и примитивы, а составные ответы — композитными моделями (`RoomDetailsModel`, `AuthResultModel`). Данные для такой модели собирает сервис (`RoomDetailsService`); маппер в репозитории не ходит.
 - **Репозиторий — всегда два слоя:**
   - `<Имя>Repository` (`@Repository`-класс) — единственный, кого видят сервисы. Принимает и возвращает модели и параметры (вставка — `insert(…)` с полями, а не готовой entity), маппит через бин-маппер;
   - `<Имя><Хранилище>Repository` — работа с конкретным хранилищем на entity: `…PostgresqlRepository` (Spring Data `CrudRepository` или `JdbcClient`). Используется только своим фасадом.
-- Доменные enum'ы в DTO контрактов (`*-sync-api`) — свои; контроллер (или его маппер) переводит их в enum модели по имени (`RoomRole.valueOf(request.role.name)`).
+- Доменные enum'ы в DTO контрактов (`<m>-api`) — свои; контроллер (или его маппер) переводит их в enum модели по имени (`RoomRole.valueOf(request.role.name)`).
 
 ### Ошибки (`libs/common-exception`)
 
-- Сервисы **не указывают `HttpStatus`**: статус задаёт класс ошибки.
+- Модули **не указывают `HttpStatus`**: статус задаёт класс ошибки.
   ```
   QgamesException (abstract: status, code, message, properties, cause)
   ├─ ClientException            400
@@ -173,34 +170,35 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
      └─ ServiceUnavailableException 503
   ```
 - Бизнес-ошибки собраны в каталогах-фабриках `exception/<фича>/<Фича>Errors` (`RoomErrors.roomNotFound()` → `NotFoundException("ROOM_NOT_FOUND", …)`). Коды — часть контракта с фронтом. Общие коды и имя поля `code` — в `ErrorCodes`.
-- Обработчики подключаются автоконфигурацией при подключении библиотеки (сервисы подключают её явно, `common-web` — через `api`):
+- Обработчики подключаются автоконфигурацией при подключении библиотеки (модули подключают её явно, `common-web` — через `api`):
   - `QgamesExceptionHandler` — `QgamesException` по родительскому типу → ProblemDetail с `code` и `properties`; 400 `VALIDATION_ERROR` для `@Valid` и битого тела; ловушка `Exception` → лог ERROR и 500 `INTERNAL_ERROR` без деталей. Стандартные исключения Spring MVC (404 маршрута, 405) обрабатывает `ResponseEntityExceptionHandler`;
   - `PersistenceExceptionHandler` (если в classpath есть spring-dao) — `DuplicateKeyException` и `OptimisticLockingFailureException` → 409 `CONFLICT`.
 - Неизвестный или отсутствующий дискриминатор полиморфного DTO (`InvalidTypeIdException` Jackson) — 400 `VALIDATION_ERROR` с ошибкой по полю `errors[<путь>.<дискриминатор>]`, например `settings.gameSettings.gameCode`.
-- Advice библиотеки имеют самый низкий приоритет. **Собственный advice сервиса** объявляет `@Order(Ordered.HIGHEST_PRECEDENCE)`, иначе его исключения может перехватить ловушка `Exception` (пример — `DownstreamExceptionHandler` в gateway).
+- Advice библиотеки имеют самый низкий приоритет. **Собственный advice модуля** объявляет `@Order(Ordered.HIGHEST_PRECEDENCE)`, иначе его исключения может перехватить ловушка `Exception`.
 - `@Transactional(noRollbackFor = [QgamesException::class])` — когда изменение (счётчик попыток, отзыв сессии) должно сохраниться, несмотря на ошибку.
 
 ## 3. Взаимодействие
 
-- **Фронт ↔ gateway:** REST/JSON. Ошибки — `ProblemDetail` с машиночитаемым полем `code`. Контракт — `<gateway>-public-sync-api` (`user-gateway-public-sync-api`, `admin-gateway-public-sync-api`). Gateway валидирует публичные запросы сам и не вызывает сервисы на заведомо невалидных данных.
-  - **Простое проксирование — без дублей DTO:** если gateway только пересылает запрос и ответ, публичный интерфейс использует DTO из `<svc>-<gateway>-sync-api` проксируемого сервиса (`<gateway>-public-sync-api` зависит от них через `api`), без собственных копий и маппинга. Так сделаны все ручки обоих gateway: в user-gateway — каталог игр, комнаты, SSE-потоки, auth и users; в admin-gateway — auth и admins. Иначе одноимённые классы дают коллизию схем в OpenAPI: swagger-core называет схему по простому имени класса.
-  - Собственные DTO и маппинг (`mapper/<feature>/`) — только когда gateway меняет форму данных. Если gateway лишь добавляет побочный эффект, используются DTO сервиса: auth ставит куки из `AuthResponse.tokens` и отдаёт `auth.user` (в admin-gateway — `auth.admin`), а внутренние DTO сессии (`AuthResponse`, `TokenPair`, `RefreshTokenRequest`) в публичный контракт не попадают (проверяет `OpenApiContractScenariosTest`).
-- **Документация API (Swagger):** у каждой ручки в `*-sync-api` интерфейсе обязательно есть:
+- **Фронт ↔ приложение:** REST/JSON напрямую в app (порт 8080). Ошибки — `ProblemDetail` с машиночитаемым полем `code`. Контракт — интерфейсы и DTO `<m>-api` модулей; публикуется двумя группами OpenAPI: `portal` (`/api/**` кроме `/api/admin/**`) и `admin` (`/api/admin/**`). Валидация тел — `@Valid` в контроллерах модулей.
+  - Токены сессии в контракт не входят: auth-контроллеры модулей кладут их в HttpOnly-куки (§5) и отдают в теле только пользователя (`UserResponse`, `AdminResponse`). DTO с токенами (`AuthResponse`, `TokenPair`, `RefreshTokenRequest`) не заводятся — это проверяют `PortalOpenApiContractScenariosTest` и `AdminOpenApiContractScenariosTest`.
+  - Одноимённые DTO разных групп (например, `LoginRequest` user-auth и admin-auth) допустимы: у каждой группы свои components. Внутри одной группы простые имена классов DTO уникальны: swagger-core называет схему по простому имени класса.
+- **Документация API (Swagger):** у каждой ручки в `<m>-api` интерфейсе обязательно есть:
   - `@Operation(summary, description)` на русском: что делает метод, зачем он нужен и какие у него особенности;
   - `@ApiResponses` со всеми реально возможными статусами (200, 400, 401, …). Описания на русском, у ошибок в описании указаны значения `code` (например, «Неверный email или пароль (INVALID_CREDENTIALS)»);
   - у интерфейса — `@Tag(name, description)`:
-    - `name` — латиница kebab-case (`auth`, `users`, `games`, `rooms`, `admins`, `jwks`) во всех сервисах и gateway: из тегов Orval в режиме `tags-split` строит имена файлов клиента;
-    - `description` — на русском и начинается с русского названия («Аутентификация. Вход через Google…», у внутренних — «… (для gateway). …»);
-    - одноимённые теги (ручки комнат лежат в нескольких интерфейсах и контроллерах) — с одинаковым описанием, иначе в OpenAPI окажется несколько тегов с одним именем. В game описание общее — константы `RoomApi.TAG`/`RoomApi.TAG_DESCRIPTION`;
-    - форму тегов (латиница, русское описание, тег у каждой операции объявлен) проверяет `OpenApiContractScenariosTest` обоих gateway.
+    - `name` — латиница kebab-case (`auth`, `users`, `games`, `rooms`, `admins`) во всех модулях: из тегов Orval в режиме `tags-split` строит имена файлов клиента;
+    - `description` — на русском и начинается с русского названия («Аутентификация. Вход через Google…»). Одноимённые теги разных групп (`auth` портала и админки) — с разными описаниями, у каждой группы свои теги;
+    - одноимённые теги внутри группы (ручки комнат лежат в нескольких интерфейсах) — с одинаковым описанием, иначе в OpenAPI окажется несколько тегов с одним именем. В game описание общее — константы `RoomApi.TAG`/`RoomApi.TAG_DESCRIPTION`;
+    - форму тегов (латиница, русское описание, тег у каждой операции объявлен) проверяют `PortalOpenApiContractScenariosTest` и `AdminOpenApiContractScenariosTest`.
 
-  Тело ошибок (`ProblemDetail` с полем `code`) в аннотациях не указываем: его всем ответам 4xx/5xx подставляет `ProblemDetailResponsesCustomizer` из `libs/common-web`. Коды ошибок в `description` метода не перечисляем, они описываются в `@ApiResponse`. Ручки без интерфейса (например, JWKS) аннотируются прямо на контроллере. Зависимость `swagger-annotations-jakarta` подключается в `*-sync-api` модули, её версия должна совпадать с той, что тянет springdoc.
-- **OpenAPI для генераторов клиентов** (фронт строит клиенты через Orval по `/v3/api-docs` каждого gateway):
+  Тело ошибок (`ProblemDetail` с полем `code`) в аннотациях не указываем: его всем ответам 4xx/5xx подставляет `ProblemDetailResponsesCustomizer` из `libs/common-web`. Коды ошибок в `description` метода не перечисляем, они описываются в `@ApiResponse`. Ручки без интерфейса аннотируются прямо на контроллере. Зависимость `swagger-annotations-jakarta` подключается в `<m>-api` модули, её версия должна совпадать с той, что тянет springdoc.
+- **OpenAPI для генераторов клиентов** (фронт строит клиенты через Orval по `/v3/api-docs/portal` и `/v3/api-docs/admin`):
+  - группы — `GroupedOpenApi` в `OpenApiConfig` (app). Общие кастомайзеры `libs/common-web` (`ProblemDetailResponsesCustomizer`, `DiscriminatedUnionCustomizer`) — `GlobalOpenApiCustomizer`: обычный `OpenApiCustomizer`-бин springdoc к группам не применяет;
   - `required` проставляется автоматически (`KotlinRequiredPropertiesConverter` в `libs/common-web`): обязательны параметры конструктора DTO, которые не nullable и без значения по умолчанию. Исключение — параметр типа `Any?` без значения по умолчанию (любой JSON, в том числе null, например `PutData.value`): он тоже `required`. `@Schema(requiredMode)` на полях не пишем; необязательное поле — nullable или со значением по умолчанию;
   - обязательные строки запросов дополнительно помечаются `@NotBlank` (серверная проверка, 400 `VALIDATION_ERROR`). `@Size(max)` перебивает `minLength` от `@NotBlank` до 0, поэтому вместе с ним — `@Size(min = 1, max = …)`;
   - успешные ответы — `application/json` (`springdoc.default-produces-media-type` по умолчанию в `libs/common-web`), ошибки — `application/problem+json`;
   - SSE-ручка: ответ 200 — `text/event-stream` со схемой-union событий в components (`RoomStreamEvent`: конверты `{type, data}`, `oneOf` + `discriminator` по `type`). Orval не строит Zod для `text/event-stream`, фронт берёт Zod-схемы событий из components. `ResponseBodyEmitter` исключён из схем (`SpringDocUtils` в `libs/common-web`);
-  - ключи документа (пути, схемы, ответы) отсортированы по алфавиту: `springdoc.writer-with-order-by-keys=true` по умолчанию в `libs/common-web`. Иначе springdoc отдаёт их в нестабильном порядке, и сгенерированный клиент на фронте меняется без изменения контракта. Проверяет `OpenApiContractScenariosTest` в gateway;
+  - ключи документа (пути, схемы, ответы) отсортированы по алфавиту: `springdoc.writer-with-order-by-keys=true` по умолчанию в `libs/common-web`. Иначе springdoc отдаёт их в нестабильном порядке, и сгенерированный клиент на фронте меняется без изменения контракта. Проверяют `*OpenApiContractScenariosTest` в app;
   - в схемах OpenAPI 3.1 тип задаётся через `types(setOf(…))`, а не `type(…)`;
   - регулярки в `@Pattern` должны работать и в Java, и в JS (`RegExp` с флагом `u`): только Unicode-классы (`\p{Cc}`), без Java-специфичных (`\p{Cntrl}`, `\p{javaLetter}`);
   - **полиморфные DTO** (например, настройки конкретной игры) оформляются так:
@@ -208,7 +206,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
     - `@Schema(oneOf, discriminatorProperty, discriminatorMapping)`;
     - дискриминатор — параметр конструктора с `@field:Schema(type = "string", allowableValues = [...])`.
 
-    Чистый `oneOf` + `discriminator` без цикла `allOf` от swagger-core даёт `DiscriminatedUnionCustomizer` из `libs/common-web`. Форму схемы проверяет `OpenApiContractScenariosTest` в gateway. `jackson-annotations` (версия из BOM) подключается в `*-sync-api`.
+    Чистый `oneOf` + `discriminator` без цикла `allOf` от swagger-core даёт `DiscriminatedUnionCustomizer` из `libs/common-web`. Форму схемы проверяет `PortalOpenApiContractScenariosTest`. `jackson-annotations` (версия из BOM) подключается в `<m>-api`.
 
     Дискриминатор настроек игры (`gameSettings`, `gameSettingsLimits`) — поле `gameCode`, значения — коды игр (`nothing`), константы из `GameCodes`.
 - **Код игры — единственный идентификатор игры.** Enum `GameCode` в контрактах сериализуется строчным кодом (`@get:JsonValue val code`), поэтому в JSON и в OpenAPI значения — `nothing`, `carcassonne`, `checkers`, а не имена констант. Отдельного «типа игры» нет.
@@ -218,65 +216,59 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - настройки — `PUT …/rooms/{roomId}/settings`;
   - ход — `POST …/rooms/{roomId}/moves`.
 
-  `{gameCode}` — строка с `allowableValues`. Код игры в теле запроса не передаётся. Неизвестный код gateway отклоняет сам (404 `GAME_NOT_FOUND`). Если код не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`. Ручкам без привязки к игре (комната, вход, роль, партия) код не нужен.
-- **Каталог игр доступен гостям:** `GET /api/games` и `GET /api/games/{gameCode}` в user-gateway — permitAll (только GET и только сами игры, комнаты требуют входа). Сервис game отдаёт каталог без `X-User-Id`. Гость с протухшей access-кукой получает на этих ручках 401 (Bearer-фильтр проверяет токен и на permitAll) — принято осознанно, 401 описан в `@ApiResponses`.
-- **Gateway → сервисы:** Spring HTTP Interfaces (`@ImportHttpServices`), **не Feign**. Интерфейсы лежат в `<svc>-<gateway>-sync-api`; сервис реализует их контроллером (`class AuthController : AuthApi`), gateway строит по ним клиент. Базовый URL: `spring.http.serviceclient.<группа>.base-url`.
-- **X-User-Id:** проставляет только `UserIdPropagationInterceptor` gateway из проверенного JWT (в admin-gateway это id админа). В сигнатурах `*-<gateway>-sync-api` userId нет — сервис берёт его через `RequestUserContext.userId()`.
-- **Сервис ↔ сервис (синхронно):** gRPC через стартеры Spring Boot 4.1 (`spring-boot-starter-grpc-server/client`). Контракты — в `<svc>-internal-sync-api`.
-- **Асинхронно:** брокер **Redpanda** (протокол Kafka, в коде обычный Kafka-клиент), сообщения в Protobuf из `<svc>-internal-async-api`. Консьюмеры идемпотентны.
-  - Топики создаёт `redpanda-init` в docker-compose, автосоздание топиков выключено, чтобы их настройки были явными.
-  - CDC-топики компактируемые, ключ — id агрегата: по ключу хранится последний снапшот, новый потребитель собирает реплику с нуля.
+  `{gameCode}` — строка с `allowableValues`. Код игры в теле запроса не передаётся. Неизвестный код — 404 `GAME_NOT_FOUND` (контроллеры game, `GameCode.fromCode`). Если код не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`. Ручкам без привязки к игре (комната, вход, роль, партия) код не нужен.
+- **Каталог игр доступен гостям:** `GET /api/games` и `GET /api/games/{gameCode}` — permitAll в цепочке портала (только GET и только сами игры, комнаты требуют входа). Контроллер каталога пользователя не читает. Гость с протухшей access-кукой получает на этих ручках 401 (Bearer-фильтр проверяет токен и на permitAll) — принято осознанно, 401 описан в `@ApiResponses`.
+- **Пользователь запроса:** `RequestUserContext.userId()` (`libs/common-web`) — `sub` проверенного access-JWT из `SecurityContext` (в цепочке админки — id администратора). В сигнатурах `<m>-api` userId нет. Заголовка `X-User-Id` нет.
+- **Модуль ↔ модуль (синхронно):** вызов бина через интерфейс из `<m>-api` (заводится вместе с первой такой потребностью). Чужие таблицы, репозитории и сервисы не используются.
+- **Асинхронно — события модулей (Spring Modulith):** событие — Kotlin data class в `<m>-api` (`api.event.<фича>`), публикуется `ApplicationEventPublisher` в транзакции бизнес-изменения, принимается `@ApplicationModuleListener` (асинхронно после коммита, в своей транзакции). Подробности — в §4 «События модулей». Слушатели идемпотентны.
 - **Real-time в играх:** REST (ходы и действия) + **SSE** (события).
-  - **Цепочка:** браузер → `user-gateway` → `game`. Gateway проверяет JWT из куки **только при подписке**, ставит `X-User-Id` и пересылает поток из `game` байтами как есть (`ResponseBodyEmitter` с flush, клиент HTTP Interface в отдельной группе `game-stream` без read-timeout, заголовки `Cache-Control: no-cache`, `X-Accel-Buffering: no`). Ошибки до старта потока — обычный ProblemDetail через `DownstreamExceptionHandler`. `game` — внутренний сервис: что отдавать каждому подключению, решает он.
-  - **Рассылка между инстансами `game`** — Postgres `LISTEN/NOTIFY` (канал `room_events`). `RoomEventPublisher` делает `pg_notify` в транзакции изменения, а Postgres доставляет уведомление только после коммита, поэтому outbox не нужен. В уведомлении только `{roomId, type}`; данные читает инстанс-получатель, если у него есть подписчики комнаты. `RoomEventListener` держит отдельное соединение вне пула, при простое проверяет его (`isValid`), а при обрыве переподключается и закрывает все локальные потоки — клиенты переподключатся и получат свежий снапшот.
+  - **Цепочка:** браузер → app, поток отдают контроллеры game (`SseEmitter`, заголовки `Cache-Control: no-cache`, `X-Accel-Buffering: no`). JWT из куки проверяется **только при подписке**. Ошибки до старта потока — обычный ProblemDetail. Что отдавать каждому подключению, решает game.
+  - **Рассылка событий потокам** — Postgres `LISTEN/NOTIFY` (канал `room_events`). `RoomEventPublisher` делает `pg_notify` в транзакции изменения, а Postgres доставляет уведомление только после коммита, поэтому outbox не нужен. В уведомлении только `{roomId, type}`; данные читает инстанс-получатель, если у него есть подписчики комнаты. `RoomEventListener` держит отдельное соединение вне пула, при простое проверяет его (`isValid`), а при обрыве переподключается и закрывает все локальные потоки — клиенты переподключатся и получат свежий снапшот.
   - **Подписки комнаты и партии — разные сущности.** Поток комнаты — `GET /api/rooms/{roomId}/events`: первым сообщением `snapshot` (как `GET` комнаты), затем `users-changed` (`ownerId` + полный список участников), `settings-changed`, `session-changed` (данных нет, клиент перечитывает комнату), `room-deleted` (поток закрывается). У событий комнаты нет seq: они несут полное значение (замена), повтор безопасен. Гонку снапшота с событиями закрывает маркер: подписчик регистрируется до транзакции подключения, в ней под `lock(room)` читается снапшот и шлётся `pg_notify` с маркером подписчика; всё полученное до маркера отбрасывается. Ping (`: ping`) раз в 5 с.
-  - **Поток партии** — `GET /api/games/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events` (внутренний `SessionEventsApi`, та же схема прокси). Подписаться может участник комнаты (в том числе отсутствующий игрок партии); `sessionId` чужой комнаты — 404 `SESSION_NOT_FOUND`. Аренды и присутствия у него нет.
+  - **Поток партии** — `GET /api/games/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events` (`GameRoomApi.sessionEvents`). Подписаться может участник комнаты (в том числе отсутствующий игрок партии); `sessionId` чужой комнаты — 404 `SESSION_NOT_FOUND`. Аренды и присутствия у него нет.
     - Первый кадр — `snapshot` без обёртки: `{seq, status, serverTime, meta, state}` (`state` — свёртка маскированных событий зрителя). Остальные — `event:` = метод в нижнем регистре (`put`/`patch`/`delete`/`info`), `data:` = `{seq, at, method, code, data}`, где `data` — `{path, value}` (PUT/PATCH), `{path}` (DELETE) или объект (INFO); seq монотонный у каждого события журнала; замаскированные события тоже доставляются, поэтому дыра в seq — реальная потеря.
     - Подписчик регистрируется до снапшота: события с `seq ≤ N` снапшота отбрасываются, пришедшие раньше снапшота копятся. Маркер не нужен.
     - `session-finished`/`session-cancelled` закрывают поток. Подписка на завершённую партию — снапшот `Full` и закрытие (так вошедший видит последнюю партию).
     - Рассылка — `pg_notify('session_events', {sessionId, fromSeq, toSeq})`; диспетчер читает события из журнала один раз на инстанс и маскирует один раз на проекцию. `RoomEventListener` слушает оба канала и при обрыве закрывает оба реестра.
     - OpenAPI: union `SessionStreamEvent` по `type` (`SessionSnapshotEvent` и `SessionPatchStreamEvent`), внутри — `SessionPatchEvent` по `method` (`SessionEventPut/Patch/Delete/Info`); `PathSegment` = `string | {id}`; `code` — строка без enum (известные коды — в описании). `value` не типизирован: строго типизированы только состояние у снапшота (`SessionStateDto` — `oneOf` схем игр) и `meta.moveRules` (`SessionMoveRulesDto` — `oneOf` правил хода игр, `null` у игры без них), оба без дискриминатора: игра определяется по `meta.game.code`, и по нему `SessionEventResponseMapper` разбирает их строго.
-  - Общая инфраструктура потоков: `SseWriter` (очередь и поток записи на подписчика), `StreamIndex`, `SseStreamProxy` в gateway.
+  - Общая инфраструктура потоков: `SseWriter` (очередь и поток записи на подписчика), `StreamIndex`, `SseResponses`.
 - **WebSocket** — только для будущих игр с real-time перемещением игроков (сейчас таких нет).
 
 ## 4. Данные
 
-- **PostgreSQL 18, отдельная БД и пользователь на каждый сервис.** Чужие БД/таблицы не читаем никогда.
-- Роли и БД сервисов создаёт идемпотентный `docker/postgres/init.sql`. Его выполняет одноразовый `postgres-init` в docker-compose на каждом `up`, поэтому новый сервис получает БД на существующем томе без пересоздания. Для нового сервиса с БД нужны блок в скрипте, пароль (`-v <роль>_password=…`) в `postgres-init` и `depends_on: postgres-init` (`service_completed_successfully`) у сервиса.
-- Нужны данные другого сервиса → **Transactional Outbox + Debezium Server** (Outbox Event Router) → read model у потребителя. Payload — Protobuf из `*-internal-async-api`. Таблицы сервиса наружу не публикуются (сырой CDC таблиц запрещён). Подробности — в подразделе «CDC».
+- **PostgreSQL 18, одна БД `qgames` и одна роль `qgames` (не суперпользователь) на приложение.** Модуль читает и пишет только свои таблицы, чужие таблицы не читаем никогда.
+- Роль и БД создаёт идемпотентный `docker/postgres/init.sql`. Его выполняет одноразовый `postgres-init` в docker-compose на каждом `up` (`depends_on: postgres-init`, `service_completed_successfully` у app).
+- Нужны данные другого модуля → **событие модуля** → read model (реплика) у потребителя (подраздел «События модулей»). Таблицы модуля другим модулям не открываются.
 - **Доступ к данным без ORM:** Spring Data JDBC (`CrudRepository`) для простого CRUD, сложное — `@Query` с SQL или `JdbcClient`. JPA/Hibernate запрещены.
-- **Именование:** таблицы в единственном числе, snake_case (`user_identity`, `refresh_token`). Зарезервированные слова — в двойных кавычках (`"user"`), в своих SQL тоже.
+- **Именование:** таблицы в единственном числе, snake_case, **с префиксом модуля через `#`, всегда в двойных кавычках** (и в DDL, и в своих SQL, и в `@Table`): `"user_auth#user"`, `"user_auth#user_identity"`, `"admin_auth#admin"`, `"game#room"`. Модуль в префиксе пишется через `_`. Так таблицы модулей не пересекаются в одной БД.
+  - **Индексы и ограничения** (имена в PostgreSQL уникальны на схему) — с тем же префиксом: `"user_auth#refresh_token_hash_uq"`, `"game#room_empty_since_idx"`;
+  - **исключение — служебные таблицы фреймворков,** чьё имя нельзя задать: `event_publication` (реестр событий Spring Modulith, имя зашито во фреймворке), `databasechangelog`/`databasechangeloglock` (Liquibase). Их создаёт и описывает app.
+  - Ниже в тексте таблицы модуля game названы без префикса (`room` — это `"game#room"`).
 - **ID:** UUID v7, генерируется в БД: `id uuid PRIMARY KEY DEFAULT uuidv7()`. В сущностях `@Id val id: UUID? = null`. Исключение — реплики (read model): первичный ключ приходит из источника.
 - **Время:** `timestamptz`, в коде `Instant` из бина `Clock`. В `JdbcClient` время передаётся как `Timestamp` (JDBC-драйвер PostgreSQL не принимает `Instant`).
 
-### CDC
+### События модулей
 
 - **Источник** (сейчас user-auth):
-  - таблица `outbox_event` (`aggregate_type`, `aggregate_id`, `event_type`, `payload bytea`) и публикация `qgames_outbox` создаются CREATE-миграцией сервиса;
-  - событие пишет `OutboxPublisher` (`libs/common-cdc-source`) в той же транзакции, что и бизнес-изменение, и сразу удаляет строку: Debezium читает INSERT из WAL, а таблица не растёт. В тестах удаление выключено (`qgames.cdc.outbox.delete-after-insert: false`), чтобы проверить событие в таблице;
-  - события — **снапшоты** реплицируемых колонок строки (а не дельты) вместе с её `version`;
+  - событие — Kotlin data class в `<m>-api` (`api.event.<фича>`), **снапшот** реплицируемых полей строки (а не дельта) вместе с её `version`. Сейчас — `UserProfileChanged(id, nickname, avatar, version)`;
+  - публикуется `ApplicationEventPublisher` (`UserProfilePublisher`, `@Transactional(MANDATORY)`) в той же транзакции, что и бизнес-изменение;
   - у реплицируемой таблицы источника есть колонка `version bigint NOT NULL DEFAULT 0` (Spring Data JDBC `@Version`). Она растёт при **любом** изменении строки, в собственных `UPDATE` — вручную (`version = version + 1`), и заодно даёт оптимистичную блокировку (409 при конфликте). Сохранение без изменений не выполняется, чтобы не публиковать пустые события.
-- **Debezium Server** — по одному процессу на каждую БД-источник, конфиг в `docker/debezium/<svc>.properties`:
-  - Postgres через `pgoutput`, публикация создаётся миграцией (`autocreate` выключен), `snapshot.mode=no_data`;
-  - роль владельца БД имеет `REPLICATION`, у PostgreSQL `wal_level=logical` и `max_slot_wal_keep_size`;
-  - EventRouter пишет в топик `outbox.event.<aggregate_type>` (свой шаблон имени задать нельзя — Quarkus-конфиг сам пытается подставить `${routedByValue}`), ключ — `aggregate_id`, значение — сырые байты `payload` (`debezium.format.value=binary`);
-  - версия образа — **3.6.x**: в 3.7.0 нет `EventRouter` и бинарного конвертера.
+- **Доставка — реестр публикаций Spring Modulith (JDBC, таблица `event_publication`):** публикация пишется в реестр в транзакции события, слушатель вызывается после коммита. Доставленная публикация удаляется (`spring.modulith.events.completion-mode: delete`), недоставленные переотправляются при старте (`republish-outstanding-events-on-restart: true`). Таблицу создаёт Liquibase-миграция app (`2026-10-24-CREATE-event_publication`, схема v2 Spring Modulith), не сам фреймворк.
 - **Потребитель** (сейчас game):
-  - `@KafkaListener` на топик из `*-internal-async-api`, настройки по умолчанию — из `libs/common-cdc-consumer` (consumer group = имя сервиса, чтение с начала топика);
-  - применение идемпотентно: `INSERT … ON CONFLICT DO UPDATE … WHERE <реплика>.version < EXCLUDED.version` — повторы и перестановки безопасны;
-  - битое сообщение логируется и пропускается, временные ошибки повторяются.
+  - `@ApplicationModuleListener` (асинхронно, своя транзакция; `@EnableAsync` — на `QgamesApplication`) на тип события из `<m>-api` источника;
+  - применение идемпотентно: `INSERT … ON CONFLICT DO UPDATE … WHERE <реплика>.version < EXCLUDED.version` — повторы и перестановки безопасны.
 - **Таблица-реплика:**
-  - называется `"<сервис_источник>#<таблица_источник>"`: сервис через `_`, в SQL — всегда в двойных кавычках. Например, `"user_auth#user"`;
+  - называется `"<модуль-владелец>#<модуль-источник>#<таблица-источник>"`, в SQL — всегда в двойных кавычках. Например, `"game#user_auth#user"`;
   - содержит **только колонки оригинала** с теми же именами. Подмножество допустимо (email в game не реплицируется), своих колонок нет;
   - `version` реплики — версия источника на момент последнего *реплицированного* изменения. Изменения нереплицируемых колонок (например, `email`) тоже увеличивают версию источника, но события не порождают;
-  - миграция называется по обычному правилу, `#` в имени файла и id changeSet допустим: `2026-10-18-CREATE-user_auth#user`.
-- **Реплики сейчас:** `game."user_auth#user"` (id, nickname, avatar, version) из события `UserProfileChanged` user-auth.
+  - миграция называется по обычному правилу, `#` в имени файла и id changeSet допустим: `2026-10-18-CREATE-game#user_auth#user`.
+- **Реплики сейчас:** `"game#user_auth#user"` (id, nickname, avatar, version) из события `UserProfileChanged` user-auth.
 - Начальное наполнение реплики, если потребитель подключается к уже существующим данным источника (бэкфилл), — решить при первой такой необходимости.
 
-### Каталог игр (сервис `game`)
+### Каталог игр (модуль `game`)
 
-- Игры объявляются в таблице `game` (`code`, `title`, `description`, `sort_order`, `publish_status`) DML-миграциями (`<дата>-INSERT-game`). `room.game_code` и `room_session.game_code` ссылаются на `game(code)`. Статус позже будет менять админка.
-- Набор кодов в таблице совпадает с enum `GameCode`, модуль правил обязателен для всех игр, кроме `NOT_PUBLISHED`. Это проверяет `GameCatalogVerifier` при старте `game` (после миграций); при расхождении сервис не стартует.
+- Игры объявляются в таблице `game` (`code`, `title`, `description`, `sort_order`, `publish_status`) DML-миграциями (`<дата>-INSERT-game#game`). `room.game_code` и `room_session.game_code` ссылаются на `game(code)`. Статус позже будет менять админка.
+- Набор кодов в таблице совпадает с enum `GameCode`, модуль правил обязателен для всех игр, кроме `NOT_PUBLISHED`. Это проверяет `GameCatalogVerifier` при старте приложения (после миграций); при расхождении приложение не стартует.
 - **Статусы публикации** (`publish_status`, CHECK в DDL) — три. Наружу статус не выходит (в публичных ответах поля нет): в каталоге и по прямой ссылке видны только доступные игры, поэтому `rules` в `GameDetailsResponse` всегда есть:
 
   | Статус | В `GET /api/games` | `GET /api/games/{gameCode}`, комнаты, партии | Модуль правил |
@@ -287,12 +279,12 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 
   `NOT_PUBLISHED` — игра в разработке или отключена; отключение игры — штатный перевод в `NOT_PUBLISHED`.
 - Доступность игры проверяет `GameService.checkAccessible` — при создании комнаты (до проверки настроек), старте партии и во всех остальных операциях с комнатой, по игре комнаты под её блокировкой.
-- **`NotPublishedGameCleanupJob`** (ShedLock, `qgames.game.catalog.not-published-cleanup-enabled`, интервал 1m): пачкой находит комнаты `NOT_PUBLISHED`-игр, каждую — `room FOR UPDATE SKIP LOCKED` с перепроверкой статуса, отменяет идущую партию и удаляет комнату (участники и партии — каскадно). `MoveTimeoutJob` и `RoomOwnerGraceJob` комнаты `NOT_PUBLISHED`-игр пропускают (фильтр в SQL).
+- **`NotPublishedGameCleanupJob`** (`qgames.game.catalog.not-published-cleanup-enabled`, интервал 1m): пачкой находит комнаты `NOT_PUBLISHED`-игр, каждую — `room FOR UPDATE SKIP LOCKED` с перепроверкой статуса, отменяет идущую партию и удаляет комнату (участники и партии — каскадно). `MoveTimeoutJob` и `RoomOwnerGraceJob` комнаты `NOT_PUBLISHED`-игр пропускают (фильтр в SQL).
 - Решить при реализации управления каталогом игр в админке:
   - перевод в `PUBLISHED`/`HIDDEN` разрешён только игре с модулем правил — проверка в ручке смены статуса (сейчас статус меняется миграциями, а проверяет `GameCatalogVerifier`; игра без модуля правил наружу и так не выдаётся — 404);
   - завершение партий и удаление комнат при смене статуса вызовом из админки и судьба периодического `NotPublishedGameCleanupJob`.
 
-### Игровые комнаты (сервис `game`)
+### Игровые комнаты (модуль `game`)
 
 - **Публичные комнаты без поиска:** вход по ссылке с id комнаты для любого авторизованного пользователя. Приватные комнаты и поиск — решить при реализации.
 - Комната создаётся под игру (`room.game_code` → `game.code`); создатель становится владельцем и первым игроком, когда подключится к её потоку (см. «Создатель комнаты»).
@@ -301,7 +293,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - иначе, если партия не идёт и есть место, — PLAYER;
   - в остальных случаях — SPECTATOR;
   - повторный вход ничего не меняет.
-- **Присутствие = открытый SSE-поток комнаты.** Ручек входа и выхода нет. Открытие потока — вход, закрытие последнего потока пользователя в комнате — выход. Подключений у пользователя может быть несколько (вкладки, устройства), каждое — строка `room_connection` с арендой (`lease` 20 с). `RoomConnectionHeartbeatJob` раз в 5 с шлёт ping в локальные потоки и продлевает аренду их подключений (`UPDATE … RETURNING id`); поток, чьё подключение не продлилось (его удалил чужой cleanup), закрывается — клиент переподключится и войдёт заново. `RoomConnectionCleanupJob` удаляет протухшие подключения упавших инстансов и уводит пользователей без подключений. Обрыв клиента замечается только по неудачной записи ping, обычно за 10–30 с.
+- **Присутствие = открытый SSE-поток комнаты.** Ручек входа и выхода нет. Открытие потока — вход, закрытие последнего потока пользователя в комнате — выход. Подключений у пользователя может быть несколько (вкладки, устройства), каждое — строка `room_connection` с арендой (`lease` 20 с). `RoomConnectionHeartbeatJob` раз в 5 с шлёт ping в локальные потоки и продлевает аренду их подключений (`UPDATE … RETURNING id`); поток, чьё подключение не продлилось (его удалил чужой cleanup), закрывается — клиент переподключится и войдёт заново. `RoomConnectionCleanupJob` удаляет протухшие подключения (процесс упал или потерял БД) и уводит пользователей без подключений. Обрыв клиента замечается только по неудачной записи ping, обычно за 10–30 с.
 - **Выход** — закрытие последнего потока. Таймеров выхода нет: участник сразу удаляется из комнаты, повторный вход — обычный новый вход (роль по правилам входа, при занятых местах — наблюдатель).
 - **Игроки идущей партии закреплены до её конца:** при уходе они остаются участниками с `room_member.left_at` (в ответах `leaving = true`), вход снимает признак, место в партии (`room_session_player`) сохраняется. Конец или отмена партии (ход, таймаут, отмена) удаляют отсутствующих и публикуют `users-changed`. Последствия отсутствия решает игра (§2), у «ничто» их нет. Наблюдатели во время партии уходят сразу, как вне партии.
 - **Окно владения** (`qgames.game.room.owner-grace`, 15 с; `room.owner_grace_user_id` и `owner_grace_deadline`): ушёл владелец — у комнаты нет владельца (`ownerId = null`, команды владельца не выполняет никто, `NOT_ROOM_OWNER`). Владелец-игрок идущей партии при этом остаётся отсутствующим игроком.
@@ -317,24 +309,24 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - передача владения — через окно владения (выше);
   - только владелец стартует партию, ставит её на паузу и продолжает, отменяет её (комната возвращается в ожидание).
 - **Партии.** В комнате идут несколько партий подряд; после конца или отмены комната снова в WAITING, а последняя партия видна в ответе.
-- **Автоудаление:** комната без присутствующих (подключённых) участников дольше `qgames.game.room.empty-ttl` (30m) удаляется `EmptyRoomCleanupJob` (ShedLock). Отсутствующие игроки партии комнату не держат. Джоб пачкой выбирает id, каждую комнату берёт `FOR UPDATE SKIP LOCKED` с перепроверкой, отменяет идущую партию и удаляет комнату (участники, подключения и партии — каскадно).
+- **Автоудаление:** комната без присутствующих (подключённых) участников дольше `qgames.game.room.empty-ttl` (30m) удаляется `EmptyRoomCleanupJob`. Отсутствующие игроки партии комнату не держат. Джоб пачкой выбирает id, каждую комнату берёт `FOR UPDATE SKIP LOCKED` с перепроверкой, отменяет идущую партию и удаляет комнату (участники, подключения и партии — каскадно).
 - **Конкурентность:** каждая мутация комнаты, участников и партии идёт под `SELECT … FOR UPDATE` строки `room`. Джобы (`MoveTimeoutJob`, `RoomConnectionCleanupJob`, `RoomOwnerGraceJob`, `EmptyRoomCleanupJob`, `NotPublishedGameCleanupJob`) берут блокировки в том же порядке: сначала `room` (`FOR UPDATE … SKIP LOCKED`), потом перепроверка под блокировкой.
 - **Real-time:** изменения комнаты идут по SSE-потоку комнаты, состояние партии — только по потоку партии (§3). В ответе комнаты партия краткая: `session {id, status}`; `session-changed` в потоке комнаты — на старт, конец и отмену партии.
 - Смена ника (`UserProfileListener`) публикует `users-changed` во все комнаты пользователя **без блокировки комнат**: если из-за гонки со снапшотом кто-то не увидит новый ник, это допустимо.
 
-### Сессии комнаты — партии (сервис `game`)
+### Сессии комнаты — партии (модуль `game`)
 
 - Партия называется **сессией комнаты** (`room_session`, в коде `RoomSession*`). Таблицы общие для всех игр, своих таблиц у игры нет:
   - `room_session`: код игры (`game_code` → `game.code`), статус, `state_schema_version`, `seed`, `last_seq`, снапшот настроек комнаты, `move_deadline` (проекция таймера для индекса `MoveTimeoutJob`: дедлайн идущего таймера, на паузе NULL);
   - `room_session_player`: места игроков партии;
   - `room_session_event`: **журнал событий** (`session_id`, `seq`, `method` с CHECK, `code`, `data jsonb` в форме кадра, `created_at` — время события для повтора). Состояние партии **не хранится**: это свёртка журнала.
-- **Состояние партии** собирает `SessionStateService` через абстракцию `SessionStateCache` (Caffeine): ключ `(sessionId, viewerKey) → (seq, state)`. Берётся закешированное состояние на seq K, дочитываются события `K+1…N`, результат кладётся обратно; промах — свёртка с нуля. Журнал только дописывается, поэтому инвалидация между инстансами не нужна. Новое полное состояние попадает в кеш только после коммита.
+- **Состояние партии** собирает `SessionStateService` через абстракцию `SessionStateCache` (Caffeine): ключ `(sessionId, viewerKey) → (seq, state)`. Берётся закешированное состояние на seq K, дочитываются события `K+1…N`, результат кладётся обратно; промах — свёртка с нуля. Журнал только дописывается, поэтому инвалидация не нужна. Новое полное состояние попадает в кеш только после коммита.
 - **Любое изменение партии** (старт, ход, таймаут, пауза, продолжение, конец, отмена) идёт через `SessionJournalService` под `lock(room)`: полное состояние на `last_seq` → события → `INSERT` в журнал с seq от `last_seq + 1`, обновление `last_seq`, статуса, `move_deadline` → `pg_notify`. На одно изменение может прийтись несколько событий, каждое со своим seq.
 - **Мутации партии** (ход, пауза, продолжение, отмена) отвечают **204**: результат приходит событиями потока. Старт возвращает комнату.
 - **Ручка хода одна на все игры:** `POST /api/games/{gameCode}/rooms/{roomId}/moves`.
-  - `gameCode` — строчный код игры (`GameCode.code`: `nothing`, `carcassonne`, `checkers`). Неизвестный код — 404 `GAME_NOT_FOUND` (gateway отклоняет сам), не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`.
+  - `gameCode` — строчный код игры (`GameCode.code`: `nothing`, `carcassonne`, `checkers`). Неизвестный код — 404 `GAME_NOT_FOUND`, не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`.
   - Тело — общий конверт `{type, data}` (тот же конверт, что варианты в `moveOptions`): `type` — вид действия (`PASS`, `MOVE`, `RESIGN`), `data` — его параметры в формате игры. Сервис превращает `{type, data}` в класс хода игры (`GameRules.moveClass`); неподходящий формат — 400 `VALIDATION_ERROR`.
-  - Своих ручек у игр нет. `MoveRequest.data` в OpenAPI остаётся свободным объектом, а схемы параметров ходов игр (`CheckersMoveDataDto {path}`) перечислены в `MoveDataSchemas.CLASSES` (`game-user-gateway-sync-api`) и публикуются в components user-gateway через `OpenApiCustomizer` (`OpenApiConfig`): ни одна ручка на них не ссылается, поэтому springdoc сам их не выдаёт. Схемы строятся тем же набором конвертеров (`required` по Kotlin), клиент типизирует по ним `data` своей игры.
+  - Своих ручек у игр нет. `MoveRequest.data` в OpenAPI остаётся свободным объектом, а схемы параметров ходов игр (`CheckersMoveDataDto {path}`) перечислены в `MoveDataSchemas.CLASSES` (`game-api`, `api.dto.session`) и публикуются в components группы `portal` кастомайзером группы в `OpenApiConfig` (app): ни одна ручка на них не ссылается, поэтому springdoc сам их не выдаёт. Схемы строятся тем же набором конвертеров (`required` по Kotlin), клиент типизирует по ним `data` своей игры.
 - Ход проверяется по текущему полному состоянию под блокировкой комнаты, **без проверки версии**: если хода нет среди допустимых — 422 `MOVE_REJECTED` с машиночитаемой причиной в поле `reason` (например, `NOT_YOUR_TURN`).
 - **Таймер хода** (режим `PER_MOVE`, модуль `timer`):
   - старт и каждый ход ставят дедлайн `now + moveSeconds` (`timer-started`), конец и отмена партии останавливают таймер (`timer-stopped`, `STOPPED`);
@@ -352,31 +344,37 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 ### Миграции (Liquibase)
 
 ```
-src/main/resources/db/changelog/
-  db.changelog-master.yaml                      явный список include в хронологическом порядке (DDL и DML вперемешку)
-  DDL/2026-10-17-CREATE-user.yaml               changeSet: id, author, runInTransaction, sqlFile + rollback sqlFile
-  DDL/SQL/2026-10-17-CREATE-user.sql
-  DDL/SQL/2026-10-17-CREATE-user-rollback.sql
+<m>/<m>/src/main/resources/db/changelog/<модуль>/      changelog'и модуля (папка — имя модуля: user-auth, admin-auth, game)
+  db.changelog-master.yaml                                явный список include в хронологическом порядке (DDL и DML вперемешку)
+  DDL/2026-10-17-CREATE-user_auth#user.yaml               changeSet: id, author, runInTransaction, sqlFile + rollback sqlFile
+  DDL/SQL/2026-10-17-CREATE-user_auth#user.sql
+  DDL/SQL/2026-10-17-CREATE-user_auth#user-rollback.sql
   DML/<имя>.yaml, DML/SQL/<имя>.sql, DML/SQL/<имя>-rollback.sql
+app/src/main/resources/db/changelog/
+  db.changelog-master.yaml                                сводный master приложения: include master-файлов модулей и app
+  app/…                                                   служебные таблицы приложения (event_publication)
 ```
 
-- **Имя миграции:** `<yyyy-MM-dd>-<ДЕЙСТВИЕ>-<таблица>`, например `2026-10-17-CREATE-user_identity`, `2026-11-02-ALTER-user`, `2026-11-02-INSERT-game`. Действие капсом: `CREATE`, `ALTER`, `DROP` (DDL), `INSERT`, `UPDATE`, `DELETE` (DML). Имя одновременно служит `id` changeSet'а. Если в один день над одной таблицей нужно два одинаковых действия — добавить уточнение в конец (`2026-11-02-ALTER-user-add_nickname`).
+- Таблица `databasechangelog` одна на приложение. Пути changelog'ов модулей не пересекаются (папка модуля), поэтому одноимённые файлы разных модулей не конфликтуют.
+- **Имя миграции:** `<yyyy-MM-dd>-<ДЕЙСТВИЕ>-<таблица>` с полным именем таблицы (с префиксом модуля), например `2026-10-17-CREATE-user_auth#user_identity`, `2026-11-02-ALTER-user_auth#user`, `2026-11-02-INSERT-game#game`. Действие капсом: `CREATE`, `ALTER`, `DROP` (DDL), `INSERT`, `UPDATE`, `DELETE` (DML). Имя одновременно служит `id` changeSet'а. Если в один день над одной таблицей нужно два одинаковых действия — добавить уточнение в конец (`2026-11-02-ALTER-user_auth#user-add_nickname`).
+  - `#` в имени файла работает, но changelog'и модулей лежат во вложенных jar приложения, и Liquibase на файлах с двумя `#` (реплики) пишет при старте WARN `URISyntaxException … Defaulting to previous behavior` — миграции при этом применяются.
 - **Одна таблица — одна миграция.** Индексы и ограничения таблицы входят в её CREATE-миграцию.
 - **DDL** (структура) и **DML** (данные) лежат в разных папках. Порядок выполнения задаёт только master: файлы перечисляются явно, `includeAll` не используем.
+
 - yaml-changelog шаблон:
   ```yaml
   databaseChangeLog:
     - changeSet:
-        id: 2026-10-17-CREATE-user
+        id: 2026-10-17-CREATE-user_auth#user
         author: A Kozlov            # git config user.name автора миграции
         runInTransaction: true
         changes:
           - sqlFile:
-              path: SQL/2026-10-17-CREATE-user.sql
+              path: SQL/2026-10-17-CREATE-user_auth#user.sql
               relativeToChangelogFile: true
         rollback:
           - sqlFile:
-              path: SQL/2026-10-17-CREATE-user-rollback.sql
+              path: SQL/2026-10-17-CREATE-user_auth#user-rollback.sql
               relativeToChangelogFile: true
   ```
 - **Rollback-SQL обязателен** для каждой миграции.
@@ -385,28 +383,34 @@ src/main/resources/db/changelog/
 
 ## 5. Аутентификация и безопасность
 
-- `user-auth` подписывает access-JWT (**ES256**, TTL 15 мин, `sub` = userId) и публикует ключи на `/.well-known/jwks.json`. Gateway проверяет JWT локально (кеширует JWKS).
+- **Две цепочки Security в app** (`SecurityConfig`):
+  - админка — `/api/admin/**` (`securityMatcher`, `@Order(1)`): кука `admin_access_token` или `Authorization: Bearer`, токены admin-auth (свой ключ, issuer `qgames-admin-auth`); permitAll — `/api/admin/auth/**`;
+  - портал — всё остальное (`@Order(2)`): кука `access_token` или `Authorization: Bearer`, токены user-auth (issuer `qgames-user-auth`); permitAll — `/api/auth/**`, `GET /api/games` и `/api/games/*`, Swagger (`/swagger-ui*`, `/v3/api-docs/**`), `/actuator/health/**`.
+  - Токен игрока в админку не проходит, токен админа на портал — тоже (разные ключи и issuer). Без токена или с недействительным — 401 `UNAUTHENTICATED` (ProblemDetail). На эндпоинтах аутентификации access-токен не читается (`CookieBearerTokenResolver`): протухшая кука не ломает refresh.
+  - JWT проверяется локально по **публичной части ключа подписи из конфигурации** (`qgames.security.{portal,admin}.public-key` → те же PEM, что у модулей), без JWKS-эндпоинта: `NimbusJwtDecoder` с `SingleKeyJWSKeySelector` (`withPublicKey` в Spring Security принимает только RSA). Проверяются подпись ES256, срок и issuer, `kid` не сверяется.
+- `user-auth` подписывает access-JWT игроков (**ES256**, TTL 15 мин, `sub` = userId).
 - **Refresh-токен:** случайная строка, в БД — только SHA-256; TTL 30 дней; ротация при каждом обновлении.
   - **Окно терпимости 10 с** (`qgames.auth.refresh-reuse-grace`). Повтор уже ротированного токена в течение окна, если в семье есть активный токен, выдаёт ещё одну пару той же сессии. Так обновляют сессию параллельные вкладки.
   - Повтор позже окна, после logout или после обнаружения кражи отзывает всё семейство (`family_id`) с ошибкой `REFRESH_TOKEN_REUSED`.
   - Ротацию от прочих отзывов отличает `refresh_token.rotated_at`.
 - **Сессия админа (`admin-auth`):**
-  - свой ключ подписи ES256 и issuer `qgames-admin-auth`, JWKS — на `/.well-known/jwks.json` admin-auth. Токен игрока admin-gateway не принимает, токен админа user-gateway — тоже;
+  - свой ключ подписи ES256 и issuer `qgames-admin-auth`;
   - access — 5 мин, refresh — 15 мин. Refresh скользящий: каждая ротация даёт полный TTL. Окно терпимости 10 с (`qgames.admin-auth.refresh-reuse-grace`), ротация и отзыв семьи — как у user-auth;
   - логин сравнивается точно, без lowercase и trim. При неизвестном логине проверяется dummy-хеш, чтобы время ответа не выдавало существующие логины.
-- **Первый админ:** регистрации нет. При старте admin-auth `AdminBootstrapService` создаёт админа из `ADMIN_BOOTSTRAP_LOGIN` / `ADMIN_BOOTSTRAP_PASSWORD`, только если таблица `admin` пуста.
-  - Вставка — одна команда `INSERT … WHERE NOT EXISTS (SELECT 1 FROM admin) ON CONFLICT (login) DO NOTHING`, поэтому безопасна при нескольких инстансах. Если админ создан, пишется лог WARN.
-  - Значений по умолчанию в `application.yml` нет: без env бутстрап выключен, а если задано только одно из двух, сервис не стартует. docker-compose задаёт `admin` / `admin`.
-- **Куки ставят и читают только gateway'и:** `HttpOnly; Secure; SameSite=Lax`; access — `Path=/`, refresh — `Path=/api/auth`. Сервисы за gateway о куках не знают — токены ходят в теле ответа.
-  - Имена у каждого gateway свои: user-gateway — `access_token` / `refresh_token`, admin-gateway — `admin_access_token` / `admin_refresh_token` (`GatewayProperties.Cookies`). Куки не изолируются по порту, и локально одноимённые куки двух gateway перетёрли бы друг друга.
+- **Первый админ:** регистрации нет. При старте приложения `AdminBootstrapService` создаёт админа из `ADMIN_BOOTSTRAP_LOGIN` / `ADMIN_BOOTSTRAP_PASSWORD`, только если таблица `"admin_auth#admin"` пуста.
+  - Вставка — одна команда `INSERT … WHERE NOT EXISTS (SELECT 1 FROM "admin_auth#admin") ON CONFLICT (login) DO NOTHING`. Если админ создан, пишется лог WARN.
+  - Значений по умолчанию в `application.yml` нет: без env бутстрап выключен, а если задано только одно из двух, приложение не стартует. docker-compose задаёт `admin` / `admin`.
+- **Куки ставят и читают auth-контроллеры модулей** (`cookie/AuthCookies` в user-auth и admin-auth): `HttpOnly; Secure; SameSite=Lax`. Токены в теле ответов не отдаются.
+  - Имена и пути — константы контракта `AuthCookieNames` в `<m>-api`: портал — `access_token` (`Path=/`) и `refresh_token` (`Path=/api/auth`); админка — `admin_access_token` (`Path=/api/admin`) и `admin_refresh_token` (`Path=/api/admin/auth`). Имена разные: оба фронта ходят в одно приложение, и одноимённые куки перетёрли бы друг друга. `secure`/`sameSite` — свойства модулей (`qgames.auth.cookies`, `qgames.admin-auth.cookies`, env `COOKIES_SECURE`).
+  - refresh без куки или с отклонённым токеном (401) удаляет обе куки; logout отзывает сессию по куке и всегда удаляет обе куки; смена пароля выдаёт новую сессию в куках.
 - CSRF-токены не используются (SameSite=Lax + только JSON). Сессий нет (stateless).
-- **Домены:** фронт и API — поддомены одного домена (например, `qgames.site` и `api.qgames.site`). Для браузера это same-site, поэтому Lax-куки доходят до API и защита от CSRF без токенов остаётся валидной. Если фронт окажется на другом домене, это пересмотр модели CSRF, только по согласованию.
-- **CORS** настраивается только в gateway'ях, для `/api/**`:
-  - явный список origin из `CORS_ALLOWED_ORIGINS`, у каждого gateway — только свой фронт; wildcard запрещён и проверяется при старте:
-    - user-gateway — портал (локально по умолчанию `http://localhost:3000`, в проде — домен портала). Админка (`http://localhost:3001`) сюда не добавляется: она ходит только в admin-gateway;
-    - admin-gateway — админка (локально по умолчанию `http://localhost:3001`, в compose — из `ADMIN_CORS_ALLOWED_ORIGINS`), портал — нет;
+- **Домены:** фронт и API — поддомены одного домена (например, `qgames.site` и `api.qgames.site`). Для браузера это same-site, поэтому Lax-куки доходят до API и защита от CSRF без токенов остаётся валидной. Если фронт окажется на другом домене, это пересмотр модели CSRF, только по согласованию. Same-origin (Caddy) — решить при этапе 4 перехода на монолит.
+- **CORS** настраивается в app (`SecurityConfig.corsConfigurationSource`):
+  - `/api/admin/**` — только origin админки (`ADMIN_CORS_ALLOWED_ORIGINS`, по умолчанию `http://localhost:3001`); остальные `/api/**` — только origin портала (`CORS_ALLOWED_ORIGINS`, по умолчанию `http://localhost:3000`). Портал в админку и админка в портал не пускаются;
+  - явный список origin, wildcard запрещён и проверяется при старте (`CorsProperties`);
   - `allowCredentials = true`;
   - запросы с чужого origin отклоняются с 403.
+
 - **Пароли:** Argon2id (`Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8`), соль внутри хеша.
 - **Регистрации по email нет, писем user-auth не шлёт.** Аккаунт создаётся только входом через Google. Пароль добавляется в профиле (`POST /api/users/me/login-methods/password`), после этого можно входить по email аккаунта (это email Google-аккаунта, которым он создан) и паролю. Сброса пароля нет: забывший пароль входит через Google и меняет его.
 - **Google:** фронт получает ID token через Google Identity Services и шлёт `POST /api/auth/google`; проверяем подпись по JWKS Google, `iss`, `aud` (`GOOGLE_CLIENT_IDS`).
@@ -414,99 +418,78 @@ src/main/resources/db/changelog/
   - ник (3–32 символа, без пробелов по краям, **не уникален** — игроки различаются по id) и аватар из enum `Avatar { CAT, DOG }`, набор аватаров определён на фронте;
   - новому Google-аккаунту генерируется ник `player-xxxxxx` и аватар `CAT`;
   - меняются через `PATCH /api/users/me/profile` (только переданные поля);
-  - каждое изменение публикуется событием `UserProfileChanged` (CDC).
+  - каждое изменение публикуется событием модуля `UserProfileChanged` (§4 «События модулей»).
 - **Способы входа:** `user_identity(provider, subject)`, к одному аккаунту можно привязать несколько. Привязка **только явная** (из залогиненной сессии, `/api/users/me/login-methods/*`), автопривязки нет.
 - **Вход через Google** (`POST /api/auth/google`): Google-аккаунт привязан (по `subject`) — сессия его владельца; иначе email не подтверждён в Google — 400 `GOOGLE_EMAIL_NOT_VERIFIED` (email — логин для входа по паролю); иначе аккаунт с таким email уже есть — 409 `ACCOUNT_LINK_REQUIRED` (защитный случай, email в БД уникален); иначе — новый аккаунт.
-- Ключи подписи — из конфигурации/секретов, никогда не генерируются при старте. `docker/dev-keys` — только для локальной разработки: `jwt-*.pem` у user-auth, `admin-jwt-*.pem` (kid `admin-dev-key-1`) у admin-auth.
+- Ключи подписи — из конфигурации/секретов, никогда не генерируются при старте. `docker/dev-keys` — только для локальной разработки: `jwt-*.pem` у user-auth (env `JWT_*`), `admin-jwt-*.pem` (kid `admin-dev-key-1`) у admin-auth (env `ADMIN_JWT_*`).
 
-## 6. Многоинстансность (у каждого сервиса может быть N инстансов)
+## 6. Один инстанс
 
-- Никакого состояния между запросами в памяти инстанса. Исключения:
-  - реестры открытых SSE-потоков (`RoomStreamRegistry`, `SessionStreamRegistry`): привязаны к соединениям этого инстанса, а присутствие, которое переживает инстанс, хранится в БД (`room_connection` с арендой);
+Одно приложение, один инстанс. Несколько инстансов app не поддерживаются: в памяти процесса живут реестры SSE-потоков и кеш состояний партий, а ShedLock убран.
+
+- Состояние в памяти процесса допустимо только такое:
+  - реестры открытых SSE-потоков (`RoomStreamRegistry`, `SessionStreamRegistry`): привязаны к соединениям, а присутствие хранится в БД (`room_connection` с арендой);
   - кеш состояний партий `SessionStateCache` (Caffeine): только ускоряет сборку, источник правды — журнал, состояние на seq неизменно.
-- Счётчики, лимиты, блокировки — в БД (атомарные `UPDATE … WHERE …`).
-- Гонки на уникальных ключах → 409 (`DuplicateKeyException` обрабатывается).
-- Миграции — Liquibase (его lock защищает от параллельного запуска).
-- Шедулеры:
-  - джобы, которые часто обрабатывают строки по одной (`MoveTimeoutJob`, `RoomConnectionCleanupJob`, `RoomOwnerGraceJob`), работают без ShedLock: id выбираются без блокировки, затем `FOR UPDATE SKIP LOCKED` с перепроверкой, работу делят инстансы;
-  - `EmptyRoomCleanupJob` и `NotPublishedGameCleanupJob` — с ShedLock и тоже блокируют каждую комнату `FOR UPDATE SKIP LOCKED` с перепроверкой, транзакция на комнату;
-  - у каждого джоба свой флаг включения `…-enabled`. В тестах джобы выключены и вызываются напрямую через `run()`.
-- Kafka — consumer groups, идемпотентная обработка.
-- Побочные эффекты (например, события) — после коммита (`@TransactionalEventListener`) или через outbox. События SSE публикуются `pg_notify` в самой транзакции: Postgres доставляет их только после коммита.
+- Счётчики, лимиты, блокировки — в БД (атомарные `UPDATE … WHERE …`). Гонки на уникальных ключах → 409 (`DuplicateKeyException` обрабатывается).
+- Шедулеры (`@EnableScheduling` на `QgamesApplication`): джобы выбирают id без блокировки, затем берут `FOR UPDATE SKIP LOCKED` с перепроверкой, транзакция на комнату или партию (так джобы не конфликтуют с запросами). У каждого джоба свой флаг включения `…-enabled`. В тестах джобы выключены и вызываются напрямую через `run()`.
+- Рассылка событий SSE-потокам — Postgres `LISTEN/NOTIFY` (`pg_notify` в транзакции изменения, доставка после коммита); побочные эффекты между модулями — события модулей после коммита (§4).
+- Механизмы, рассчитанные на несколько инстансов (`LISTEN/NOTIFY`, аренды подключений, `SKIP LOCKED`), пока остаются — решить при переходе на встраиваемую БД (этап 3 перехода на монолит).
 
-## 7. Service mesh (кратко)
+## 7. Тесты
 
-Внутренние API (`*-internal-sync-api`, REST-эндпоинты сервисов для gateway) не требуют авторизации и **доверяют** заголовку `X-User-Id`. Это безопасно только при закрытой сети:
-
-- **Локально (compose):** mesh нет; сервисы в отдельной docker-сети, наружу HTTP-порты сервисов (8081, 8082, 8084) открыты только для Swagger при разработке.
-- **В Kubernetes:** внедряем service mesh (Linkerd или Istio — выбрать при переходе на k8s). Рядом с каждым подом sidecar-прокси, весь трафик между сервисами шифруется mTLS автоматически, а политики (`AuthorizationPolicy` / `Server`+`AuthorizationPolicy` в Linkerd) разрешают: REST-порт сервиса — только для gateway'ев, которым он нужен, gRPC-порт — только сервисам внутри mesh. Ingress публикует наружу только gateway'и (`user-gateway`, `admin-gateway`). Код сервисов про mesh ничего не знает.
-
-## 8. Тесты
-
-- Тесты **максимально интеграционные**: запросы через MockMvc в настоящие контроллеры на полном контексте, реальная PostgreSQL (Testcontainers), внешние HTTP-системы — WireMock. Тривиальных тестов не пишем.
-- **CDC в тестах:** у источника проверяем записанное событие в `outbox_event`; у потребителя — публикуем сообщение в Redpanda (Testcontainers) так же, как Debezium (ключ — id, значение — байты protobuf), и ждём результат в БД. Debezium проверяется сквозным сценарием на docker-compose.
-- В каждом сервисе есть `BaseIntegrationTest`, от него наследуются все тестовые классы. Бины подключаются в нём через `@Autowired` или `@MockkSpyBean` (springmockk). Внешние системы (WireMock) сбрасываются в `@BeforeEach`.
-- **Тестовые данные:** у сервиса с БД есть `src/test/resources/init.sql`. Он выполняется перед каждым тестом (`@Sql("/init.sql")` на `BaseIntegrationTest`): `TRUNCATE … CASCADE` всех таблиц сервиса и вставка базовых фикстур с фиксированными UUID. Константы фикстур лежат в `support/TestData.kt` и должны совпадать с init.sql. Новая таблица добавляется в TRUNCATE в init.sql.
+- Тесты **максимально интеграционные**: запросы через MockMvc в настоящие контроллеры на полном контексте приложения (все модули, настоящие цепочки Security и куки), реальная PostgreSQL (Testcontainers), внешние HTTP-системы (JWKS Google) — WireMock. Тривиальных тестов не пишем.
+- **Все интеграционные тесты живут в `app/src/test/kotlin`** в пакетах модулей (`site.qgames.game.controller.room…`, `site.qgames.userauth…`); тесты Security, CORS, кук и OpenAPI — в `site.qgames.app…`; границы модулей — `ModularityTest`. Чистые тесты правил игр — в своих модулях `games/*`.
+- Один `site.qgames.BaseIntegrationTest`: в нём все `@MockkSpyBean`, поэтому контекст Spring один на прогон. Модульные базы (`UserAuthIntegrationTest`, `AdminAuthIntegrationTest`, `GameIntegrationTest`) наследуют его и добавляют только хелперы и `@Autowired` — новые `@MockkSpyBean` объявляются только в общей базе. Внешние системы (WireMock) сбрасываются в `@BeforeEach`.
+- **Пользователь в тестах** — настоящий access-JWT, подписанный тестовым ключом модуля (`userAccessToken`, `adminAccessToken`, `asUser`, `asAdmin` в базе). Сессии открываются через настоящие ручки, токены читаются из кук ответа.
+- **События модулей в тестах:** у источника — опубликованные события через `ApplicationEvents` (`@RecordApplicationEvents`); у потребителя — событие публикуется в транзакции (`publishProfile`), результат ждётся в БД; сквозной сценарий (изменение профиля в user-auth → строка в `"game#user_auth#user"`) — тоже ожиданием в БД. Доставку всех публикаций ждёт `awaitEventsDelivered` (реестр пуст).
+- **Тестовые данные:** `app/src/test/resources/init/<модуль>.sql` (и `init/app.sql` для служебных таблиц) выполняются перед каждым тестом (`@Sql` на `BaseIntegrationTest`): `TRUNCATE … CASCADE` всех таблиц модуля и вставка базовых фикстур с фиксированными UUID. Константы фикстур — в `support/TestData.kt` модуля и совпадают с его init-скриптом. Новая таблица добавляется в TRUNCATE скрипта своего модуля.
 - Тест, которому нужен готовый пользователь или сущность, берёт фикстуру, а не создаёт её через API. Через API идут только сценарии, которые проверяют сам процесс создания (например, создание аккаунта входом через Google).
 - Предпочитаем **параметризованные сценарные тесты** (`@ParameterizedTest` + `@MethodSource`), состояние проверяем в БД.
 - Контейнеры — singleton на прогон (`libs/common-test`), чтобы контекст Spring переиспользовался между классами.
 - Для запуска тестов нужен Docker.
 
-## 9. Стек и версии
+## 8. Стек и версии
 
-Kotlin 2.4, JDK 25+ (сборка на любом JDK ≥ 25 без toolchain, байткод — Java 25), Gradle 9.6 (configuration cache включён), Spring Boot 4.1 (Spring MVC + virtual threads, Jackson 3), springdoc 3.1, Spring Data JDBC, Liquibase, Testcontainers 2, springmockk 5. Версии — в `gradle/libs.versions.toml`.
+Kotlin 2.4, JDK 25+ (сборка на любом JDK ≥ 25 без toolchain, байткод — Java 25), Gradle 9.6 (configuration cache включён), Spring Boot 4.1 (Spring MVC + virtual threads, Jackson 3), Spring Modulith 2.1 (свой BOM), springdoc 3.1, Spring Data JDBC, Liquibase, Testcontainers 2, springmockk 5. Версии — в `gradle/libs.versions.toml`.
 
-## 10. Локальный запуск
+## 9. Локальный запуск
 
 ```bash
 ./gradlew build                       # сборка + тесты (нужен Docker)
-docker compose up --build -d --wait   # весь проект
+docker compose up --build -d --wait   # весь проект: postgres + app
 docker compose down -v                # остановить и удалить данные
 ```
 
-- Swagger gateway'ев: user-gateway — http://localhost:8080/swagger-ui.html, admin-gateway — http://localhost:8083/swagger-ui.html (сервисы: 8081, 8082, 8084).
+- Приложение — http://localhost:8080: Swagger — http://localhost:8080/swagger-ui.html (группы `portal` и `admin`), OpenAPI — `/v3/api-docs/portal`, `/v3/api-docs/admin`.
 - Вход в админку на стенде: `admin` / `admin`.
 - Google-вход: заполнить `GOOGLE_CLIENT_IDS` в `.env` (см. `.env.example`).
-- Запуск сервиса из IDE: нужны `docker compose up -d postgres postgres-init redpanda redpanda-init` (и `debezium-user-auth`, если нужен CDC); значения по умолчанию в `application.yml` смотрят на localhost, Redpanda снаружи — `localhost:19092`.
-- Посмотреть CDC-события: `docker compose exec redpanda rpk topic consume outbox.event.user-auth.user-profile`.
-- Образы: один общий multi-stage `docker/service.Dockerfile`, модуль задаётся аргументом `SERVICE`. Контекст сборки — корень репозитория.
+- Запуск из IDE: `docker compose up -d postgres postgres-init`, затем `QgamesApplication` (или `./gradlew :app:bootRun`) с рабочим каталогом `app/`: значения по умолчанию в `application.yml` смотрят на localhost и `../docker/dev-keys`.
+- Переменные окружения app: `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, `JWT_KEY_ID`/`JWT_PRIVATE_KEY_LOCATION`/`JWT_PUBLIC_KEY_LOCATION` (игроки), `ADMIN_JWT_KEY_ID`/`ADMIN_JWT_PRIVATE_KEY_LOCATION`/`ADMIN_JWT_PUBLIC_KEY_LOCATION` (админы), `GOOGLE_CLIENT_IDS`, `ADMIN_BOOTSTRAP_LOGIN`/`ADMIN_BOOTSTRAP_PASSWORD`, `CORS_ALLOWED_ORIGINS`, `ADMIN_CORS_ALLOWED_ORIGINS`, `COOKIES_SECURE`.
+- Образ: multi-stage `docker/app.Dockerfile` (`:app:bootJar`). Контекст сборки — корень репозитория.
 
-## 11. Развёртывание (один VPS)
+## 10. Развёртывание (один VPS)
 
-На старте всё работает на одном VPS через docker compose, без k8s и mesh. Экономим на инфраструктуре, а не на коде: сервисы остаются stateless и рассчитаны на несколько инстансов, а разнесение по машинам — это правка конфигурации.
+На старте всё работает на одном VPS через docker compose, без k8s: PostgreSQL + одно приложение.
 
-- **Инфраструктура:**
-  - один PostgreSQL (БД на сервис);
-  - Redpanda (`--smp 1 --memory 512M`) и по Debezium Server (`-Xmx256m`) на каждую БД-источник CDC.
 - **Образы** собираются в CI и пушатся в registry, на VPS только `docker compose pull`. Gradle-сборка на VPS съела бы 2–3 ГБ RAM рабочего сервера.
-- **Наружу** открыт только reverse proxy с TLS, он проксирует в gateway'и. Внутренние порты и Swagger сервисов в проде не публикуются.
-- **Память:** у каждого JVM-сервиса задан лимит памяти контейнера (`mem_limit`). Heap считается от него через `-XX:MaxRAMPercentage` (уже в `docker/service.Dockerfile`), без лимита JVM ориентируется на всю память хоста.
+- **Наружу** открыт только reverse proxy с TLS, он проксирует в app. Swagger в проде не публикуется.
+- **Память:** лимит памяти контейнера app (`mem_limit`) — решить при деплое на VPS 1 ГБ (этап 4 перехода на монолит). Heap считается от лимита через `-XX:MaxRAMPercentage` (уже в `docker/app.Dockerfile`), без лимита JVM ориентируется на всю память хоста.
 - **Бэкапы PostgreSQL:** `pg_dump` по расписанию, копии хранятся вне VPS.
-- **Несколько инстансов:** `docker compose up --scale <svc>=N`, балансировка — reverse proxy через Docker DNS.
-- **Оценка ресурсов.** Замер локального стенда в простое без admin-сервисов (3 JVM-сервиса) — ~1,9 ГБ: JVM-сервисы по 390–480 МБ, Debezium Server ~380 МБ, Redpanda ~105 МБ, PostgreSQL ~90 МБ. admin-gateway и admin-auth добавляют вместе ~1 ГБ. Под нагрузкой heap растёт.
+- **Оценка ресурсов.** Замер локального стенда в простое (`docker stats`, без `mem_limit`, хост 30 ГБ): app ~630 МБ, PostgreSQL ~75 МБ — всего ~0,7 ГБ. Без лимита JVM не ужимает heap, с `mem_limit` потребление ниже; под нагрузкой heap растёт.
+- Reverse proxy (Caddy или nginx), CI (GitHub Actions или GitLab CI), registry и хранение секретов — решить при реализации деплоя. Для SSE (`text/event-stream`) у proxy должны быть выключены буферизация и короткий read-timeout (app отдаёт `X-Accel-Buffering: no`, ping раз в 5 с); при выборе proxy проверить.
 
-  | Конфигурация | RAM | VPS |
-  |---|---|---|
-  | user-gateway, user-auth, game + PostgreSQL + Redpanda + 1 Debezium | ~3–3,5 ГБ | 2 vCPU / 4 ГБ (впритык) |
-  | + admin-gateway и admin-auth (текущий состав) и ещё источники CDC | ~5–6 ГБ | 4 vCPU / 8 ГБ |
-
-  Каждая новая БД-источник CDC — это ещё один Debezium Server (~0,3–0,4 ГБ). Когда источников станет много, переход на Kafka Connect (один процесс на все коннекторы) — решить тогда.
-
-- Reverse proxy (Caddy или nginx), CI (GitHub Actions или GitLab CI), registry и хранение секретов — решить при реализации деплоя. Для SSE (`text/event-stream`) у proxy должны быть выключены буферизация и короткий read-timeout (gateway уже отдаёт `X-Accel-Buffering: no`, ping раз в 5 с); при выборе proxy проверить.
-
-## 12. Отклонённые решения
+## 11. Отклонённые решения
 
 ### Сервисы и модули
 
 | Вариант | Почему отклонён | Что вместо |
 |---|---|---|
-| Отдельный сервис на каждую игру | N баз, образов, деплоев и клиентов в gateway при одинаковой инфраструктуре пошаговых игр | Один сервис `game` + модули `games/*` |
-| Отдельный сервис game-lobby | Комнаты и партии тесно связаны (старт комнаты создаёт партию); пришлось бы делать межсервисные вызовы и outbox | Комнаты внутри `game` |
+| Микросервисы (5 JVM: два gateway, user-auth, game, admin-auth) + Redpanda + Debezium | Не помещаются в VPS 1 ГБ (~3 ГБ в простое), межсервисные вызовы, прокси и CDC ради одного разработчика | Модульный монолит (Spring Modulith): модули с явными границами, общение через `<m>-api` и события |
+| Отдельный сервис на каждую игру | N баз, образов и деплоев при одинаковой инфраструктуре пошаговых игр | Один модуль `game` + модули `games/*` |
+| Отдельный модуль game-lobby | Комнаты и партии тесно связаны (старт комнаты создаёт партию); пришлось бы делать вызовы и события между модулями | Комнаты внутри `game` |
 | Логика игр в `libs/` | `libs/` — только инфраструктура без бизнес-логики | `games/` |
-| Логика игр пакетами внутри сервиса | Границы между играми никто не контролирует, игру нельзя вынести в отдельный сервис | Модуль на игру в `games/` |
-| Сразу 4 модуля на каждый сервис | Пустые модули «на вырост» засоряют сборку | Модули по необходимости |
-| Собственные DTO gateway в `*-public-sync-api` + маппинг при простом проксировании | Дубли DTO и маппинга; одноимённые классы gateway и сервиса дают коллизию схем в OpenAPI | DTO сервисов через `api`-зависимость (§3); изменение DTO сервиса меняет публичный контракт — это видно по диффу сгенерированного клиента на фронте |
-| Без общих `libs` | Дублирование инфраструктурного кода в каждом сервисе | `libs/common-*` |
+| Логика игр пакетами внутри модуля game | Границы между играми никто не контролирует, игру нельзя вынести в отдельный сервис | Модуль на игру в `games/` |
+| Без общих `libs` | Дублирование инфраструктурного кода в каждом модуле | `libs/common-*` |
 
 ### Протоколы и взаимодействие
 
@@ -514,22 +497,11 @@ docker compose down -v                # остановить и удалить �
 |---|---|---|
 | `@Schema(requiredMode = REQUIRED)` на каждом поле DTO | Легко забыть на новом поле, много шума | `KotlinRequiredPropertiesConverter` по nullability Kotlin |
 | Ход без кода игры в пути (`/api/rooms/{id}/session/moves`, тело `{move: {...}}`) | Из запроса не видно, чей это ход; некуда повесить схему хода игры | `/api/games/{gameCode}/rooms/{roomId}/moves` + конверт `{type, data}` |
-| Общая константа шаблона ника для публичного и внутреннего контрактов | Публичный контракт не зависит от внутреннего, а общий модуль ради одной константы избыточен | Копия `NicknameRules` в каждом контракте |
-| gRPC-Web между фронтом и gateway | Нужен Envoy и кодогенерация на фронте, нет Swagger, для веб-портала выгоды нет | REST |
-| Feign | Spring Cloud OpenFeign в maintenance-режиме | Spring HTTP Interfaces |
 | WebSocket для Каркассона | Для пошаговой игры избыточно | REST + SSE; WS — только для real-time игр |
-| Браузер подключается к SSE игрового сервиса напрямую | Проверка JWT расползается по сервисам, внутренний сервис торчит наружу | SSE через прокси gateway (проверка JWT при подписке) |
-| Kafka для SSE fan-out | Долгие соединения и рассылку между инстансами не убирает, а задержка выше; каждый инстанс читает все события | Postgres LISTEN/NOTIFY |
 | Короткий поллинг событий по `afterSeq` (в том числе каждым потоком из журнала) | Задержка доставки до интервала опроса, нагрузка на БД растёт с числом зрителей | Postgres LISTEN/NOTIFY |
-| Long polling | Чтобы инстанс узнал о новом ходе, всё равно нужна рассылка между инстансами (или частый опрос БД): сложность как у SSE без его преимуществ | SSE |
-| Sticky routing игроков партии на один инстанс | Сложная балансировка, при падении инстанса теряется партия | Postgres LISTEN/NOTIFY |
-| Публичный SSE-контракт на собственных DTO gateway с разбором кадров | Лишний маппинг; одноимённые DTO gateway и сервиса дают коллизию схем в OpenAPI | Прокси байт как есть, DTO из sync-api сервиса |
-| Общий интерфейс SSE-ручки, который сервис реализует через свой `InputStream` | Самописная замена `SseEmitter` (кадры, flush, обрыв клиента) | Отдельный интерфейс-клиент, контроллер с `SseEmitter` (§2) |
+| Long polling | Ожидающим запросам всё равно нужна рассылка о новом ходе (или частый опрос БД): сложность как у SSE без его преимуществ | SSE |
 | seq/version у событий комнаты | Нет случая, где нужно версионировать состояние комнаты | События с полным значением + маркер против гонки со снапшотом |
 | Отдельные события на вход, выход, роль, ник, владельца | Лишняя сложность на клиенте | Одно `users-changed` с владельцем и полным списком |
-| Kafka-контракты в JSON | Совместимость схемы никто не проверяет | Protobuf |
-| Avro + Schema Registry | Лишний компонент инфраструктуры | Protobuf без registry |
-| grpc-spring-boot-starter (net.devh) | Отстаёт от новых версий Spring | gRPC-стартеры Spring Boot 4.1 |
 
 ### Стек
 
@@ -543,7 +515,6 @@ docker compose down -v                # остановить и удалить �
 
 | Вариант | Почему отклонён | Что вместо |
 |---|---|---|
-| Одна БД со схемой на сервис | Слабая изоляция | БД на сервис |
 | Entity в сервисном слое | Сервисы зависят от формата хранения (строки вместо enum, nullable id) | Модели + бин-маппер в репозитории |
 | MapStruct для entity ↔ модель | kapt замедляет сборку, тонкости с Kotlin data-классами | Ручные `@Component`-мапперы |
 | Двухслойный репозиторий только при нескольких хранилищах | Spring Data-интерфейс сам по себе возвращает только entity; разнобой между сервисами | Всегда фасад + `…PostgresqlRepository` |
@@ -552,23 +523,15 @@ docker compose down -v                # остановить и удалить �
 | `ApiException(HttpStatus, …)` из сервисов | Сервисный слой знает про HTTP | Иерархия классов ошибок в `libs/common-exception` |
 | Плоская иерархия ошибок | Нельзя одной веткой отличить ошибки клиента от ошибок сервера | `ClientException` / `ServerException` |
 | Класс на каждую бизнес-ошибку | Десятки мелких классов без пользы | Каталоги-фабрики `<Фича>Errors` |
-| Обработчик ошибок downstream-сервисов в `libs/common-exception` | Проброс ответа целевого сервиса — логика прокси, нужна только gateway | `DownstreamExceptionHandler` в каждом gateway |
-| Отдельный контейнер postgres на сервис локально | Лишние ресурсы на локальном стенде | Один контейнер, БД на сервис |
-| Создание ролей и БД init-скриптом в `/docker-entrypoint-initdb.d` | Выполняется только на пустом томе: новый сервис не получает БД на существующем стенде, а на VPS том не пересоздать | Идемпотентный скрипт в одноразовом `postgres-init` на каждом `up` |
-| Сырой CDC таблиц через Debezium | Схема таблиц становится публичным контрактом | Outbox + Debezium |
-| Outbox с поллингом из сервиса | Нагрузка на БД и больше кода | Debezium читает WAL |
-| Отдельные таблицы на каждую игру | Каждая игра тащит свои миграции и репозитории в общий сервис | JSONB-снапшот + журнал ходов |
+| Создание ролей и БД init-скриптом в `/docker-entrypoint-initdb.d` | Выполняется только на пустом томе: новая роль или БД не создаётся на существующем стенде, а на VPS том не пересоздать | Идемпотентный скрипт в одноразовом `postgres-init` на каждом `up` |
+| Отдельные таблицы на каждую игру | Каждая игра тащит свои миграции и репозитории в общий модуль | JSONB-снапшот + журнал ходов |
 | `bigint identity` для id | Предсказуемые id, неизвестны до вставки | UUID v7 |
 | UUID, генерируемый в приложении | Spring Data JDBC считает сущность с id существующей (нужен `Persistable`), а `RETURNING` закрывает потребность знать id | `DEFAULT uuidv7()` в БД |
 | Имена таблиц во множественном числе | Решили единообразно в единственном | Единственное число, `"user"` в кавычках |
-| Встраиваемая БД (SQLite/H2) вместо PostgreSQL | Теряется работа нескольких инстансов, пришлось бы переписать SQL и миграции (`uuidv7`, `jsonb`), а экономия ~200 МБ | Один PostgreSQL, БД на сервис |
-| Держать Kafka запущенной до первого события | ~1 ГБ RAM впустую | Брокер добавляется вместе с первым событием |
-| Kafka + Kafka Connect (Debezium) | Самая тяжёлая связка (~1,5–2 ГБ) для одного VPS | Redpanda + Debezium Server |
-| Redpanda + Kafka Connect | Kafka Connect тяжелее Debezium Server, а коннектор пока один | Redpanda + Debezium Server |
-| Debezium Server 3.7.0 | В образе нет `EventRouter` и бинарного конвертера | 3.6.x |
+| Встраиваемая БД (SQLite/H2) вместо PostgreSQL | Теряется работа нескольких инстансов, пришлось бы переписать SQL и миграции (`uuidv7`, `jsonb`), а экономия ~200 МБ | Один PostgreSQL |
 | Реплицировать в game только id пользователя | Нечего показать в комнате; email раскрывать другим игрокам нельзя | Реплика id + ник + аватар |
-| Собственные имена таблиц-реплик (`user_profile`) | Не видно, из какого сервиса и таблицы данные | `"<сервис>#<таблица>"` |
-| `changed_at`/`updated_at` в реплике для порядка событий | Колонки нет в оригинале; время зависит от часов разных инстансов источника | `version` в оригинале и реплике |
+| Собственные имена таблиц-реплик (`user_profile`) | Не видно, из какого модуля и таблицы данные | `"<модуль-владелец>#<модуль-источник>#<таблица>"` |
+| `changed_at`/`updated_at` в реплике для порядка событий | Колонки нет в оригинале; время ненадёжно для порядка изменений | `version` в оригинале и реплике |
 | Реплика без колонки порядка | Нет защиты от повторного проигрывания старого события | `version` |
 | Сборка образов на VPS | Gradle съедает 2–3 ГБ RAM рабочего сервера | Сборка в CI + registry |
 
@@ -586,16 +549,14 @@ docker compose down -v                # остановить и удалить �
 
 | Вариант | Почему отклонён | Что вместо |
 |---|---|---|
-| HMAC-подпись JWT | Общий секрет в нескольких сервисах, сложнее ротация | ES256 + JWKS |
+| HMAC-подпись JWT | Секрет проверки совпадает с секретом подписи, модуль-проверяющий может выпускать токены; сложнее ротация | ES256, проверка публичным ключом |
 | Google Authorization Code flow на бэкенде | Редиректы, хранение state/PKCE на сервере, сложнее | ID token с фронта |
 | Строгая ротация refresh без окна терпимости | Параллельные вкладки, обновляющие сессию одной кукой, разлогинивают пользователя | Окно терпимости 10 с |
 | BCrypt | Слабее против GPU-перебора, ограничение в 72 байта | Argon2id |
 | Фронт и API на разных доменах | Пришлось бы ставить `SameSite=None` и вводить CSRF-токены, а сторонние куки блокируются браузерами | Поддомены одного домена |
-| Один origin через reverse proxy (`/api` на домене фронта) | Решили держать API на отдельном поддомене | Поддомен API + CORS |
 | CORS с wildcard origin | С `allowCredentials` запрещён спецификацией, и любой сайт мог бы делать запросы с куками пользователя | Явный список `CORS_ALLOWED_ORIGINS` |
-| Origin админки (3001) в CORS user-gateway | Админка ходит только в admin-gateway; лишний origin расширяет круг сайтов с доступом к сессии игрока | Только origin портала |
+| Origin админки (3001) в CORS портала (`/api/**`) | Админке нужны только `/api/admin/**`; лишний origin расширяет круг сайтов с доступом к сессии игрока | Origin портала на `/api/**`, origin админки — только на `/api/admin/**` |
 | `http://localhost:5173` в CORS по умолчанию | Порт Vite из первой настройки, портал живёт на 3000 | `http://localhost:3000` |
-| Куки ставит user-auth | Работа с куками размазывается по сервисам | Куки только в gateway |
 | Автопривязка Google по email (при verified email у нас и в Google) | Аккаунты создаёт только Google, подтверждать email у нас нечем | Только явная привязка; коллизия email — 409 `ACCOUNT_LINK_REQUIRED` |
 | Уникальный ник | Не нужен: игроки различаются по id | Неуникальный ник |
 | Google-аккаунту: ник из профиля Google (`given_name`) | Другие игроки видели бы настоящее имя | Сгенерированный `player-xxxxxx` |
@@ -632,7 +593,6 @@ docker compose down -v                # остановить и удалить �
 | Heartbeat SSE раз в 15 с | Обрыв замечался за 60–90 с (первая запись в закрытый сокет проходит, а звеньев два) | 5 с, аренда 20 с |
 | Передавать владение самому раннему, даже отсутствующему | Владельцем на время становился отсутствующий | Только присутствующим; отсутствующие игроки партии владельцами не становятся |
 | Отклонять ход, пришедший после дедлайна, до срабатывания джоба | Лишний код ошибки ради окна ~1 с | Ход принимается |
-| ShedLock для частого построчного джоба (`RoomOwnerGraceJob`) | Ничего не добавляет к `FOR UPDATE SKIP LOCKED`, а при падении инстанса с захваченным локом джоб простаивает до `lockAtMostFor` | Без ShedLock, работу делят инстансы (§6) |
 | Удаление комнаты владельцем | Хватает автоудаления пустых комнат (`EmptyRoomCleanupJob`), а ручное удаление выкидывает остальных участников и стирает историю партий | Только автоудаление пустых комнат |
 
 ### Настройки и таймеры
@@ -666,5 +626,5 @@ docker compose down -v                # остановить и удалить �
 |---|---|---|
 | Jib | Нужен отдельный шаг `jibDockerBuild` перед compose | Multi-stage Dockerfile |
 | bootBuildImage | Медленно и громоздко | Multi-stage Dockerfile |
-| init.sql только с очисткой, без фикстур | Тесты создавали бы данные через API, медленнее и шумнее | init.sql с фикстурами + `TestData` |
-| Программная очистка БД из кода теста | Состояние не видно из ресурсов | `init.sql` через `@Sql` |
+| init-скрипты только с очисткой, без фикстур | Тесты создавали бы данные через API, медленнее и шумнее | `init/<модуль>.sql` с фикстурами + `TestData` |
+| Программная очистка БД из кода теста | Состояние не видно из ресурсов | `init/<модуль>.sql` через `@Sql` |

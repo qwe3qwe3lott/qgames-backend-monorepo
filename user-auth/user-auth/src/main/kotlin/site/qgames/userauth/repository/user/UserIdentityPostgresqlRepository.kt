@@ -19,6 +19,6 @@ interface UserIdentityPostgresqlRepository : CrudRepository<UserIdentityEntity, 
 
     /** Возвращает 0, если хеш уже сменил параллельный запрос. */
     @Modifying
-    @Query("UPDATE user_identity SET password_hash = :newHash WHERE id = :id AND password_hash = :expectedHash")
+    @Query("UPDATE \"user_auth#user_identity\" SET password_hash = :newHash WHERE id = :id AND password_hash = :expectedHash")
     fun updatePasswordHash(id: UUID, expectedHash: String, newHash: String): Int
 }

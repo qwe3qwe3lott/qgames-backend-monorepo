@@ -10,7 +10,7 @@ data class UserModel(
     val nickname: String,
     val avatar: UserAvatar,
     val createdAt: Instant,
-    /** Версия строки: оптимистичная блокировка и порядок CDC-событий. */
+    /** Версия строки: оптимистичная блокировка и порядок событий профиля. */
     val version: Long,
 )
 

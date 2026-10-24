@@ -6,7 +6,7 @@ import java.time.Instant
 import java.util.UUID
 
 /** Строка таблицы user_identity. */
-@Table("user_identity")
+@Table("user_auth#user_identity")
 data class UserIdentityEntity(
     @Id
     val id: UUID? = null,

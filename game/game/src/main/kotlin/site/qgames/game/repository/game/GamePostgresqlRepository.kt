@@ -11,10 +11,10 @@ import site.qgames.game.util.getUuid
 class GamePostgresqlRepository(private val jdbcClient: JdbcClient) {
 
     fun findAll(): List<GameEntity> =
-        jdbcClient.sql("SELECT $COLUMNS FROM game ORDER BY sort_order, code").query(mapper).list()
+        jdbcClient.sql("SELECT $COLUMNS FROM \"game#game\" ORDER BY sort_order, code").query(mapper).list()
 
     fun findByCode(code: String): GameEntity? =
-        jdbcClient.sql("SELECT $COLUMNS FROM game WHERE code = :code")
+        jdbcClient.sql("SELECT $COLUMNS FROM \"game#game\" WHERE code = :code")
             .param("code", code)
             .query(mapper)
             .optional()

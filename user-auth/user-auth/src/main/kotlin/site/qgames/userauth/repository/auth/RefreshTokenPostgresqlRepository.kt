@@ -14,17 +14,17 @@ interface RefreshTokenPostgresqlRepository : CrudRepository<RefreshTokenEntity, 
 
     /** Отзывает токен как заменённый новым. Возвращает 0, если токен уже отозван, в том числе параллельным запросом. */
     @Modifying
-    @Query("UPDATE refresh_token SET revoked_at = :now, rotated_at = :now WHERE id = :id AND revoked_at IS NULL")
+    @Query("UPDATE \"user_auth#refresh_token\" SET revoked_at = :now, rotated_at = :now WHERE id = :id AND revoked_at IS NULL")
     fun rotate(id: UUID, now: Instant): Int
 
     @Modifying
-    @Query("UPDATE refresh_token SET revoked_at = :now WHERE family_id = :familyId AND revoked_at IS NULL")
+    @Query("UPDATE \"user_auth#refresh_token\" SET revoked_at = :now WHERE family_id = :familyId AND revoked_at IS NULL")
     fun revokeFamily(familyId: UUID, now: Instant): Int
 
     @Modifying
-    @Query("UPDATE refresh_token SET revoked_at = :now WHERE user_id = :userId AND revoked_at IS NULL")
+    @Query("UPDATE \"user_auth#refresh_token\" SET revoked_at = :now WHERE user_id = :userId AND revoked_at IS NULL")
     fun revokeAllByUserId(userId: UUID, now: Instant): Int
 
-    @Query("SELECT EXISTS (SELECT 1 FROM refresh_token WHERE family_id = :familyId AND revoked_at IS NULL)")
+    @Query("SELECT EXISTS (SELECT 1 FROM \"user_auth#refresh_token\" WHERE family_id = :familyId AND revoked_at IS NULL)")
     fun existsActiveInFamily(familyId: UUID): Boolean
 }

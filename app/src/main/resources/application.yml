@@ -1,0 +1,132 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: qgames
+  threads:
+    virtual:
+      enabled: true
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/qgames}
+    username: ${DB_USERNAME:qgames}
+    password: ${DB_PASSWORD:qgames}
+  liquibase:
+    # Сводный master: подключает changelog'и модулей (db/changelog/<модуль>/) и служебные таблицы приложения.
+    change-log: classpath:db/changelog/db.changelog-master.yaml
+  modulith:
+    events:
+      # Таблицу event_publication создаёт Liquibase-миграция app, а не Spring Modulith.
+      jdbc:
+        schema-initialization:
+          enabled: false
+      # Доставленная публикация удаляется: таблица не растёт (как прежний outbox).
+      completion-mode: delete
+      # Публикации, не доставленные до остановки (упал слушатель, рестарт), переотправляются при старте.
+      republish-outstanding-events-on-restart: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+
+qgames:
+  # --- Приложение: Security-цепочки портала и админки, CORS ---
+  security:
+    # Access-JWT игроков проверяются публичной частью ключа подписи user-auth, админов — admin-auth.
+    portal:
+      issuer: ${qgames.auth.jwt.issuer}
+      public-key: ${qgames.auth.jwt.public-key}
+    admin:
+      issuer: ${qgames.admin-auth.jwt.issuer}
+      public-key: ${qgames.admin-auth.jwt.public-key}
+  cors:
+    # Точные origin через запятую, без wildcard. У каждого фронта — свои пути: портал — /api/** (кроме
+    # /api/admin/**), админка — /api/admin/**. В проде — домены портала и админки.
+    portal:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+    admin:
+      allowed-origins: ${ADMIN_CORS_ALLOWED_ORIGINS:http://localhost:3001}
+
+  # --- Модуль user-auth: аккаунты игроков, вход, JWT ---
+  auth:
+    jwt:
+      issuer: qgames-user-auth
+      key-id: ${JWT_KEY_ID:dev-key-1}
+      private-key: ${JWT_PRIVATE_KEY_LOCATION:file:../docker/dev-keys/jwt-private.pem}
+      public-key: ${JWT_PUBLIC_KEY_LOCATION:file:../docker/dev-keys/jwt-public.pem}
+      access-token-ttl: 15m
+    refresh-token-ttl: 30d
+    refresh-reuse-grace: 10s
+    google:
+      client-ids: ${GOOGLE_CLIENT_IDS:}
+      jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
+      issuers: https://accounts.google.com,accounts.google.com
+    cookies:
+      # Браузеры считают localhost безопасным контекстом, поэтому Secure-куки работают и по http://localhost.
+      secure: ${COOKIES_SECURE:true}
+
+  # --- Модуль admin-auth: администраторы, вход, JWT админки (свой ключ и issuer) ---
+  admin-auth:
+    jwt:
+      issuer: qgames-admin-auth
+      key-id: ${ADMIN_JWT_KEY_ID:admin-dev-key-1}
+      private-key: ${ADMIN_JWT_PRIVATE_KEY_LOCATION:file:../docker/dev-keys/admin-jwt-private.pem}
+      public-key: ${ADMIN_JWT_PUBLIC_KEY_LOCATION:file:../docker/dev-keys/admin-jwt-public.pem}
+      access-token-ttl: 5m
+    # Скользящий: каждая ротация выдаёт refresh-токен на полный срок.
+    refresh-token-ttl: 15m
+    refresh-reuse-grace: 10s
+    # Первый администратор. Значений по умолчанию нет: без env бутстрап выключен (docker-compose задаёт admin/admin).
+    bootstrap:
+      login: ${ADMIN_BOOTSTRAP_LOGIN:}
+      password: ${ADMIN_BOOTSTRAP_PASSWORD:}
+    cookies:
+      secure: ${COOKIES_SECURE:true}
+
+  # --- Модуль game: комнаты и партии всех игр ---
+  game:
+    catalog:
+      # Как часто отменять партии и удалять комнаты неопубликованных игр (NotPublishedGameCleanupJob).
+      not-published-cleanup-interval: 1m
+      not-published-cleanup-enabled: true
+    room:
+      # Комната без присутствующих участников удаляется, когда пустует дольше этого времени (EmptyRoomCleanupJob).
+      # Отсутствующие игроки идущей партии комнату не держат: партия при удалении отменяется.
+      empty-ttl: ${ROOM_EMPTY_TTL:30m}
+      cleanup-interval: 1m
+      cleanup-enabled: true
+      # Таймеров выхода нет: закрывший последний поток участник сразу удаляется из комнаты (игрок идущей партии
+      # остаётся отсутствующим до её конца). Ушёл владелец — у комнаты нет владельца, и столько он может вернуть
+      # владение, войдя снова; потом владение получает присутствующий участник (RoomOwnerGraceJob). Новая комната
+      # создаётся с таким же окном за создателем: подключившись, он станет владельцем.
+      owner-grace: 15s
+      # Как часто передавать владение в комнатах с истёкшим окном владения (RoomOwnerGraceJob).
+      owner-grace-check-interval: 1s
+      owner-grace-enabled: true
+      # Подключения к потоку событий комнаты (SSE). Открытый поток — это нахождение в комнате.
+      connection:
+        # Аренда подключения: процесс продлевает её каждые heartbeat-interval. Если процесс упал, через lease его
+        # подключения удаляются (RoomConnectionCleanupJob), а пользователи уходят из комнат, как при закрытии потока.
+        # Аренда — 4 интервала пульса: живое подключение не истечёт, даже если пара продлений задержится.
+        lease: 20s
+        # Комментарий ": ping" во все потоки и продление аренды (RoomConnectionHeartbeatJob). По неудачной записи ping
+        # замечается обрыв клиента, поэтому интервал определяет, как быстро уходит закрывший вкладку пользователь.
+        heartbeat-interval: 5s
+        heartbeat-enabled: true
+        cleanup-interval: 5s
+        cleanup-enabled: true
+    session:
+      # Как часто искать партии с истёкшим временем хода (MoveTimeoutJob).
+      timeout-check-interval: 1s
+      timeout-enabled: true
+      # Кеш состояний партий по проекциям зрителей (SessionStateCache): по закешированному состоянию на seq K
+      # доигрываются только события K+1…N. Потеря записи безопасна — состояние соберётся из журнала.
+      state-cache:
+        max-size: 10000
+        expire-after-access: 30m

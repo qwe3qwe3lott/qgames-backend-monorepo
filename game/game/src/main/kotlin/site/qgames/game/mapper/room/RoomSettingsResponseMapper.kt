@@ -1,21 +1,21 @@
 package site.qgames.game.mapper.room
 
 import org.springframework.stereotype.Component
-import site.qgames.game.gatewayapi.dto.game.GameCode
-import site.qgames.game.gatewayapi.dto.room.CheckersSettingsDto
-import site.qgames.game.gatewayapi.dto.room.CheckersSettingsLimitsDto
-import site.qgames.game.gatewayapi.dto.room.GameSettingsDto
+import site.qgames.game.api.dto.game.GameCode
+import site.qgames.game.api.dto.room.CheckersSettingsDto
+import site.qgames.game.api.dto.room.CheckersSettingsLimitsDto
+import site.qgames.game.api.dto.room.GameSettingsDto
 import site.qgames.games.checkers.CheckersSettings
 import site.qgames.games.checkers.CheckersSettingsLimits
 import site.qgames.games.checkers.CheckersVariant
-import site.qgames.game.gatewayapi.dto.room.CheckersVariant as CheckersVariantDto
-import site.qgames.game.gatewayapi.dto.room.GameSettingsLimitsDto
-import site.qgames.game.gatewayapi.dto.room.IntRangeDto
-import site.qgames.game.gatewayapi.dto.room.NothingSettingsDto
-import site.qgames.game.gatewayapi.dto.room.NothingSettingsLimitsDto
-import site.qgames.game.gatewayapi.dto.room.RoomSettingsDto
-import site.qgames.game.gatewayapi.dto.room.TimeControlDto
-import site.qgames.game.gatewayapi.dto.room.TimeControlMode
+import site.qgames.game.api.dto.room.CheckersVariant as CheckersVariantDto
+import site.qgames.game.api.dto.room.GameSettingsLimitsDto
+import site.qgames.game.api.dto.room.IntRangeDto
+import site.qgames.game.api.dto.room.NothingSettingsDto
+import site.qgames.game.api.dto.room.NothingSettingsLimitsDto
+import site.qgames.game.api.dto.room.RoomSettingsDto
+import site.qgames.game.api.dto.room.TimeControlDto
+import site.qgames.game.api.dto.room.TimeControlMode
 import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.model.room.RoomTimeControlMode
 import site.qgames.game.model.room.RoomTimeControlModel

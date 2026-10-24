@@ -1,5 +1,7 @@
 package site.qgames.adminauth.service.auth
 
+import org.springframework.beans.factory.annotation.Qualifier
+import site.qgames.adminauth.config.CryptoConfig
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -10,7 +12,7 @@ import site.qgames.adminauth.repository.admin.AdminRepository
 @Service
 class LoginService(
     private val adminRepository: AdminRepository,
-    private val passwordEncoder: PasswordEncoder,
+    @Qualifier(CryptoConfig.PASSWORD_ENCODER) private val passwordEncoder: PasswordEncoder,
     private val tokenService: TokenService,
 ) {
 

@@ -1,0 +1,13 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-18-CREATE-game#room
+      author: A Kozlov
+      runInTransaction: true
+      changes:
+        - sqlFile:
+            path: SQL/2026-10-18-CREATE-game#room.sql
+            relativeToChangelogFile: true
+      rollback:
+        - sqlFile:
+            path: SQL/2026-10-18-CREATE-game#room-rollback.sql
+            relativeToChangelogFile: true

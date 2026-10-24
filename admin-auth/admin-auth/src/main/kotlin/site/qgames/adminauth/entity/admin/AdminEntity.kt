@@ -6,7 +6,7 @@ import java.time.Instant
 import java.util.UUID
 
 /** Строка таблицы admin. */
-@Table("admin")
+@Table("admin_auth#admin")
 data class AdminEntity(
     @Id
     val id: UUID? = null,

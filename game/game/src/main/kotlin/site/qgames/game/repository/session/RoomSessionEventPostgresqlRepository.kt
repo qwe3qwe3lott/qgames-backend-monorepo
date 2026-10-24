@@ -16,7 +16,7 @@ class RoomSessionEventPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun insert(event: RoomSessionEventEntity) {
         jdbcClient.sql(
             """
-            INSERT INTO room_session_event (session_id, seq, method, code, data, created_at)
+            INSERT INTO "game#room_session_event" (session_id, seq, method, code, data, created_at)
             VALUES (:sessionId, :seq, :method, :code, CAST(:data AS jsonb), :createdAt)
             """,
         )
@@ -33,7 +33,7 @@ class RoomSessionEventPostgresqlRepository(private val jdbcClient: JdbcClient) {
         jdbcClient.sql(
             """
             SELECT session_id, seq, method, code, data::text AS data, created_at
-            FROM room_session_event
+            FROM "game#room_session_event"
             WHERE session_id = :sessionId AND seq BETWEEN :fromSeq AND :toSeq
             ORDER BY seq
             """,

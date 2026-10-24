@@ -11,7 +11,7 @@ interface AdminPostgresqlRepository : CrudRepository<AdminEntity, UUID> {
 
     fun findByLogin(login: String): AdminEntity?
 
-    @Query("SELECT * FROM admin ORDER BY created_at, id")
+    @Query("SELECT * FROM \"admin_auth#admin\" ORDER BY created_at, id")
     fun findAllOrderByCreatedAt(): List<AdminEntity>
 
     /**
@@ -21,8 +21,8 @@ interface AdminPostgresqlRepository : CrudRepository<AdminEntity, UUID> {
     @Modifying
     @Query(
         """
-        INSERT INTO admin (login, password_hash)
-        SELECT :login, :passwordHash WHERE NOT EXISTS (SELECT 1 FROM admin)
+        INSERT INTO "admin_auth#admin" (login, password_hash)
+        SELECT :login, :passwordHash WHERE NOT EXISTS (SELECT 1 FROM "admin_auth#admin")
         ON CONFLICT (login) DO NOTHING
         """,
     )

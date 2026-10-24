@@ -6,14 +6,16 @@ import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.media.Content
 import io.swagger.v3.oas.models.media.MediaType
 import io.swagger.v3.oas.models.media.Schema
-import org.springdoc.core.customizers.OpenApiCustomizer
+import org.springdoc.core.customizers.GlobalOpenApiCustomizer
 import org.springframework.http.ProblemDetail
 
 /**
  * Все ошибки (4xx/5xx) отдаются как ProblemDetail с полем `code`. Чтобы не повторять тело ответа в каждой
  * аннотации `@ApiResponse`, схема подставляется здесь; в аннотации остаются только статус и описание.
+ *
+ * [GlobalOpenApiCustomizer]: применяется ко всем группам OpenAPI (portal, admin).
  */
-class ProblemDetailResponsesCustomizer : OpenApiCustomizer {
+class ProblemDetailResponsesCustomizer : GlobalOpenApiCustomizer {
 
     override fun customise(openApi: OpenAPI) {
         val components = openApi.components ?: Components().also { openApi.components = it }

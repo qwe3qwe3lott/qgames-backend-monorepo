@@ -29,7 +29,7 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
     ): RoomSessionEntity {
         val session = jdbcClient.sql(
             """
-            INSERT INTO room_session (room_id, game_code, status, state_schema_version, seed, time_control_mode,
+            INSERT INTO "game#room_session" (room_id, game_code, status, state_schema_version, seed, time_control_mode,
                                       move_seconds, game_settings, created_at)
             VALUES (:roomId, :gameCode, :status, :stateSchemaVersion, :seed, :timeControlMode,
                     :moveSeconds, CAST(:gameSettings AS jsonb), :now)
@@ -48,7 +48,7 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .query(mapper)
             .single()
         players.forEachIndexed { seat, userId ->
-            jdbcClient.sql("INSERT INTO room_session_player (session_id, seat, user_id) VALUES (:sessionId, :seat, :userId)")
+            jdbcClient.sql("INSERT INTO \"game#room_session_player\" (session_id, seat, user_id) VALUES (:sessionId, :seat, :userId)")
                 .param("sessionId", session.id)
                 .param("seat", seat)
                 .param("userId", userId)
@@ -58,17 +58,17 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
     }
 
     fun findById(id: UUID): RoomSessionEntity? =
-        jdbcClient.sql("SELECT $COLUMNS FROM room_session WHERE id = :id").param("id", id).query(mapper).optional().orElse(null)
+        jdbcClient.sql("SELECT $COLUMNS FROM \"game#room_session\" WHERE id = :id").param("id", id).query(mapper).optional().orElse(null)
 
     fun findLatest(roomId: UUID): RoomSessionEntity? =
-        jdbcClient.sql("SELECT $COLUMNS FROM room_session WHERE room_id = :roomId ORDER BY created_at DESC, id DESC LIMIT 1")
+        jdbcClient.sql("SELECT $COLUMNS FROM \"game#room_session\" WHERE room_id = :roomId ORDER BY created_at DESC, id DESC LIMIT 1")
             .param("roomId", roomId)
             .query(mapper)
             .optional()
             .orElse(null)
 
     fun findPlayers(sessionId: UUID): List<UUID> =
-        jdbcClient.sql("SELECT user_id FROM room_session_player WHERE session_id = :sessionId ORDER BY seat")
+        jdbcClient.sql("SELECT user_id FROM \"game#room_session_player\" WHERE session_id = :sessionId ORDER BY seat")
             .param("sessionId", sessionId)
             .query { rs, _ -> rs.getUuid("user_id")!! }
             .list()
@@ -82,8 +82,8 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
         jdbcClient.sql(
             """
             SELECT s.id
-            FROM room_session s
-                     JOIN game g ON g.code = s.game_code
+            FROM "game#room_session" s
+                     JOIN "game#game" g ON g.code = s.game_code
             WHERE s.status = 'IN_PROGRESS' AND s.move_deadline <= :now
               AND g.publish_status <> 'NOT_PUBLISHED'
             ORDER BY s.move_deadline
@@ -99,7 +99,7 @@ class RoomSessionPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun advance(id: UUID, lastSeq: Long, status: String, moveDeadline: Instant?, finishedAt: Instant?) {
         jdbcClient.sql(
             """
-            UPDATE room_session
+            UPDATE "game#room_session"
             SET last_seq = :lastSeq, status = :status, move_deadline = :moveDeadline, finished_at = :finishedAt
             WHERE id = :id
             """,

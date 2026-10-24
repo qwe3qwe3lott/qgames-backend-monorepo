@@ -1,22 +1,9 @@
-# Локальный запуск всего проекта: docker compose up --build
-# Наружу публикуются user-gateway (8080) и admin-gateway (8083), Swagger сервисов (8081, 8082, 8084 — только для
-# локальной разработки), PostgreSQL (5432) и Redpanda для IDE (19092).
-
-x-service-build: &service-build
-  context: .
-  dockerfile: docker/service.Dockerfile
-
-x-service-healthcheck: &service-healthcheck
-  interval: 10s
-  timeout: 5s
-  retries: 12
-  start_period: 40s
+# Локальный запуск всего проекта: docker compose up --build -d --wait
+# Наружу публикуются приложение (8080: API портала и админки, Swagger) и PostgreSQL (5432) для IDE.
 
 services:
   postgres:
     image: postgres:18-alpine
-    # logical WAL — для Debezium (CDC). max_slot_wal_keep_size не даёт WAL бесконечно расти, если Debezium лежит.
-    command: ["postgres", "-c", "wal_level=logical", "-c", "max_slot_wal_keep_size=1GB"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -30,204 +17,56 @@ services:
       timeout: 5s
       retries: 10
 
-  # Роли и БД сервисов. Скрипт идемпотентный и выполняется на каждом up (а не через initdb, который срабатывает
-  # только на пустом томе), поэтому новый сервис получает БД без пересоздания тома.
+  # Роль и БД приложения (не суперпользователь). Скрипт идемпотентный и выполняется на каждом up (а не через initdb,
+  # который срабатывает только на пустом томе).
   postgres-init:
     image: postgres:18-alpine
     environment:
       PGHOST: postgres
       PGUSER: postgres
       PGPASSWORD: postgres
-    command:
-      - psql
-      - -v
-      - ON_ERROR_STOP=1
-      - -v
-      - user_auth_password=user_auth
-      - -v
-      - game_password=game
-      - -v
-      - admin_auth_password=admin_auth
-      - -f
-      - /init.sql
+    command: ["psql", "-v", "ON_ERROR_STOP=1", "-v", "qgames_password=qgames", "-f", "/init.sql"]
     volumes:
       - ./docker/postgres/init.sql:/init.sql:ro
     depends_on:
       postgres:
         condition: service_healthy
 
-  # Брокер с протоколом Kafka. Топики создаёт redpanda-init (автосоздание выключено, чтобы настройки топиков были явными).
-  redpanda:
-    image: redpandadata/redpanda:v26.2.5
-    command:
-      - redpanda
-      - start
-      - --mode
-      - dev-container
-      - --smp
-      - "1"
-      - --memory
-      - 512M
-      - --kafka-addr
-      - internal://0.0.0.0:9092,external://0.0.0.0:19092
-      - --advertise-kafka-addr
-      - internal://redpanda:9092,external://localhost:19092
-      - --set
-      - redpanda.auto_create_topics_enabled=false
-    ports:
-      - "19092:19092"
-    volumes:
-      - redpanda-data:/var/lib/redpanda/data
-    healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true'"]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-
-  # Одноразовая инициализация топиков. CDC-топики компактируемые: по ключу хранится последний снапшот,
-  # поэтому новый потребитель может собрать реплику с нуля.
-  redpanda-init:
-    image: redpandadata/redpanda:v26.2.5
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - >-
-        rpk topic create outbox.event.user-auth.user-profile -p 3 -c cleanup.policy=compact -X brokers=redpanda:9092
-        || rpk topic describe outbox.event.user-auth.user-profile -X brokers=redpanda:9092 > /dev/null
-    depends_on:
-      redpanda:
-        condition: service_healthy
-
-  # CDC: читает outbox_event из WAL user_auth и публикует события в Redpanda (один Debezium Server на БД-источник).
-  debezium-user-auth:
-    image: quay.io/debezium/server:3.6.3.Final
-    environment:
-      JAVA_OPTS: -Xmx256m
-    volumes:
-      - ./docker/debezium/user-auth.properties:/debezium/config/application.properties:ro
-      - debezium-data:/debezium/data
-    depends_on:
-      # Публикацию qgames_outbox создаёт миграция user-auth.
-      user-auth:
-        condition: service_healthy
-      redpanda-init:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ["CMD", "curl", "-fs", "http://localhost:8080/q/health/ready"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 20s
-
-  user-auth:
+  # Модульный монолит: модули user-auth, admin-auth, game в одном процессе.
+  app:
     build:
-      <<: *service-build
-      args:
-        SERVICE: user-auth
+      context: .
+      dockerfile: docker/app.Dockerfile
     environment:
-      DB_URL: jdbc:postgresql://postgres:5432/user_auth
-      DB_USERNAME: user_auth
-      DB_PASSWORD: user_auth
+      DB_URL: jdbc:postgresql://postgres:5432/qgames
+      DB_USERNAME: qgames
+      DB_PASSWORD: qgames
+      # Ключи подписи JWT игроков (user-auth) и администраторов (admin-auth) — разные.
       JWT_KEY_ID: dev-key-1
       JWT_PRIVATE_KEY_LOCATION: file:/keys/jwt-private.pem
       JWT_PUBLIC_KEY_LOCATION: file:/keys/jwt-public.pem
+      ADMIN_JWT_KEY_ID: admin-dev-key-1
+      ADMIN_JWT_PRIVATE_KEY_LOCATION: file:/keys/admin-jwt-private.pem
+      ADMIN_JWT_PUBLIC_KEY_LOCATION: file:/keys/admin-jwt-public.pem
       GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
-    volumes:
-      - ./docker/dev-keys:/keys:ro
-    ports:
-      - "8081:8081"
-    depends_on:
-      postgres-init:
-        condition: service_completed_successfully
-    healthcheck:
-      <<: *service-healthcheck
-      test: ["CMD", "curl", "-fs", "http://localhost:8081/actuator/health/readiness"]
-
-  user-gateway:
-    build:
-      <<: *service-build
-      args:
-        SERVICE: user-gateway
-    environment:
-      USER_AUTH_URL: http://user-auth:8081
-      GAME_URL: http://game:8082
-    ports:
-      - "8080:8080"
-    depends_on:
-      user-auth:
-        condition: service_healthy
-      game:
-        condition: service_healthy
-    healthcheck:
-      <<: *service-healthcheck
-      test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health/readiness"]
-
-  game:
-    build:
-      <<: *service-build
-      args:
-        SERVICE: game
-    environment:
-      DB_URL: jdbc:postgresql://postgres:5432/game
-      DB_USERNAME: game
-      DB_PASSWORD: game
-      KAFKA_BOOTSTRAP_SERVERS: redpanda:9092
-    ports:
-      - "8082:8082"
-    depends_on:
-      postgres-init:
-        condition: service_completed_successfully
-      redpanda-init:
-        condition: service_completed_successfully
-    healthcheck:
-      <<: *service-healthcheck
-      test: ["CMD", "curl", "-fs", "http://localhost:8082/actuator/health/readiness"]
-
-  # Аутентификация администраторов админ-панели: свой ключ подписи JWT и issuer, токен игрока в админку не проходит.
-  admin-auth:
-    build:
-      <<: *service-build
-      args:
-        SERVICE: admin-auth
-    environment:
-      DB_URL: jdbc:postgresql://postgres:5432/admin_auth
-      DB_USERNAME: admin_auth
-      DB_PASSWORD: admin_auth
-      JWT_KEY_ID: admin-dev-key-1
-      JWT_PRIVATE_KEY_LOCATION: file:/keys/admin-jwt-private.pem
-      JWT_PUBLIC_KEY_LOCATION: file:/keys/admin-jwt-public.pem
       # Первый администратор: создаётся при старте, только если администраторов ещё нет. Только для локального стенда.
       ADMIN_BOOTSTRAP_LOGIN: admin
       ADMIN_BOOTSTRAP_PASSWORD: admin
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:3000}
+      ADMIN_CORS_ALLOWED_ORIGINS: ${ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:3001}
     volumes:
       - ./docker/dev-keys:/keys:ro
     ports:
-      - "8084:8084"
+      - "8080:8080"
     depends_on:
       postgres-init:
         condition: service_completed_successfully
     healthcheck:
-      <<: *service-healthcheck
-      test: ["CMD", "curl", "-fs", "http://localhost:8084/actuator/health/readiness"]
-
-  # Точка входа админ-панели (http://localhost:3001): куки admin_access_token / admin_refresh_token.
-  admin-gateway:
-    build:
-      <<: *service-build
-      args:
-        SERVICE: admin-gateway
-    environment:
-      ADMIN_AUTH_URL: http://admin-auth:8084
-      CORS_ALLOWED_ORIGINS: ${ADMIN_CORS_ALLOWED_ORIGINS:-http://localhost:3001}
-    ports:
-      - "8083:8083"
-    depends_on:
-      admin-auth:
-        condition: service_healthy
-    healthcheck:
-      <<: *service-healthcheck
-      test: ["CMD", "curl", "-fs", "http://localhost:8083/actuator/health/readiness"]
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
 
 volumes:
   postgres-data:
-  redpanda-data:
-  debezium-data:

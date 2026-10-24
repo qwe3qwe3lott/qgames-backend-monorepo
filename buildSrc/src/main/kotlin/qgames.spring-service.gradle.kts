@@ -1,4 +1,4 @@
-// Конвенция для запускаемого Spring Boot сервиса.
+// Конвенция для запускаемого Spring Boot приложения (оно одно — app).
 plugins {
     id("qgames.kotlin-library")
     id("org.springframework.boot")

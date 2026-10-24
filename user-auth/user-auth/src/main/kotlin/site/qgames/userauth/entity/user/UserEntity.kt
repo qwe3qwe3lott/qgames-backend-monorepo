@@ -6,7 +6,7 @@ import org.springframework.data.relational.core.mapping.Table
 import java.time.Instant
 import java.util.UUID
 
-@Table("user")
+@Table("user_auth#user")
 data class UserEntity(
     @Id
     val id: UUID? = null,
@@ -15,7 +15,7 @@ data class UserEntity(
     val avatar: String,
     val createdAt: Instant,
     /**
-     * Оптимистичная блокировка и порядок CDC-событий: растёт при каждом изменении строки
+     * Оптимистичная блокировка и порядок событий профиля: растёт при каждом изменении строки
      * (в собственных UPDATE-запросах увеличивается вручную).
      */
     @Version

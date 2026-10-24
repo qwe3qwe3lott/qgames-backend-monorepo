@@ -27,7 +27,7 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
     ): RoomEntity =
         jdbcClient.sql(
             """
-            INSERT INTO room (game_code, owner_grace_user_id, owner_grace_deadline, status, empty_since, time_control_mode,
+            INSERT INTO "game#room" (game_code, owner_grace_user_id, owner_grace_deadline, status, empty_since, time_control_mode,
                               move_seconds, game_settings, created_at)
             VALUES (:gameCode, :ownerGraceUserId, :ownerGraceDeadline, :status, :now, :timeControlMode, :moveSeconds,
                     CAST(:gameSettings AS jsonb), :now)
@@ -46,10 +46,10 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .single()
 
     fun findById(id: UUID): RoomEntity? =
-        jdbcClient.sql("SELECT $COLUMNS FROM room WHERE id = :id").param("id", id).query(mapper).optional().orElse(null)
+        jdbcClient.sql("SELECT $COLUMNS FROM \"game#room\" WHERE id = :id").param("id", id).query(mapper).optional().orElse(null)
 
     fun lockById(id: UUID): RoomEntity? =
-        jdbcClient.sql("SELECT $COLUMNS FROM room WHERE id = :id FOR UPDATE")
+        jdbcClient.sql("SELECT $COLUMNS FROM \"game#room\" WHERE id = :id FOR UPDATE")
             .param("id", id)
             .query(mapper)
             .optional()
@@ -57,7 +57,7 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
 
     /** Как [lockById], но уже заблокированную другим запросом комнату пропускает (SKIP LOCKED) и возвращает null. */
     fun lockByIdSkipLocked(id: UUID): RoomEntity? =
-        jdbcClient.sql("SELECT $COLUMNS FROM room WHERE id = :id FOR UPDATE SKIP LOCKED")
+        jdbcClient.sql("SELECT $COLUMNS FROM \"game#room\" WHERE id = :id FOR UPDATE SKIP LOCKED")
             .param("id", id)
             .query(mapper)
             .optional()
@@ -74,9 +74,9 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
             """
             SELECT r.id, r.game_code, r.owner_id, r.owner_grace_user_id, r.owner_grace_deadline, r.status, r.current_session_id, r.empty_since, r.time_control_mode,
                    r.move_seconds, r.game_settings::text AS game_settings, r.created_at
-            FROM room r
-                     JOIN room_session s ON s.id = r.current_session_id
-                     JOIN game g ON g.code = r.game_code
+            FROM "game#room" r
+                     JOIN "game#room_session" s ON s.id = r.current_session_id
+                     JOIN "game#game" g ON g.code = r.game_code
             WHERE s.id = :sessionId AND s.status = 'IN_PROGRESS' AND s.move_deadline <= :now
               AND g.publish_status <> 'NOT_PUBLISHED'
             FOR UPDATE OF r SKIP LOCKED
@@ -91,7 +91,7 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun update(room: RoomEntity) {
         jdbcClient.sql(
             """
-            UPDATE room
+            UPDATE "game#room"
             SET owner_id = :ownerId, owner_grace_user_id = :ownerGraceUserId, owner_grace_deadline = :ownerGraceDeadline,
                 status = :status, current_session_id = :currentSessionId, empty_since = :emptySince,
                 time_control_mode = :timeControlMode, move_seconds = :moveSeconds,
@@ -116,8 +116,8 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
         jdbcClient.sql(
             """
             SELECT r.id
-            FROM room r
-                     JOIN game g ON g.code = r.game_code
+            FROM "game#room" r
+                     JOIN "game#game" g ON g.code = r.game_code
             WHERE g.publish_status = :status
             ORDER BY r.id
             LIMIT :limit
@@ -129,12 +129,12 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
             .list()
 
     fun delete(id: UUID) {
-        jdbcClient.sql("DELETE FROM room WHERE id = :id").param("id", id).update()
+        jdbcClient.sql("DELETE FROM \"game#room\" WHERE id = :id").param("id", id).update()
     }
 
     /** Комнаты, пустующие с момента раньше [threshold] (под частичный индекс room_empty_since_idx). */
     fun findIdsEmptySince(threshold: Instant, limit: Int): List<UUID> =
-        jdbcClient.sql("SELECT id FROM room WHERE empty_since < :threshold ORDER BY empty_since LIMIT :limit")
+        jdbcClient.sql("SELECT id FROM \"game#room\" WHERE empty_since < :threshold ORDER BY empty_since LIMIT :limit")
             .param("threshold", threshold.toTimestamp())
             .param("limit", limit)
             .query { rs, _ -> rs.getUuid("id")!! }
@@ -145,8 +145,8 @@ class RoomPostgresqlRepository(private val jdbcClient: JdbcClient) {
         jdbcClient.sql(
             """
             SELECT r.id
-            FROM room r
-                     JOIN game g ON g.code = r.game_code
+            FROM "game#room" r
+                     JOIN "game#game" g ON g.code = r.game_code
             WHERE r.owner_grace_deadline <= :now
               AND g.publish_status <> 'NOT_PUBLISHED'
             ORDER BY r.owner_grace_deadline

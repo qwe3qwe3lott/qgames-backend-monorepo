@@ -15,7 +15,7 @@ import java.util.UUID
 class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
 
     fun findAll(roomId: UUID): List<RoomMemberEntity> =
-        jdbcClient.sql("SELECT * FROM room_member WHERE room_id = :roomId ORDER BY joined_at, user_id")
+        jdbcClient.sql("SELECT * FROM \"game#room_member\" WHERE room_id = :roomId ORDER BY joined_at, user_id")
             .param("roomId", roomId)
             .query(mapper)
             .list()
@@ -23,7 +23,7 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
     fun insert(member: RoomMemberEntity) {
         jdbcClient.sql(
             """
-            INSERT INTO room_member (room_id, user_id, role, joined_at, left_at)
+            INSERT INTO "game#room_member" (room_id, user_id, role, joined_at, left_at)
             VALUES (:roomId, :userId, :role, :joinedAt, :leftAt)
             """,
         )
@@ -36,7 +36,7 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
     }
 
     fun updateRole(roomId: UUID, userId: UUID, role: String) {
-        jdbcClient.sql("UPDATE room_member SET role = :role WHERE room_id = :roomId AND user_id = :userId")
+        jdbcClient.sql("UPDATE \"game#room_member\" SET role = :role WHERE room_id = :roomId AND user_id = :userId")
             .param("roomId", roomId)
             .param("userId", userId)
             .param("role", role)
@@ -44,7 +44,7 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
     }
 
     fun updateLeftAt(roomId: UUID, userId: UUID, leftAt: Instant?) {
-        jdbcClient.sql("UPDATE room_member SET left_at = :leftAt WHERE room_id = :roomId AND user_id = :userId")
+        jdbcClient.sql("UPDATE \"game#room_member\" SET left_at = :leftAt WHERE room_id = :roomId AND user_id = :userId")
             .param("roomId", roomId)
             .param("userId", userId)
             .param("leftAt", leftAt.toTimestamp())
@@ -52,20 +52,20 @@ class RoomMemberPostgresqlRepository(private val jdbcClient: JdbcClient) {
     }
 
     fun findRoomIdsByUser(userId: UUID): List<UUID> =
-        jdbcClient.sql("SELECT room_id FROM room_member WHERE user_id = :userId")
+        jdbcClient.sql("SELECT room_id FROM \"game#room_member\" WHERE user_id = :userId")
             .param("userId", userId)
             .query { rs, _ -> rs.getUuid("room_id")!! }
             .list()
 
     fun delete(roomId: UUID, userId: UUID) {
-        jdbcClient.sql("DELETE FROM room_member WHERE room_id = :roomId AND user_id = :userId")
+        jdbcClient.sql("DELETE FROM \"game#room_member\" WHERE room_id = :roomId AND user_id = :userId")
             .param("roomId", roomId)
             .param("userId", userId)
             .update()
     }
 
     fun deleteAbsent(roomId: UUID): List<UUID> =
-        jdbcClient.sql("DELETE FROM room_member WHERE room_id = :roomId AND left_at IS NOT NULL RETURNING user_id")
+        jdbcClient.sql("DELETE FROM \"game#room_member\" WHERE room_id = :roomId AND left_at IS NOT NULL RETURNING user_id")
             .param("roomId", roomId)
             .query { rs, _ -> rs.getUuid("user_id")!! }
             .list()

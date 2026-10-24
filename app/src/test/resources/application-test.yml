@@ -1,0 +1,36 @@
+qgames:
+  auth:
+    jwt:
+      key-id: test-key
+      private-key: classpath:keys/jwt-private.pem
+      public-key: classpath:keys/jwt-public.pem
+    google:
+      client-ids: test-google-client-id
+      # jwk-set-uri указывает на WireMock, см. BaseIntegrationTest
+  admin-auth:
+    jwt:
+      key-id: admin-test-key
+      private-key: classpath:keys/admin-jwt-private.pem
+      public-key: classpath:keys/admin-jwt-public.pem
+    # Бутстрап при старте выключен независимо от env: тесты вызывают AdminBootstrapService.bootstrap напрямую.
+    bootstrap:
+      login: ""
+      password: ""
+  cors:
+    portal:
+      allowed-origins: http://localhost:3000
+    admin:
+      allowed-origins: http://localhost:3001
+  game:
+    # Шедулеры в тестах выключены: NotPublishedGameCleanupJob, EmptyRoomCleanupJob, RoomOwnerGraceJob и MoveTimeoutJob
+    # вызываются напрямую.
+    catalog:
+      not-published-cleanup-enabled: false
+    room:
+      cleanup-enabled: false
+      owner-grace-enabled: false
+      connection:
+        heartbeat-enabled: false
+        cleanup-enabled: false
+    session:
+      timeout-enabled: false

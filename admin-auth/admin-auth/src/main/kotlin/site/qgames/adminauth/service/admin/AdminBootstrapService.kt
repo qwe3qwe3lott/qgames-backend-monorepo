@@ -1,5 +1,7 @@
 package site.qgames.adminauth.service.admin
 
+import org.springframework.beans.factory.annotation.Qualifier
+import site.qgames.adminauth.config.CryptoConfig
 import org.slf4j.LoggerFactory
 import org.springframework.boot.ApplicationArguments
 import org.springframework.boot.ApplicationRunner
@@ -17,7 +19,7 @@ import site.qgames.adminauth.repository.admin.AdminRepository
 class AdminBootstrapService(
     private val properties: AuthProperties,
     private val adminRepository: AdminRepository,
-    private val passwordEncoder: PasswordEncoder,
+    @Qualifier(CryptoConfig.PASSWORD_ENCODER) private val passwordEncoder: PasswordEncoder,
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {

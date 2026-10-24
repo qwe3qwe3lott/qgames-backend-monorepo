@@ -1,0 +1,14 @@
+# Сводный master приложения: одна таблица databasechangelog на всё приложение. Модули подключаются своими
+# master-файлами (db/changelog/<модуль>/), внутри модуля — явный список миграций в хронологическом порядке.
+# Порядок модулей: game ссылается только на свои таблицы, поэтому порядок между модулями не важен.
+# Правила: CLAUDE.md, раздел «Миграции».
+databaseChangeLog:
+  - include:
+      file: db/changelog/user-auth/db.changelog-master.yaml
+  - include:
+      file: db/changelog/admin-auth/db.changelog-master.yaml
+  - include:
+      file: db/changelog/game/db.changelog-master.yaml
+  # Служебные таблицы приложения (реестр событий Spring Modulith).
+  - include:
+      file: db/changelog/app/db.changelog-master.yaml

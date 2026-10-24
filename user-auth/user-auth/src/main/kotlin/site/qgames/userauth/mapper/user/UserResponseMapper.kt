@@ -1,13 +1,13 @@
 package site.qgames.userauth.mapper.user
 
 import org.springframework.stereotype.Component
-import site.qgames.userauth.gatewayapi.dto.user.Avatar
-import site.qgames.userauth.gatewayapi.dto.user.LoginMethod
-import site.qgames.userauth.gatewayapi.dto.user.UserResponse
+import site.qgames.userauth.api.dto.user.Avatar
+import site.qgames.userauth.api.dto.user.LoginMethod
+import site.qgames.userauth.api.dto.user.UserResponse
 import site.qgames.userauth.model.user.UserAvatar
 import site.qgames.userauth.model.user.UserDetailsModel
 
-/** Модели пользователя ↔ DTO контракта для gateway. */
+/** Модели пользователя ↔ DTO контракта. */
 @Component
 class UserResponseMapper {
 
