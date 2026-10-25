@@ -12,7 +12,6 @@ import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.core.annotation.Order
 import org.springframework.core.io.Resource
-import org.springframework.http.HttpHeaders
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
@@ -25,9 +24,6 @@ import org.springframework.security.oauth2.jwt.JwtTimestampValidator
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
-import org.springframework.web.cors.CorsConfiguration
-import org.springframework.web.cors.CorsConfigurationSource
-import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 import site.qgames.app.security.CookieBearerTokenResolver
 import java.security.KeyFactory
 import java.security.interfaces.ECPublicKey
@@ -41,14 +37,17 @@ import site.qgames.userauth.api.cookie.AuthCookieNames as PortalCookies
  * кука access_token, токены user-auth). У каждой свой ключ проверки и issuer: токен игрока в админку не проходит,
  * токен админа на портал — тоже. Пользователь запроса для модулей — `sub` токена (RequestUserContext).
  *
- * CSRF-токены не используются: куки SameSite=Lax не уходят с кросс-сайтовых POST, а API принимает только JSON. Фронты
- * живут на поддоменах того же домена (same-site), поэтому Lax-куки до API доходят. Сессий нет — каждый запрос
- * аутентифицируется по JWT.
+ * Фронты ходят в API своего origin (reverse proxy отдаёт статику и `/api` с одного хоста), поэтому CORS не нужен и
+ * выключен в обеих цепочках явно: заголовков CORS нет. С чужого origin браузер не отправит JSON-запрос (нужен
+ * preflight, а он не проходит); простые запросы (POST без тела, GET, в том числе переход по ссылке) уходят, но ответ
+ * странице не виден. Принятые риски — CLAUDE.md §5.
+ *
+ * CSRF-токены не используются: куки SameSite=Lax не уходят с кросс-сайтовых POST, а тела запросов — только JSON.
+ * Сессий нет — каждый запрос аутентифицируется по JWT.
  */
 @Configuration
 class SecurityConfig(
     private val securityProperties: SecurityProperties,
-    private val corsProperties: CorsProperties,
 ) {
 
     @Bean
@@ -56,7 +55,7 @@ class SecurityConfig(
     fun adminSecurityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .securityMatcher("${AdminCookies.ADMIN_PATH}/**")
-            .cors { it.configurationSource(corsConfigurationSource()) }
+            .cors { it.disable() }
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
@@ -76,7 +75,7 @@ class SecurityConfig(
     @Order(2)
     fun portalSecurityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
-            .cors { it.configurationSource(corsConfigurationSource()) }
+            .cors { it.disable() }
             .csrf { it.disable() }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
@@ -100,31 +99,11 @@ class SecurityConfig(
         return http.build()
     }
 
-    /**
-     * CORS только для API: точные origin и allowCredentials, иначе браузер не отправит куки. Админка — только на
-     * `/api/admin/…` (зарегистрирована первой: источник берёт первое совпадение), портал — на остальные `/api/…`.
-     * Запрос с неразрешённого origin (в том числе портала в админку и наоборот) отклоняется до аутентификации (403).
-     */
-    @Bean
-    fun corsConfigurationSource(): CorsConfigurationSource =
-        UrlBasedCorsConfigurationSource().apply {
-            registerCorsConfiguration("${AdminCookies.ADMIN_PATH}/**", cors(corsProperties.admin.allowedOrigins))
-            registerCorsConfiguration("/api/**", cors(corsProperties.portal.allowedOrigins))
-        }
-
     @Bean
     fun portalJwtDecoder(): JwtDecoder = jwtDecoder(securityProperties.portal)
 
     @Bean
     fun adminJwtDecoder(): JwtDecoder = jwtDecoder(securityProperties.admin)
-
-    private fun cors(origins: List<String>) = CorsConfiguration().apply {
-        allowedOrigins = origins
-        allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-        allowedHeaders = listOf(HttpHeaders.CONTENT_TYPE, HttpHeaders.AUTHORIZATION)
-        allowCredentials = true
-        maxAge = corsProperties.maxAge.seconds
-    }
 
     /**
      * Проверка подписи публичным ключом модуля из конфигурации (без JWKS-эндпоинта), срока действия и issuer.

@@ -72,8 +72,8 @@ data class GameProperties(
 
     data class StateCache(
         /** Сколько состояний (партия × проекция) держит кеш. */
-        val maxSize: Long = 10_000,
+        val maxSize: Long = 2_000,
         /** Состояние, которое так долго не читали, вытесняется. */
-        val expireAfterAccess: Duration = Duration.ofMinutes(30),
+        val expireAfterAccess: Duration = Duration.ofMinutes(5),
     )
 }

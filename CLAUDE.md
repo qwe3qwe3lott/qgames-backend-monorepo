@@ -26,13 +26,13 @@
 | `user-auth` | Аккаунты игроков, способы входа (Google; пароль, добавленный в профиле), выпуск JWT игроков, куки сессии портала | `/api/auth/*`, `/api/users/me/*` |
 | `game` | Комнаты и партии **всех** игр; ник и аватар игроков читает из таблицы `user` модуля user-auth (только чтение, через `user-auth-api`). Правила конкретных игр подключаются модулями `games/*` | `/api/games/*`, `/api/rooms/*` |
 | `admin-auth` | Аккаунты администраторов (логин и пароль, без регистрации), выпуск JWT администраторов, куки сессии админки | `/api/admin/auth/*`, `/api/admin/admins/*` |
-| `app` | Приложение: `@SpringBootApplication`, Security (две цепочки), CORS, группы OpenAPI, `application.yml`, сводный Liquibase-master, Docker-образ | — |
+| `app` | Приложение: `@SpringBootApplication`, Security (две цепочки), группы OpenAPI, `application.yml`, сводный Liquibase-master, Docker-образ | — |
 
 Отдельный модуль на каждую игру **не заводим**. Новая игра — новый модуль в `games/` (см. §2).
 
 **Портал и админка — два фронта одного приложения:**
 - портал — `/api/**` (кроме `/api/admin/**`), OpenAPI-группа `portal` (`/v3/api-docs/portal`); админка — `/api/admin/**`, группа `admin` (`/v3/api-docs/admin`). Swagger UI один, с выбором группы. Фронт генерирует по каждой группе свой клиент Orval;
-- админка — CSR SPA на `http://localhost:3001`, в проде — отдельный поддомен того же домена (same-site). Ходит в приложение напрямую: CORS с `allowCredentials` и точным origin админки (§5);
+- портал — `http://localhost:3000`, админка (CSR SPA) — `http://localhost:3001`; в проде портал — `https://<домен>`, админка — поддомен `https://admin.<домен>` (same-site). **Каждый фронт ходит в API своего origin:** reverse proxy (nginx, образ `web` фронтенда) отдаёт статику и проксирует в app `/api/**` с хоста портала и только `/api/admin/**` с хоста админки, локально в `pnpm dev` — dev-proxy rsbuild. CORS нет (§5);
 - соглашения у обеих групп одинаковые (§3): REST/JSON, ошибки — ProblemDetail с `code`, Swagger на русском;
 - пути аутентификации (`…/auth/login`, `…/auth/refresh`, `…/auth/logout`) и 401 `UNAUTHENTICATED` устроены одинаково, отличается только префикс (`/api/auth`, `/api/admin/auth`): на этом держится общий fetch-mutator фронта;
 - текущий админ — `GET /api/admin/admins/me` (по нему фронт определяет, вошёл ли админ), список админов — `GET /api/admin/admins`;
@@ -54,7 +54,7 @@ games/                         ПРАВИЛА ИГР (бизнес-логика,
   checkers-game                шашки (вариант правил — настройка комнаты, сейчас доступны русские)
   <игра>                       правила конкретной игры (например, games/carcassonne)
 user-auth/, admin-auth/, game/ МОДУЛИ ПРИЛОЖЕНИЯ: <m>/<m> (реализация) и <m>/<m>-api (публичный контракт)
-app/                           приложение: собирает модули; Security, CORS, OpenAPI, конфигурация, миграции, все интеграционные тесты
+app/                           приложение: собирает модули; Security, OpenAPI, конфигурация, миграции, все интеграционные тесты
 docker/                        Dockerfile приложения, dev-ключи
 ```
 
@@ -117,7 +117,7 @@ docker/                        Dockerfile приложения, dev-ключи
 |---|---|
 | `<m>/<m>` | реализация модуля: контроллеры, сервисы, репозитории, джобы, слушатели, changelog'и миграций. Библиотека (convention `qgames.spring-module`) без `@SpringBootApplication` и `bootJar` |
 | `<m>/<m>-api` | публичный контракт модуля: REST-интерфейсы контроллеров (`@HttpExchange` со Swagger-аннотациями), DTO, события, константы и интерфейсы, которые модуль даёт другим модулям и app |
-| `app` | приложение (convention `qgames.spring-service`): `QgamesApplication` (пакет `site.qgames`), Security, CORS, OpenAPI-группы, `application.yml`, сводный Liquibase-master, `bootJar`, все интеграционные тесты |
+| `app` | приложение (convention `qgames.spring-service`): `QgamesApplication` (пакет `site.qgames`), Security, OpenAPI-группы, `application.yml`, сводный Liquibase-master, `bootJar`, все интеграционные тесты |
 
 - Сейчас есть: `user-auth/{user-auth, user-auth-api}`, `admin-auth/{admin-auth, admin-auth-api}`, `game/{game, game-api}`, `app`. Модули явно перечисляются в `settings.gradle.kts`.
 - **Модуль зависит только от `libs/*`, `games/*` и `<other>-api` других модулей, никогда от `<other>/<other>`** (сейчас game → `user-auth-api` ради события профиля и описания таблицы `user` для чтения профилей). app зависит от всех модулей.
@@ -178,7 +178,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 
 ## 3. Взаимодействие
 
-- **Фронт ↔ приложение:** REST/JSON напрямую в app (порт 8080). Ошибки — `ProblemDetail` с машиночитаемым полем `code`. Контракт — интерфейсы и DTO `<m>-api` модулей; публикуется двумя группами OpenAPI: `portal` (`/api/**` кроме `/api/admin/**`) и `admin` (`/api/admin/**`). Валидация тел — `@Valid` в контроллерах модулей.
+- **Фронт ↔ приложение:** REST/JSON в app (порт 8080) через reverse proxy того же origin, что и страница (§1). Ошибки — `ProblemDetail` с машиночитаемым полем `code`. Контракт — интерфейсы и DTO `<m>-api` модулей; публикуется двумя группами OpenAPI: `portal` (`/api/**` кроме `/api/admin/**`) и `admin` (`/api/admin/**`). Валидация тел — `@Valid` в контроллерах модулей.
   - Токены сессии в контракт не входят: auth-контроллеры модулей кладут их в HttpOnly-куки (§5) и отдают в теле только пользователя (`UserResponse`, `AdminResponse`). DTO с токенами (`AuthResponse`, `TokenPair`, `RefreshTokenRequest`) не заводятся — это проверяют `PortalOpenApiContractScenariosTest` и `AdminOpenApiContractScenariosTest`.
   - Одноимённые DTO разных групп (например, `LoginRequest` user-auth и admin-auth) допустимы: у каждой группы свои components. Внутри одной группы простые имена классов DTO уникальны: swagger-core называет схему по простому имени класса.
 - **Документация API (Swagger):** у каждой ручки в `<m>-api` интерфейсе обязательно есть:
@@ -221,7 +221,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - **Модуль ↔ модуль (синхронно):** вызов бина через интерфейс из `<m>-api` (заводится вместе с первой такой потребностью). Чужие таблицы, репозитории и сервисы не используются.
 - **Побочные эффекты между модулями — события модулей:** событие — Kotlin data class в `<m>-api` (`api.event.<фича>`), публикуется `ApplicationEventPublisher` в транзакции бизнес-изменения, принимается `@TransactionalEventListener(AFTER_COMMIT)` (синхронно после коммита; если слушателю нужна БД — своя транзакция `REQUIRES_NEW`). Реестра публикаций нет: событие, не доставленное из-за падения процесса между коммитом и слушателем, теряется — слушатели только рассылают уведомления, данные не копируют. Подробности — в §4 «События модулей».
 - **Real-time в играх:** REST (ходы и действия) + **SSE** (события).
-  - **Цепочка:** браузер → app, поток отдают контроллеры game (`SseEmitter`, заголовки `Cache-Control: no-cache`, `X-Accel-Buffering: no`). JWT из куки проверяется **только при подписке**. Ошибки до старта потока — обычный ProblemDetail. Что отдавать каждому подключению, решает game.
+  - **Цепочка:** браузер → reverse proxy → app (у proxy буферизация выключена, §10), поток отдают контроллеры game (`SseEmitter`, заголовки `Cache-Control: no-cache`, `X-Accel-Buffering: no`). JWT из куки проверяется **только при подписке**. Ошибки до старта потока — обычный ProblemDetail. Что отдавать каждому подключению, решает game.
   - **Рассылка событий потокам** — Postgres `LISTEN/NOTIFY` (каналы `room_events`, `session_events`). `RoomEventPublisher` и `SessionEventPublisher` делают `pg_notify` (`PgNotifier`) в транзакции изменения, а Postgres доставляет уведомление только после коммита и в порядке коммитов, поэтому outbox не нужен. В уведомлении только сигнал (`{roomId, type}`, `{sessionId, fromSeq, toSeq}`), данные диспетчер читает сам. `RoomEventListener` держит отдельное соединение вне пула, при простое проверяет его (`isValid`), а при обрыве переподключается и закрывает все потоки — клиенты переподключатся и получат свежий снапшот.
   - **Подписки комнаты и партии — разные сущности.** Поток комнаты — `GET /api/rooms/{roomId}/events`: первым сообщением `snapshot` (как `GET` комнаты), затем `users-changed` (`ownerId` + полный список участников), `settings-changed`, `session-changed` (данных нет, клиент перечитывает комнату), `room-deleted` (поток закрывается). У событий комнаты нет seq: они несут полное значение (замена), повтор безопасен. Гонку снапшота с событиями закрывает маркер: подписчик регистрируется до транзакции подключения, в ней под `lock(room)` читается снапшот и публикуется маркер подписчика; всё полученное до маркера отбрасывается. Ping (`: ping`) раз в 5 с.
   - **Поток партии** — `GET /api/games/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events` (`GameRoomApi.sessionEvents`). Подписаться может участник комнаты (в том числе отсутствующий игрок партии); `sessionId` чужой комнаты — 404 `SESSION_NOT_FOUND`. Аренды и присутствия у него нет.
@@ -306,7 +306,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - `room_session`: код игры (`game_code` → `game.code`), статус, `state_schema_version`, `seed`, `last_seq`, снапшот настроек комнаты, `move_deadline` (проекция таймера для индекса `MoveTimeoutJob`: дедлайн идущего таймера, на паузе NULL);
   - `room_session_player`: места игроков партии;
   - `room_session_event`: **журнал событий** (`session_id`, `seq`, `method`, `code`, `data` (JSON) в форме кадра, `created_at` — время события для повтора). Состояние партии **не хранится**: это свёртка журнала.
-- **Состояние партии** собирает `SessionStateService` через абстракцию `SessionStateCache` (Caffeine): ключ `(sessionId, viewerKey) → (seq, state)`. Берётся закешированное состояние на seq K, дочитываются события `K+1…N`, результат кладётся обратно; промах — свёртка с нуля. Журнал только дописывается, поэтому инвалидация не нужна. Новое полное состояние попадает в кеш только после коммита.
+- **Состояние партии** собирает `SessionStateService` через абстракцию `SessionStateCache` (Caffeine): ключ `(sessionId, viewerKey) → (seq, state)`. Берётся закешированное состояние на seq K, дочитываются события `K+1…N`, результат кладётся обратно; промах — свёртка с нуля. Журнал только дописывается, поэтому инвалидация не нужна. Новое полное состояние попадает в кеш только после коммита. Размер — под heap 256 МБ (§10): `qgames.game.session.state-cache.max-size` 2000 записей (запись — ~20–30 КБ у шашек, всего ~60 МБ, это ~500 идущих партий на двоих) и `expire-after-access` 5m (кеш читается на каждом ходе и подписке; стоящую или законченную партию дешевле собрать заново). Ограничение по весу (`maximumWeight`) не используем: размер состояния дёшево не оценить, а число записей и TTL держат heap с запасом.
 - **Любое изменение партии** (старт, ход, таймаут, пауза, продолжение, конец, отмена) идёт через `SessionJournalService` под `lock(room)`: полное состояние на `last_seq` → события → `INSERT` в журнал с seq от `last_seq + 1`, обновление `last_seq`, статуса, `move_deadline` → событие шины. На одно изменение может прийтись несколько событий, каждое со своим seq.
 - **Мутации партии** (ход, пауза, продолжение, отмена) отвечают **204**: результат приходит событиями потока. Старт возвращает комнату.
 - **Ручка хода одна на все игры:** `POST /api/games/{gameCode}/rooms/{roomId}/moves`.
@@ -390,13 +390,14 @@ app/src/main/resources/db/changelog/
 - **Куки ставят и читают auth-контроллеры модулей** (`cookie/AuthCookies` в user-auth и admin-auth): `HttpOnly; Secure; SameSite=Lax`. Токены в теле ответов не отдаются.
   - Имена и пути — константы контракта `AuthCookieNames` в `<m>-api`: портал — `access_token` (`Path=/`) и `refresh_token` (`Path=/api/auth`); админка — `admin_access_token` (`Path=/api/admin`) и `admin_refresh_token` (`Path=/api/admin/auth`). Имена разные: оба фронта ходят в одно приложение, и одноимённые куки перетёрли бы друг друга. `secure`/`sameSite` — свойства модулей (`qgames.auth.cookies`, `qgames.admin-auth.cookies`, env `COOKIES_SECURE`).
   - refresh без куки или с отклонённым токеном (401) удаляет обе куки; logout отзывает сессию по куке и всегда удаляет обе куки; смена пароля выдаёт новую сессию в куках.
-- CSRF-токены не используются (SameSite=Lax + только JSON). Сессий нет (stateless).
-- **Домены:** фронт и API — поддомены одного домена (например, `qgames.site` и `api.qgames.site`). Для браузера это same-site, поэтому Lax-куки доходят до API и защита от CSRF без токенов остаётся валидной. Если фронт окажется на другом домене, это пересмотр модели CSRF, только по согласованию. Same-origin (Caddy) — решить при этапе 4 перехода на монолит.
-- **CORS** настраивается в app (`SecurityConfig.corsConfigurationSource`):
-  - `/api/admin/**` — только origin админки (`ADMIN_CORS_ALLOWED_ORIGINS`, по умолчанию `http://localhost:3001`); остальные `/api/**` — только origin портала (`CORS_ALLOWED_ORIGINS`, по умолчанию `http://localhost:3000`). Портал в админку и админка в портал не пускаются;
-  - явный список origin, wildcard запрещён и проверяется при старте (`CorsProperties`);
-  - `allowCredentials = true`;
-  - запросы с чужого origin отклоняются с 403.
+- **Same-origin, без CORS.** API портала — `/api/**` на хосте портала (`<домен>`), API админки — `/api/admin/**` на хосте админки (`admin.<домен>`); оба хоста проксируют в одно app (§1). CORS в app нет: в обеих цепочках он явно выключен (`cors { disable() }`), заголовков `Access-Control-*` app не отдаёт, и `Origin` запроса не проверяет. Чужая страница может отправить запрос, но не прочтёт ответ, а JSON-запросы ей не отправить вовсе: им нужен preflight, а он не проходит.
+- **CSRF-токены не используются** (stateless, сессий нет). Защита держится на трёх вещах:
+  - куки `SameSite=Lax`: с кросс-сайтовых POST/PUT/PATCH/DELETE и `fetch` браузер их не отправляет; GET-ручки данных не меняют, кроме подписки на поток комнаты (`GET /api/rooms/{roomId}/events` — это вход в комнату, присутствие = открытый поток);
+  - тела запросов — только JSON: форма или `text/plain` получают 415, а JSON с другого origin требует preflight;
+  - портал и админка — один сайт (`<домен>` и `admin.<домен>`), чужие сайты кук не получают. У DuckDNS `duckdns.org` — публичный суффикс, поэтому `<имя>.duckdns.org` — отдельный сайт, другие поддомены DuckDNS для него кросс-сайтовые.
+  - Принятый риск: хосты портала и админки — один сайт, поэтому со страницы админки Lax-куки портала уходят, а POST без тела (старт, пауза, отмена партии, logout) — «простой» запрос без preflight и выполнится (ответ странице недоступен). Оба хоста наши, так что это опасно только при XSS в админке. Так же и с потоком комнаты: Lax-куки уходят при переходе верхнего уровня с любого сайта, а с хоста админки — и с `EventSource` (`withCredentials`), поэтому чужая ссылка или страница админки может «войти» пользователя в комнату, пока открыт поток (данных страница не увидит). Проверка `Sec-Fetch-Site`/`Sec-Fetch-Mode` на изменяющих ручках и SSE-потоках — решить при деплое.
+
+  Перенос фронта на другой сайт (не поддомен) — пересмотр модели CSRF, только по согласованию.
 
 - **Пароли:** Argon2id (`Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8`), соль внутри хеша.
 - **Регистрации по email нет, писем user-auth не шлёт.** Аккаунт создаётся только входом через Google. Пароль добавляется в профиле (`POST /api/users/me/login-methods/password`), после этого можно входить по email аккаунта (это email Google-аккаунта, которым он создан) и паролю. Сброса пароля нет: забывший пароль входит через Google и меняет его.
@@ -424,7 +425,7 @@ app/src/main/resources/db/changelog/
 ## 7. Тесты
 
 - Тесты **максимально интеграционные**: запросы через MockMvc в настоящие контроллеры на полном контексте приложения (все модули, настоящие цепочки Security и куки), реальная PostgreSQL (Testcontainers), внешние HTTP-системы (JWKS Google) — WireMock. Тривиальных тестов не пишем.
-- **Все интеграционные тесты живут в `app/src/test/kotlin`** в пакетах модулей (`site.qgames.game.controller.room…`, `site.qgames.userauth…`); тесты Security, CORS, кук и OpenAPI — в `site.qgames.app…`; границы модулей — `ModularityTest`. Чистые тесты правил игр — в своих модулях `games/*`.
+- **Все интеграционные тесты живут в `app/src/test/kotlin`** в пакетах модулей (`site.qgames.game.controller.room…`, `site.qgames.userauth…`); тесты Security, кук и OpenAPI — в `site.qgames.app…`; границы модулей — `ModularityTest`. Чистые тесты правил игр — в своих модулях `games/*`.
 - Один `site.qgames.BaseIntegrationTest`: в нём все `@MockkSpyBean`, поэтому контекст Spring один на прогон. Модульные базы (`UserAuthIntegrationTest`, `AdminAuthIntegrationTest`, `GameIntegrationTest`) наследуют его и добавляют только хелперы и `@Autowired` — новые `@MockkSpyBean` объявляются только в общей базе. Внешние системы (WireMock) сбрасываются в `@BeforeEach`.
 - **Пользователь в тестах** — настоящий access-JWT, подписанный тестовым ключом модуля (`userAccessToken`, `adminAccessToken`, `asUser`, `asAdmin` в базе). Сессии открываются через настоящие ручки, токены читаются из кук ответа.
 - **События модулей в тестах:** у источника — опубликованные события через `ApplicationEvents` (`@RecordApplicationEvents`); у потребителя — сквозной сценарий через ручку источника (смена профиля → `users-changed` в потоках комнат и новый ник в снапшоте комнаты).
@@ -451,20 +452,40 @@ docker compose down -v                # остановить и удалить �
 - Вход в админку на стенде: `admin` / `admin`.
 - Google-вход: заполнить `GOOGLE_CLIENT_IDS` в `.env` (см. `.env.example`).
 - Запуск из IDE: `docker compose up -d postgres`, затем `QgamesApplication` (или `./gradlew :app:bootRun`) с рабочим каталогом `app/`: значения по умолчанию в `application.yml` смотрят на localhost и `../docker/dev-keys`.
-- Переменные окружения app: `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, `JWT_KEY_ID`/`JWT_PRIVATE_KEY_LOCATION`/`JWT_PUBLIC_KEY_LOCATION` (игроки), `ADMIN_JWT_KEY_ID`/`ADMIN_JWT_PRIVATE_KEY_LOCATION`/`ADMIN_JWT_PUBLIC_KEY_LOCATION` (админы), `GOOGLE_CLIENT_IDS`, `ADMIN_BOOTSTRAP_LOGIN`/`ADMIN_BOOTSTRAP_PASSWORD`, `CORS_ALLOWED_ORIGINS`, `ADMIN_CORS_ALLOWED_ORIGINS`, `COOKIES_SECURE`.
+- Переменные окружения app: `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, `JWT_KEY_ID`/`JWT_PRIVATE_KEY_LOCATION`/`JWT_PUBLIC_KEY_LOCATION` (игроки), `ADMIN_JWT_KEY_ID`/`ADMIN_JWT_PRIVATE_KEY_LOCATION`/`ADMIN_JWT_PUBLIC_KEY_LOCATION` (админы), `GOOGLE_CLIENT_IDS`, `ADMIN_BOOTSTRAP_LOGIN`/`ADMIN_BOOTSTRAP_PASSWORD`, `COOKIES_SECURE`, `API_DOCS_ENABLED` (OpenAPI и Swagger UI, по умолчанию `true`; при `false` их ручки отвечают 404).
+- Фронты на стенде: образ `web` фронтенда (nginx) — портал на 3000, админка на 3001, `/api` проксируется в app на 8080.
 - Образ: multi-stage `docker/app.Dockerfile` (`:app:bootJar`). Контекст сборки — корень репозитория.
 
 ## 10. Развёртывание (один VPS)
 
-На старте всё работает на одном VPS через docker compose, без k8s: PostgreSQL + одно приложение.
+На старте всё работает на одном VPS 1 ГБ через docker compose, без k8s: reverse proxy (nginx, образ `web` фронтенда) + одно приложение + PostgreSQL. Деплой (CI, registry, DuckDNS, TLS, бэкапы) — решить при деплое.
 
 - **Образы** собираются в CI и пушатся в registry, на VPS только `docker compose pull`. Gradle-сборка на VPS съела бы 2–3 ГБ RAM рабочего сервера.
-- **Наружу** открыт только reverse proxy с TLS, он проксирует в app. Swagger в проде не публикуется.
-- **Память:** лимит памяти контейнера app (`mem_limit`) — решить при деплое на VPS 1 ГБ (этап 4 перехода на монолит). Heap считается от лимита через `-XX:MaxRAMPercentage` (уже в `docker/app.Dockerfile`), без лимита JVM ориентируется на всю память хоста.
-- **PostgreSQL под малую память** (`command: -c …` в `docker-compose.yml`, `mem_limit: 128m`): `max_connections=20` (пул 5 + LISTEN + миграции, psql и запас), `shared_buffers=16MB` (горячие данные малы, остальное — кеш ОС), `effective_cache_size=64MB` (только подсказка планировщику), `work_mem=2MB`, `maintenance_work_mem=16MB`, `wal_buffers=1MB`, `max_wal_size=64MB`, `jit=off` (LLVM-JIT ест память и не нужен коротким запросам), `huge_pages=off`, без параллельных воркеров (`max_worker_processes=2`, `max_parallel_*=0`), `autovacuum_max_workers=1`.
-- **Бэкапы PostgreSQL:** `pg_dump` по расписанию, копии хранятся вне VPS — решить при этапе 4 перехода на монолит.
-- **Оценка ресурсов.** Замер локального стенда в простое (`docker stats`, без `mem_limit`, хост 30 ГБ): app ~630 МБ, PostgreSQL ~40 МБ (с настройками выше; без них было ~75 МБ). Без лимита JVM не ужимает heap, с `mem_limit` потребление ниже; под нагрузкой heap растёт.
-- Reverse proxy (Caddy или nginx), CI (GitHub Actions или GitLab CI), registry и хранение секретов — решить при реализации деплоя. Для SSE (`text/event-stream`) у proxy должны быть выключены буферизация и короткий read-timeout (app отдаёт `X-Accel-Buffering: no`, ping раз в 5 с); при выборе proxy проверить.
+- **Наружу** открыт только nginx с TLS: статика фронтов и `/api` в app (§1). Swagger и OpenAPI в проде выключены: `API_DOCS_ENABLED=false` (`springdoc.api-docs.enabled` и `springdoc.swagger-ui.enabled`, по умолчанию `true`; при `false` ручки отвечают 404, бины springdoc и групп не создаются — `OpenApiConfig` под тем же условием). Значение задано явно в `application.yml`, поэтому springdoc не предупреждает при старте. Автотеста на `false` нет (нужен второй контекст Spring, §7): флаг проверяется вручную на стенде — `API_DOCS_ENABLED=false docker compose up -d --wait app`, `/v3/api-docs/*` и `/swagger-ui.html` должны отвечать 404, остальное API — работать.
+- **SSE через proxy:** буферизация выключена (app отдаёт `X-Accel-Buffering: no`, у nginx — `proxy_buffering off`), `proxy_read_timeout` не короче ping (5 с).
+- **Бюджет памяти VPS 1 ГБ** (лимиты — `mem_limit` = `memswap_limit` в compose, без свопа: при нехватке — OOM-kill, а не тихая деградация):
+
+  | Что | Лимит | Простой | Пик под нагрузкой |
+  |---|---|---|---|
+  | ОС, Docker, sshd | — | ~200 МБ | ~200 МБ |
+  | nginx (`web`) | 48m (задаёт фронтенд) | ~15 МБ | ~29 МБ (~60% лимита; вероятно, буферы ~720 соединений: 360 SSE от клиентов и столько же к app), CPU ~10–13% |
+  | app | 512m | ~290 МБ | ~430–455 МБ |
+  | PostgreSQL | 128m | ~30–35 МБ | ~85–95 МБ, из них ~50 МБ — процессы и `shared_buffers`, остальное — страничный кеш (вытесняется) |
+  | Запас | ~135 МБ (1024 − 200 − 48 − 512 − 128) | | |
+  | Итого | 888 МБ по лимитам | ~540 МБ | ~780 МБ |
+
+  Нагрузка замера (локальный стенд, запросы через nginx портала `:3000`, `docker stats` раз в 10 с, 5 минут): 45 комнат (30 «ничто», 15 шашек, четверть — с таймером хода 5 с), в каждой 2 игрока и 2 наблюдателя, у каждого потоки комнаты и партии (360 SSE-подключений), ходы без остановки: ~190 ходов/с, ~1450 партий, ~4400 SSE-кадров/с. OOM-kill нет; 2 ответа 504 на подключении к upstream (BACKLOG «Редкие 504 от nginx под высокой нагрузкой»). app выходит на плато ~430–455 МБ (heap занят весь, сверху ~170 МБ вне heap) и дальше не растёт; живой heap после полной сборки держится на ~120–130 МБ, полных сборок за 5 минут — 8. С прежним кешем состояний партий (10000 записей, 30m) живой heap рос линейно до ~185 МБ из 247, последние 80 с шли подряд полные сборки (131 за прогон) — дальше был бы OOM.
+- **JVM app** (`docker/app.Dockerfile`), всё считается от лимита контейнера:
+  - `-XX:+UseSerialGC` — один инстанс, heap в сотни МБ: у G1 лишние нативные структуры и потоки;
+  - `-XX:MaxRAMPercentage=50` — heap 256 МБ; вне heap (по NMT под нагрузкой): metaspace ~75 МБ, code cache ~45 МБ, символы ~19 МБ, CDS ~13 МБ, malloc ~45 МБ, стеки потоков ~5 МБ (virtual threads держат стеки в heap). При 75% heap (384 МБ) контейнер убивался по OOM под нагрузкой;
+  - `-XX:TieredStopAtLevel=1` — только C1: C2 под нагрузкой брал до 160 МБ нативных арен компилятора, и контейнер убивался по OOM даже при heap 256 МБ. Цена — CPU: на нагрузке замера ~1,95 ядра против ~1,3 у C2 (+45%), в простое разницы нет. Пересмотреть, если упрёмся в CPU VPS;
+  - `-XX:ReservedCodeCacheSize=64m`, `-XX:MaxMetaspaceSize=128m` — потолки: рост даёт понятную ошибку JVM, а не OOM-kill;
+  - `-XX:TrimNativeHeapInterval=5000` и `MALLOC_ARENA_MAX=2` — glibc сам не отдаёт освобождённую malloc-память и плодит арены на ядро (в замере с C2 и без trim RSS превышал учтённое NMT на ~130 МБ);
+  - `-XX:+ExitOnOutOfMemoryError` — после OOM процесс завершается, а не работает в сломанном состоянии;
+  - `-Xss` не задан: стеки платформенных потоков занимают ~5 МБ, выигрыша нет. AOT-кеш JDK для старта не используется: обучающему запуску нужна БД (Liquibase при старте контекста).
+- **PostgreSQL под малую память** (`command: -c …` в `docker-compose.yml`, `mem_limit: 128m`): `max_connections=20` (пул 5 + LISTEN + миграции, psql и запас), `shared_buffers=16MB` (горячие данные малы, остальное — кеш ОС), `effective_cache_size=64MB` (только подсказка планировщику), `work_mem=2MB`, `maintenance_work_mem=16MB`, `wal_buffers=1MB`, `max_wal_size=64MB`, `jit=off` (LLVM-JIT ест память и не нужен коротким запросам), `huge_pages=off`, без параллельных воркеров (`max_worker_processes=2`, `max_parallel_*=0`), `autovacuum_max_workers=1`. Под нагрузкой замера 128m хватает с запасом.
+- **Бэкапы PostgreSQL:** `pg_dump` по расписанию, копии хранятся вне VPS — решить при деплое.
+- CI (GitHub Actions или GitLab CI), registry и хранение секретов — решить при деплое.
 
 ## 11. Отклонённые решения
 
@@ -541,10 +562,8 @@ docker compose down -v                # остановить и удалить �
 | Google Authorization Code flow на бэкенде | Редиректы, хранение state/PKCE на сервере, сложнее | ID token с фронта |
 | Строгая ротация refresh без окна терпимости | Параллельные вкладки, обновляющие сессию одной кукой, разлогинивают пользователя | Окно терпимости 10 с |
 | BCrypt | Слабее против GPU-перебора, ограничение в 72 байта | Argon2id |
-| Фронт и API на разных доменах | Пришлось бы ставить `SameSite=None` и вводить CSRF-токены, а сторонние куки блокируются браузерами | Поддомены одного домена |
-| CORS с wildcard origin | С `allowCredentials` запрещён спецификацией, и любой сайт мог бы делать запросы с куками пользователя | Явный список `CORS_ALLOWED_ORIGINS` |
-| Origin админки (3001) в CORS портала (`/api/**`) | Админке нужны только `/api/admin/**`; лишний origin расширяет круг сайтов с доступом к сессии игрока | Origin портала на `/api/**`, origin админки — только на `/api/admin/**` |
-| `http://localhost:5173` в CORS по умолчанию | Порт Vite из первой настройки, портал живёт на 3000 | `http://localhost:3000` |
+| Фронт и API на разных сайтах | Пришлось бы ставить `SameSite=None` и вводить CSRF-токены, а сторонние куки блокируются браузерами | Same-origin: API на хосте своего фронта |
+| CORS + отдельный API-поддомен (`api.<домен>`, фронты ходят в него напрямую) | Лишние CORS-настройки и preflight на каждый запрос, в проде и локально — отдельные списки origin | Same-origin через reverse proxy (nginx, локально — dev-proxy rsbuild), CORS нет |
 | Автопривязка Google по email (при verified email у нас и в Google) | Аккаунты создаёт только Google, подтверждать email у нас нечем | Только явная привязка; коллизия email — 409 `ACCOUNT_LINK_REQUIRED` |
 | Уникальный ник | Не нужен: игроки различаются по id | Неуникальный ник |
 | Google-аккаунту: ник из профиля Google (`given_name`) | Другие игроки видели бы настоящее имя | Сгенерированный `player-xxxxxx` |
@@ -614,6 +633,7 @@ docker compose down -v                # остановить и удалить �
 |---|---|---|
 | Jib | Нужен отдельный шаг `jibDockerBuild` перед compose | Multi-stage Dockerfile |
 | bootBuildImage | Медленно и громоздко | Multi-stage Dockerfile |
+| JVM с флагами по умолчанию (C2, heap `MaxRAMPercentage=75`) при `mem_limit 512m` | Под нагрузкой — OOM-kill контейнера: heap 384 МБ + ~180 МБ вне heap, C2 берёт до 160 МБ арен на компиляцию | SerialGC, heap 50%, только C1, потолки code cache и metaspace (§10) |
 | init-скрипты только с очисткой, без фикстур | Тесты создавали бы данные через API, медленнее и шумнее | `init/<модуль>.sql` с фикстурами + `TestData` |
 | Программная очистка БД из кода теста | Состояние не видно из ресурсов | `init/<модуль>.sql` через `@Sql` |
 | Создание ролей и БД отдельным init-скриптом (`postgres-init`) | Одна роль приложения — её создаёт сам образ из `POSTGRES_USER`/`POSTGRES_DB` | Переменные образа postgres |

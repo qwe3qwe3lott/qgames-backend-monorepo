@@ -20,6 +20,14 @@ spring:
     # Сводный master: подключает changelog'и модулей (db/changelog/<модуль>/).
     change-log: classpath:db/changelog/db.changelog-master.yaml
 
+# OpenAPI (/v3/api-docs/portal, /v3/api-docs/admin) и Swagger UI. В проде выключаются (API_DOCS_ENABLED=false):
+# ручки отвечают 404. Значение задано явно — без этого springdoc предупреждает при старте.
+springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
+  swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
+
 management:
   endpoints:
     web:
@@ -31,7 +39,7 @@ management:
         enabled: true
 
 qgames:
-  # --- Приложение: Security-цепочки портала и админки, CORS ---
+  # --- Приложение: Security-цепочки портала и админки ---
   security:
     # Access-JWT игроков проверяются публичной частью ключа подписи user-auth, админов — admin-auth.
     portal:
@@ -40,13 +48,6 @@ qgames:
     admin:
       issuer: ${qgames.admin-auth.jwt.issuer}
       public-key: ${qgames.admin-auth.jwt.public-key}
-  cors:
-    # Точные origin через запятую, без wildcard. У каждого фронта — свои пути: портал — /api/** (кроме
-    # /api/admin/**), админка — /api/admin/**. В проде — домены портала и админки.
-    portal:
-      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
-    admin:
-      allowed-origins: ${ADMIN_CORS_ALLOWED_ORIGINS:http://localhost:3001}
 
   # --- Модуль user-auth: аккаунты игроков, вход, JWT ---
   auth:
@@ -123,6 +124,9 @@ qgames:
       timeout-enabled: true
       # Кеш состояний партий по проекциям зрителей (SessionStateCache): по закешированному состоянию на seq K
       # доигрываются только события K+1…N. Потеря записи безопасна — состояние соберётся из журнала.
+      # Размер — по heap 256 МБ (CLAUDE.md §10): запись — ~20–30 КБ (шашки), 2000 записей — ~60 МБ, это ~500 идущих
+      # партий на двоих (полная проекция, публичная и по игроку). Читается кеш на каждом ходе и подписке, поэтому
+      # 5 минут без чтения — партия стоит или закончилась, её состояние дешевле собрать заново.
       state-cache:
-        max-size: 10000
-        expire-after-access: 30m
+        max-size: 2000
+        expire-after-access: 5m

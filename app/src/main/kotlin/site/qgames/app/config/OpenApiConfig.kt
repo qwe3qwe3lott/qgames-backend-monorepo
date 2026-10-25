@@ -5,6 +5,8 @@ import io.swagger.v3.core.converter.ModelConverters
 import org.springdoc.core.customizers.OpenApiCustomizer
 import org.springdoc.core.models.GroupedOpenApi
 import org.springdoc.core.properties.SpringDocConfigProperties
+import org.springdoc.core.utils.Constants
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import site.qgames.adminauth.api.cookie.AuthCookieNames
@@ -13,8 +15,12 @@ import site.qgames.game.api.dto.session.MoveDataSchemas
 /**
  * Две группы OpenAPI: `portal` (`/v3/api-docs/portal`, фронт портала) и `admin` (`/v3/api-docs/admin`, админка).
  * Общие кастомайзеры из libs/common-web — GlobalOpenApiCustomizer и применяются к обеим группам.
+ *
+ * Документация выключается флагом `springdoc.api-docs.enabled` (env `API_DOCS_ENABLED`): тогда springdoc не
+ * поднимает свои бины, и групп тоже нет.
  */
 @Configuration
+@ConditionalOnProperty(name = [Constants.SPRINGDOC_ENABLED], matchIfMissing = true)
 class OpenApiConfig {
 
     @Bean

@@ -16,11 +16,6 @@ qgames:
     bootstrap:
       login: ""
       password: ""
-  cors:
-    portal:
-      allowed-origins: http://localhost:3000
-    admin:
-      allowed-origins: http://localhost:3001
   game:
     # Шедулеры в тестах выключены: NotPublishedGameCleanupJob, EmptyRoomCleanupJob, RoomOwnerGraceJob и MoveTimeoutJob
     # вызываются напрямую.

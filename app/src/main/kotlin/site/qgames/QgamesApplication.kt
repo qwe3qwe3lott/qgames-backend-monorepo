@@ -8,7 +8,7 @@ import org.springframework.scheduling.annotation.EnableScheduling
 
 /**
  * Модульный монолит: модули приложения (Spring Modulith) — прямые подпакеты `site.qgames` (`userauth`, `adminauth`,
- * `game`) и `app` (Security, CORS, OpenAPI). Инфраструктура `site.qgames.common` и правила игр `site.qgames.games`
+ * `game`) и `app` (Security, OpenAPI). Инфраструктура `site.qgames.common` и правила игр `site.qgames.games`
  * модулями не считаются.
  *
  * Имена бинов — полные имена классов: в модулях есть одноимённые классы (AuthController, TokenService у user-auth

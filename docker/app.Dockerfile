@@ -16,4 +16,22 @@ RUN apt-get update \
 WORKDIR /app
 COPY --from=build /workspace/app/build/libs/app.jar app.jar
 USER app
-ENTRYPOINT ["java", "-XX:MaxRAMPercentage=75", "-jar", "app.jar"]
+# glibc по умолчанию заводит до 8 арен malloc на ядро: под нагрузкой это десятки МБ RSS вне учёта JVM.
+ENV MALLOC_ARENA_MAX=2
+# Память JVM под лимит контейнера (mem_limit 512m; замеры — CLAUDE.md §10):
+# - SerialGC: один инстанс и heap в сотни МБ, у G1 лишние нативные структуры и потоки;
+# - heap — половина лимита (256 МБ): остальное — metaspace (~75 МБ), code cache (~45 МБ), символы, стеки, malloc;
+# - только C1 (TieredStopAtLevel=1): C2 под нагрузкой брал до 160 МБ нативных арен на компиляцию, и контейнер
+#   убивался по OOM; C1 стоит больше CPU, но пиков памяти не даёт;
+# - code cache и metaspace ограничены: их рост — понятная ошибка JVM, а не OOM-kill контейнера;
+# - TrimNativeHeapInterval: glibc сам не отдаёт освобождённую malloc-память, JVM возвращает её ОС раз в 5 с;
+# - при OutOfMemoryError процесс завершается, а не работает дальше в сломанном состоянии.
+ENTRYPOINT ["java", \
+    "-XX:+UseSerialGC", \
+    "-XX:MaxRAMPercentage=50", \
+    "-XX:TieredStopAtLevel=1", \
+    "-XX:ReservedCodeCacheSize=64m", \
+    "-XX:MaxMetaspaceSize=128m", \
+    "-XX:TrimNativeHeapInterval=5000", \
+    "-XX:+ExitOnOutOfMemoryError", \
+    "-jar", "app.jar"]

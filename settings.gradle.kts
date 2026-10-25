@@ -29,5 +29,5 @@ include(":game:game-api")
 include(":admin-auth:admin-auth")
 include(":admin-auth:admin-auth-api")
 
-// Приложение: собирает модули; Security, CORS, OpenAPI, конфигурация и миграции.
+// Приложение: собирает модули; Security, OpenAPI, конфигурация и миграции.
 include(":app")
