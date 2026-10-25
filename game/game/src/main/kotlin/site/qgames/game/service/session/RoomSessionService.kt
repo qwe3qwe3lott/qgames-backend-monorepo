@@ -12,6 +12,7 @@ import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
 import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.model.session.RoomSessionModel
+import site.qgames.game.model.session.RoomSessionStatus
 import site.qgames.game.publisher.room.RoomEventPublisher
 import site.qgames.game.repository.room.RoomMemberRepository
 import site.qgames.game.repository.room.RoomRepository
@@ -167,17 +168,22 @@ class RoomSessionService(
 
     /**
      * Истекло время хода в партии [sessionId]: последствия решает игра ([SessionEngine.timeout]), дальше — как обычный
-     * ход. Комната берётся под блокировку без ожидания: если её держит другой запрос, партия обработается в следующий
-     * раз. Возвращает true, если время хода обработано.
+     * ход. Партия найдена джобом без блокировки: здесь блокируется только строка её комнаты, и под блокировкой всё
+     * перепроверяется — партия всё ещё идёт в этой комнате, дедлайн истёк (ход, отмена или пауза могли успеть раньше),
+     * игра не снята с публикации (такие партии отменит NotPublishedGameCleanupJob). Возвращает true, если время хода
+     * обработано.
      */
     @Transactional
     fun timeout(sessionId: UUID): Boolean {
         val now = clock.instant()
-        val room = roomRepository.lockWithExpiredMove(sessionId, now) ?: return false
-        // Перепроверка под блокировкой комнаты: ход, отмена или пауза могли успеть раньше.
+        val roomId = roomSessionRepository.findById(sessionId)?.roomId ?: return false
+        val room = roomRepository.lockById(roomId) ?: return false
         val session = roomSessionRepository.findById(sessionId) ?: return false
         val deadline = session.moveDeadline
-        if (room.currentSessionId != sessionId || deadline == null || deadline > now) {
+        if (room.currentSessionId != sessionId || session.status != RoomSessionStatus.IN_PROGRESS || deadline == null || deadline > now) {
+            return false
+        }
+        if (gameService.isNotPublished(room.gameCode)) {
             return false
         }
         val full = sessionJournalService.full(session)

@@ -17,6 +17,8 @@ import site.qgames.adminauth.util.Hashing
 import java.time.Duration
 import java.util.UUID
 import java.util.stream.Stream
+import site.qgames.adminauth.table.auth.RefreshTokenTable
+import org.jetbrains.exposed.v1.jdbc.selectAll
 
 class LoginScenariosTest : AdminAuthIntegrationTest() {
 
@@ -36,7 +38,7 @@ class LoginScenariosTest : AdminAuthIntegrationTest() {
         }
 
         if (expectedAdminId == null) {
-            assertThat(countRows("\"admin_auth#refresh_token\"")).isZero()
+            assertThat(count(RefreshTokenTable)).isZero()
             return
         }
         val auth = result.session()
@@ -50,7 +52,7 @@ class LoginScenariosTest : AdminAuthIntegrationTest() {
             .isEqualTo(Duration.ofMinutes(5))
         assertThat(auth.tokens.refreshTokenMaxAge).isBetween(Duration.ofMinutes(15).minusSeconds(1), Duration.ofMinutes(15))
 
-        val storedHashes = jdbcClient.sql("SELECT token_hash FROM \"admin_auth#refresh_token\"").query(String::class.java).list()
+        val storedHashes = db { RefreshTokenTable.selectAll().map { it[RefreshTokenTable.tokenHash] } }
         assertThat(storedHashes)
             .containsExactly(Hashing.sha256Hex(auth.tokens.refreshToken))
             .doesNotContain(auth.tokens.refreshToken)

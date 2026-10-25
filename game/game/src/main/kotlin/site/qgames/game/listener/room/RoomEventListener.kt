@@ -25,8 +25,10 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 /**
- * Принимает события комнат и партий из шины между инстансами: `LISTEN room_events` и `LISTEN session_events` на одном
- * выделенном JDBC-соединении вне пула (пул отдаёт соединения на время запроса, а подписка должна жить постоянно). Цикл
+ * Принимает события комнат и партий (`pg_notify` в транзакциях изменений): `LISTEN room_events` и
+ * `LISTEN session_events` на одном выделенном JDBC-соединении вне пула (пул отдаёт соединения на время запроса, а
+ * подписка должна жить постоянно). LISTEN — сырой SQL, единственное разрешённое исключение вместе с `pg_notify`
+ * (CLAUDE.md §4). Цикл
  * `getNotifications` идёт на виртуальном потоке, уведомления раздают [RoomStreamDispatcher] и [SessionStreamDispatcher]
  * в порядке их прихода (= порядке коммитов).
  *

@@ -20,6 +20,11 @@ import site.qgames.game.support.TestData.CARCASSONNE_TITLE
 import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
 import site.qgames.game.support.TestData.NOTHING_DESCRIPTION
 import site.qgames.game.support.TestData.NOTHING_TITLE
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import site.qgames.game.table.game.GameTable
 
 /**
  * Каталог игр: описание и статус — из таблицы game, параметры правил — из модуля игры. Пользователь не нужен.
@@ -49,7 +54,12 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
     @Test
     fun `catalog is ordered by sort order`() {
         // Только для проверки порядка: в каталоге нужны две игры, а правила списку не нужны.
-        jdbcClient.sql("UPDATE \"game#game\" SET sort_order = 1, publish_status = 'PUBLISHED' WHERE code = 'carcassonne'").update()
+        db {
+            GameTable.update({ GameTable.code eq "carcassonne" }) {
+                it[sortOrder] = 1
+                it[publishStatus] = "PUBLISHED"
+            }
+        }
 
         call(HttpMethod.GET, "/api/games", null).andExpect {
             status { isOk() }

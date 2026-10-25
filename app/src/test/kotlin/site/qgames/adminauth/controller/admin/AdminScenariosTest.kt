@@ -13,9 +13,10 @@ import site.qgames.adminauth.api.dto.admin.AdminListResponse
 import site.qgames.adminauth.api.dto.admin.AdminResponse
 import site.qgames.adminauth.support.TestData
 import org.springframework.http.HttpHeaders
-import java.sql.Timestamp
 import java.util.UUID
 import java.util.stream.Stream
+import site.qgames.adminauth.table.admin.AdminTable
+import org.jetbrains.exposed.v1.jdbc.insert
 
 class AdminScenariosTest : AdminAuthIntegrationTest() {
 
@@ -41,10 +42,14 @@ class AdminScenariosTest : AdminAuthIntegrationTest() {
     fun `admins are listed by creation time, then by id`() {
         // Создан одновременно с Root, но id меньше — должен идти перед ним.
         val sameTimeAsRoot = UUID.fromString("01990000-0000-7000-8000-0000000000a0")
-        jdbcClient.sql("INSERT INTO \"admin_auth#admin\" (id, login, password_hash, created_at) VALUES (:id, 'support', 'hash', :createdAt)")
-            .param("id", sameTimeAsRoot)
-            .param("createdAt", Timestamp.from(TestData.Root.CREATED_AT))
-            .update()
+        db {
+            AdminTable.insert {
+                it[id] = sameTimeAsRoot
+                it[login] = "support"
+                it[passwordHash] = "hash"
+                it[createdAt] = TestData.Root.CREATED_AT
+            }
+        }
 
         val list = getJson("/api/admin/admins", TestData.Root.ID).andExpect { status { isOk() } }.body<AdminListResponse>()
 
@@ -52,7 +57,7 @@ class AdminScenariosTest : AdminAuthIntegrationTest() {
         assertThat(list.admins.first()).isEqualTo(
             AdminResponse(TestData.Operator.ID, TestData.Operator.LOGIN, TestData.Operator.CREATED_AT),
         )
-        assertThat(countRows("\"admin_auth#admin\"")).isEqualTo(TestData.FIXTURE_ADMIN_COUNT + 1)
+        assertThat(count(AdminTable)).isEqualTo(TestData.FIXTURE_ADMIN_COUNT + 1)
     }
 
     @Test

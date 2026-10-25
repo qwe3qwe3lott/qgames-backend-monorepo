@@ -2,8 +2,8 @@
 # Правила: CLAUDE.md, раздел «Миграции».
 databaseChangeLog:
   - include:
-      file: DDL/2026-10-20-CREATE-admin_auth#admin.yaml
+      file: DDL/2026-10-20-CREATE-admin.yaml
       relativeToChangelogFile: true
   - include:
-      file: DDL/2026-10-20-CREATE-admin_auth#refresh_token.yaml
+      file: DDL/2026-10-20-CREATE-admin_refresh_token.yaml
       relativeToChangelogFile: true

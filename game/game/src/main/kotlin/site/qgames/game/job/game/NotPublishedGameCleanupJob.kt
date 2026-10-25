@@ -11,7 +11,7 @@ import site.qgames.game.service.room.RoomService
 /**
  * Убирает комнаты неопубликованных игр (NOT_PUBLISHED): отменяет идущие партии и удаляет комнаты. До его
  * срабатывания ручки таких комнат отвечают 404 GAME_NOT_FOUND.
- * Комнаты блокируются так же, как в остальных джобах (FOR UPDATE SKIP LOCKED), каждая — в своей
+ * Комнаты выбираются без блокировки, затем каждая обрабатывается под блокировкой комнаты с перепроверкой в своей
  * транзакции. По расписанию — только при qgames.game.catalog.not-published-cleanup-enabled.
  */
 @Component
@@ -28,7 +28,7 @@ class NotPublishedGameCleanupJob(
         }
     }
 
-    /** Возвращает число удалённых комнат. Заблокированные другими запросами комнаты удалятся в следующий запуск. */
+    /** Возвращает число удалённых комнат. */
     fun run(): Int {
         val rooms = roomRepository.findIdsByGamePublishStatus(
             GamePublishStatus.NOT_PUBLISHED,

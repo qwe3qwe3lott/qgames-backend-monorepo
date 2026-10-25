@@ -1,0 +1,32 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-18-INSERT-game
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Первые игры каталога. id — фиксированные UUID v7 (строки каталога заводятся миграциями, а не приложением).
+      changes:
+        - insert:
+            tableName: game
+            columns:
+              - column: { name: id, value: 019a0000-0000-7000-8000-000000000001 }
+              - column: { name: code, value: nothing }
+              - column: { name: title, value: Игра в ничто }
+              - column:
+                  name: description
+                  value: "Тестовая игра: игроки по очереди завершают ход, партия длится заданное число раундов."
+              - column: { name: sort_order, valueNumeric: 10 }
+              - column: { name: publish_status, value: PUBLISHED }
+        - insert:
+            tableName: game
+            columns:
+              - column: { name: id, value: 019a0000-0000-7000-8000-000000000002 }
+              - column: { name: code, value: carcassonne }
+              - column: { name: title, value: Каркассон }
+              - column: { name: description, value: "Строим города, дороги и монастыри. Игра в разработке." }
+              - column: { name: sort_order, valueNumeric: 20 }
+              - column: { name: publish_status, value: NOT_PUBLISHED }
+      rollback:
+        - delete:
+            tableName: game
+            where: code IN ('nothing', 'carcassonne')

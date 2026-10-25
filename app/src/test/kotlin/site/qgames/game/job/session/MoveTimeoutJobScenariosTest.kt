@@ -12,6 +12,15 @@ import site.qgames.game.support.TestData.BOB
 import site.qgames.games.nothing.NothingGameState
 import java.time.Instant
 import java.util.UUID
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.core.isNull
+import org.jetbrains.exposed.v1.core.isNotNull
+import site.qgames.game.table.room.RoomTable
+import site.qgames.game.table.session.RoomSessionTable
+import site.qgames.game.table.session.RoomSessionEventTable
 
 /**
  * Истечение времени хода: дедлайн-проекция сдвигается в прошлое через SQL, джоб вызывается напрямую (по расписанию он в
@@ -40,9 +49,10 @@ class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
         assertThat(journal(roomId).map { it.second })
             .containsExactly("session-started", "player-passed", "turn-changed", "move-options-changed", "move-options-changed", "timer-started")
         // Пропуск по времени — INFO: в журнале, но счётчик ходов игры не меняется.
-        val passed = jdbcClient.sql("SELECT method, data::text AS data FROM \"game#room_session_event\" WHERE code = 'player-passed'")
-            .query { rs, _ -> rs.getString("method") to rs.getString("data") }
-            .single()
+        val passed = db {
+            RoomSessionEventTable.selectAll().where { RoomSessionEventTable.code eq "player-passed" }.single()
+                .let { it[RoomSessionEventTable.method] to it[RoomSessionEventTable.data] }
+        }
         assertThat(passed.first).isEqualTo("INFO")
         assertThat(state.game).isEqualTo(NothingGameState(moves = 0))
         assertThat(jsonMapper.readTree(passed.second)).isEqualTo(
@@ -64,8 +74,8 @@ class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
         assertThat(room.status).isEqualTo(RoomStatus.WAITING)
         assertThat(room.session!!.status).isEqualTo(SessionStatus.FINISHED)
         assertThat(journal(roomId).last().second).isEqualTo("session-finished")
-        assertThat(countRows("\"game#room_session\" WHERE move_deadline IS NULL AND finished_at IS NOT NULL")).isEqualTo(1)
-        assertThat(countRows("\"game#room\" WHERE current_session_id IS NULL AND status = 'WAITING'")).isEqualTo(1)
+        assertThat(count(RoomSessionTable) { RoomSessionTable.moveDeadline.isNull() and RoomSessionTable.finishedAt.isNotNull() }).isEqualTo(1)
+        assertThat(count(RoomTable) { RoomTable.currentSessionId.isNull() and (RoomTable.status eq "WAITING") }).isEqualTo(1)
     }
 
     @Test
@@ -74,13 +84,11 @@ class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
         val notExpired = roomWith(BOB, started = true, settings = perMove(seconds = 600))
         val cancelled = roomWith(ALICE, BOB, started = true, settings = perMove(seconds = 30))
         cancel(ALICE, cancelled)
-        jdbcClient.sql("UPDATE \"game#room_session\" SET move_deadline = now() - interval '5 seconds' WHERE room_id = :id")
-            .param("id", cancelled)
-            .update()
+        db { RoomSessionTable.update({ RoomSessionTable.roomId eq cancelled }) { it[moveDeadline] = Instant.now().minusSeconds(5) } }
 
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("\"game#room_session_event\" WHERE code = 'player-passed'")).isZero()
+        assertThat(count(RoomSessionEventTable) { RoomSessionEventTable.code eq "player-passed" }).isZero()
         assertThat(fullState(withoutTimer).state.timer).isNull()
         assertThat(journal(notExpired)).hasSize(1)
     }
@@ -93,15 +101,17 @@ class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
         assertThat(moveTimeoutJob.run()).isEqualTo(1)
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("\"game#room_session_event\" WHERE code = 'player-passed'")).isEqualTo(1)
+        assertThat(count(RoomSessionEventTable) { RoomSessionEventTable.code eq "player-passed" }).isEqualTo(1)
     }
 
     private fun perMove(seconds: Int, rounds: Int = 3) =
         nothingSettings(rounds = rounds, mode = TimeControlMode.PER_MOVE, moveSeconds = seconds)
 
     private fun expireMove(roomId: UUID) {
-        jdbcClient.sql("UPDATE \"game#room_session\" SET move_deadline = now() - interval '5 seconds' WHERE room_id = :id AND status = 'IN_PROGRESS'")
-            .param("id", roomId)
-            .update()
+        db {
+            RoomSessionTable.update({ (RoomSessionTable.roomId eq roomId) and (RoomSessionTable.status eq "IN_PROGRESS") }) {
+                it[moveDeadline] = Instant.now().minusSeconds(5)
+            }
+        }
     }
 }

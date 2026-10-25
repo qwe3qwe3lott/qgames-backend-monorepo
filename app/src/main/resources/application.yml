@@ -11,19 +11,14 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/qgames}
     username: ${DB_USERNAME:qgames}
     password: ${DB_PASSWORD:qgames}
+    hikari:
+      # Один инстанс, запросы короткие: маленький пул экономит память PostgreSQL (каждое соединение — отдельный
+      # процесс). Плюс одно соединение вне пула держит RoomEventListener (LISTEN).
+      maximum-pool-size: 5
+      minimum-idle: 2
   liquibase:
-    # Сводный master: подключает changelog'и модулей (db/changelog/<модуль>/) и служебные таблицы приложения.
+    # Сводный master: подключает changelog'и модулей (db/changelog/<модуль>/).
     change-log: classpath:db/changelog/db.changelog-master.yaml
-  modulith:
-    events:
-      # Таблицу event_publication создаёт Liquibase-миграция app, а не Spring Modulith.
-      jdbc:
-        schema-initialization:
-          enabled: false
-      # Доставленная публикация удаляется: таблица не растёт (как прежний outbox).
-      completion-mode: delete
-      # Публикации, не доставленные до остановки (упал слушатель, рестарт), переотправляются при старте.
-      republish-outstanding-events-on-restart: true
 
 management:
   endpoints:
@@ -111,8 +106,9 @@ qgames:
       owner-grace-enabled: true
       # Подключения к потоку событий комнаты (SSE). Открытый поток — это нахождение в комнате.
       connection:
-        # Аренда подключения: процесс продлевает её каждые heartbeat-interval. Если процесс упал, через lease его
-        # подключения удаляются (RoomConnectionCleanupJob), а пользователи уходят из комнат, как при закрытии потока.
+        # Аренда подключения: приложение продлевает её каждые heartbeat-interval. Если процесс упал или перезапущен,
+        # через lease его подключения удаляются (RoomConnectionCleanupJob), а пользователи уходят из комнат, как при
+        # закрытии потока.
         # Аренда — 4 интервала пульса: живое подключение не истечёт, даже если пара продлений задержится.
         lease: 20s
         # Комментарий ": ping" во все потоки и продление аренды (RoomConnectionHeartbeatJob). По неудачной записи ping

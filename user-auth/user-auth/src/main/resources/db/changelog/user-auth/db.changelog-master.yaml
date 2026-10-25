@@ -2,11 +2,11 @@
 # Правила: CLAUDE.md, раздел «Миграции».
 databaseChangeLog:
   - include:
-      file: DDL/2026-10-17-CREATE-user_auth#user.yaml
+      file: DDL/2026-10-17-CREATE-user.yaml
       relativeToChangelogFile: true
   - include:
-      file: DDL/2026-10-17-CREATE-user_auth#user_identity.yaml
+      file: DDL/2026-10-17-CREATE-user_identity.yaml
       relativeToChangelogFile: true
   - include:
-      file: DDL/2026-10-17-CREATE-user_auth#refresh_token.yaml
+      file: DDL/2026-10-17-CREATE-user_refresh_token.yaml
       relativeToChangelogFile: true

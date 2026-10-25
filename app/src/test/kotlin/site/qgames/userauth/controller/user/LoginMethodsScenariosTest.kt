@@ -15,6 +15,7 @@ import site.qgames.userauth.support.GoogleIdTokens
 import site.qgames.userauth.support.TestData
 import java.util.UUID
 import java.util.stream.Stream
+import site.qgames.userauth.table.user.UserIdentityTable
 
 class   LoginMethodsScenariosTest : UserAuthIntegrationTest() {
 
@@ -44,13 +45,13 @@ class   LoginMethodsScenariosTest : UserAuthIntegrationTest() {
     @ParameterizedTest(name = "{0}")
     @MethodSource("conflicts")
     fun `linking is rejected`(case: String, userId: UUID, path: String, body: Any, expectedCode: String) {
-        val identitiesBefore = countRows("\"user_auth#user_identity\"")
+        val identitiesBefore = count(UserIdentityTable)
 
         postJson(path, body, userId).andExpect {
             status { isConflict() }
             jsonPath("$.code") { value(expectedCode) }
         }
-        assertThat(countRows("\"user_auth#user_identity\"")).isEqualTo(identitiesBefore)
+        assertThat(count(UserIdentityTable)).isEqualTo(identitiesBefore)
     }
 
     @Test

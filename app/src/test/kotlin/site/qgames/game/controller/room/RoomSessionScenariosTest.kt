@@ -28,6 +28,13 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.core.isNotNull
+import site.qgames.game.table.session.RoomSessionTable
+import site.qgames.game.table.session.RoomSessionEventTable
 
 /**
  * Партии «игры в ничто»: игроки по очереди делают PASS, после заданного в настройках числа кругов (по умолчанию 3)
@@ -45,13 +52,13 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
     @MethodSource("rejectedStarts")
     fun `start is rejected`(case: String, setup: RoomSetup, user: UUID, expectedStatus: HttpStatus, expectedCode: String) {
         val roomId = with(setup) { prepare() }
-        val sessionsBefore = countRows("\"game#room_session\"")
+        val sessionsBefore = count(RoomSessionTable)
 
         call(HttpMethod.POST, "/api/rooms/$roomId/session", user).andExpect {
             status { isEqualTo(expectedStatus.value()) }
             jsonPath("$.code") { value(expectedCode) }
         }
-        assertThat(countRows("\"game#room_session\"")).isEqualTo(sessionsBefore)
+        assertThat(count(RoomSessionTable)).isEqualTo(sessionsBefore)
     }
 
     @Test
@@ -70,7 +77,7 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
         assertThat(state.players.map { it.moveOptions }).containsExactly(listOf(MoveOption(PASS)), emptyList())
         assertThat(state.turns).isEqualTo(TurnsState(ALICE, round = 1, rounds = 3))
         assertThat(state.timer).isNull()
-        assertThat(countRows("\"game#room_session\" WHERE last_seq = 1")).isEqualTo(1)
+        assertThat(count(RoomSessionTable) { RoomSessionTable.lastSeq eq 1L }).isEqualTo(1)
     }
 
     @ParameterizedTest(name = "{0} player(s)")
@@ -89,7 +96,9 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
         assertThat(journal.map { it.first }).containsExactlyElementsOf((1L..journal.size).toList())
         assertThat(journal.count { it.second == "player-passed" }).isEqualTo(3 * playerCount)
         assertThat(journal.last().second).isEqualTo("session-finished")
-        assertThat(countRows("\"game#room_session\" WHERE status = 'FINISHED' AND finished_at IS NOT NULL AND last_seq = :n", "n" to journal.size.toLong()))
+        assertThat(count(RoomSessionTable) {
+            (RoomSessionTable.status eq "FINISHED") and RoomSessionTable.finishedAt.isNotNull() and (RoomSessionTable.lastSeq eq journal.size.toLong())
+        })
             .isEqualTo(1)
 
         val next = start(players.first(), roomId)
@@ -172,9 +181,10 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
         assertThat(response.contentAsString).isEmpty()
         assertThat(journal(roomId).map { it.second })
             .containsExactly("session-started", "player-passed", "turn-changed", "move-options-changed", "move-options-changed")
-        val passed = jdbcClient.sql("SELECT method, data::text AS data FROM \"game#room_session_event\" WHERE code = 'player-passed'")
-            .query { rs, _ -> rs.getString("method") to rs.getString("data") }
-            .single()
+        val passed = db {
+            RoomSessionEventTable.selectAll().where { RoomSessionEventTable.code eq "player-passed" }.single()
+                .let { it[RoomSessionEventTable.method] to it[RoomSessionEventTable.data] }
+        }
         assertThat(passed.first).isEqualTo("PATCH")
         assertThat(jsonMapper.readTree(passed.second)).isEqualTo(jsonMapper.readTree("""{"path": ["state"], "value": {"moves": 1}}"""))
     }
@@ -191,14 +201,14 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
         expectedReason: String?,
     ) {
         val roomId = with(setup) { prepare() }
-        val eventsBefore = countRows("\"game#room_session_event\"")
+        val eventsBefore = count(RoomSessionEventTable)
 
         moveRequest(user, roomId, moveType).andExpect {
             status { isEqualTo(expectedStatus.value()) }
             jsonPath("$.code") { value(expectedCode) }
             if (expectedReason != null) jsonPath("$.reason") { value(expectedReason) }
         }
-        assertThat(countRows("\"game#room_session_event\"")).isEqualTo(eventsBefore)
+        assertThat(count(RoomSessionEventTable)).isEqualTo(eventsBefore)
     }
 
     @Test
@@ -267,11 +277,7 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
     }
 
     private fun storedDeadline(roomId: UUID): Instant? =
-        jdbcClient.sql("SELECT move_deadline FROM \"game#room_session\" WHERE room_id = :id ORDER BY created_at DESC LIMIT 1")
-            .param("id", roomId)
-            .query { rs, _ -> rs.getTimestamp("move_deadline")?.toInstant() }
-            .list()
-            .single()
+        roomSessionRepository.findLatest(roomId)!!.moveDeadline
 
     companion object {
         private fun started(): RoomSetup = RoomSetup { roomWith(ALICE, BOB, started = true) }

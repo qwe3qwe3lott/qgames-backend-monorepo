@@ -38,10 +38,16 @@ import tools.jackson.databind.JsonNode
 import java.util.UUID
 import java.util.stream.Stream
 import kotlin.concurrent.thread
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import site.qgames.game.table.session.RoomSessionTable
+import java.time.Instant
 
 /**
  * Поток партии (SSE): первым — снапшот зрителя на seq, дальше события журнала с непрерывным seq, замаскированные под
- * зрителя. Рассылка — через шину (Postgres NOTIFY), только после коммита.
+ * зрителя. Рассылка — через Postgres NOTIFY, только после коммита и в порядке коммитов.
  */
 class SessionEventsScenariosTest : GameIntegrationTest() {
 
@@ -219,7 +225,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
         pause(ALICE, roomId)
         resume(ALICE, roomId)
         pass(BOB, roomId)
-        jdbcClient.sql("UPDATE \"game#room_session\" SET move_deadline = now() - interval '1 second' WHERE id = :id").param("id", sessionId).update()
+        db { RoomSessionTable.update({ RoomSessionTable.id eq sessionId }) { it[moveDeadline] = Instant.now().minusSeconds(1) } }
         assertThat(moveTimeoutJob.run()).isEqualTo(1)
         pass(BOB, roomId)
 

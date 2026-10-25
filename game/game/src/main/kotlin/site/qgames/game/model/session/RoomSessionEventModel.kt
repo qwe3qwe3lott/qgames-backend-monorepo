@@ -12,8 +12,8 @@ data class RoomSessionEventModel(
 )
 
 /**
- * Уведомление шины между инстансами (Postgres NOTIFY, канал session_events): в журнал партии [sessionId] дописаны
- * события [fromSeq]..[toSeq]. Сами события получатель читает из журнала.
+ * Уведомление (Postgres NOTIFY, канал session_events): в журнал партии [sessionId] дописаны события
+ * [fromSeq]..[toSeq]. Сами события диспетчер читает из журнала.
  */
 data class SessionEventsNotificationModel(
     val sessionId: UUID,

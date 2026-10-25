@@ -1,0 +1,98 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-18-CREATE-room_session
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Партия любой игры. Состояние не хранится: это свёртка журнала room_session_event (формат событий задаёт модуль игры
+        и state_schema_version). last_seq — seq последнего события журнала, новые события пишутся с last_seq + 1 под
+        блокировкой комнаты. time_control_mode, move_seconds и game_settings — снимок настроек комнаты на момент старта.
+        move_deadline — проекция таймера для MoveTimeoutJob: дедлайн идущего таймера; NULL — без таймера, на паузе или
+        партия закончена или отменена.
+      changes:
+        - createTable:
+            tableName: room_session
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_session_pk
+              - column:
+                  name: room_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: room_session_room_fk
+                    referencedTableName: room
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: game_code
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+                    foreignKeyName: room_session_game_fk
+                    referencedTableName: game
+                    referencedColumnNames: code
+              - column:
+                  name: status
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: state_schema_version
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: seed
+                  type: bigint
+                  constraints:
+                    nullable: false
+              - column:
+                  name: last_seq
+                  type: bigint
+                  defaultValueNumeric: 0
+                  constraints:
+                    nullable: false
+              - column:
+                  name: time_control_mode
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: move_seconds
+                  type: integer
+              - column:
+                  name: game_settings
+                  type: json
+                  constraints:
+                    nullable: false
+              - column:
+                  name: move_deadline
+                  type: timestamp with time zone
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: finished_at
+                  type: timestamp with time zone
+        - createIndex:
+            tableName: room_session
+            indexName: room_session_room_idx
+            columns:
+              - column:
+                  name: room_id
+              - column:
+                  name: created_at
+                  descending: true
+        - createIndex:
+            tableName: room_session
+            indexName: room_session_move_deadline_idx
+            columns:
+              - column:
+                  name: move_deadline

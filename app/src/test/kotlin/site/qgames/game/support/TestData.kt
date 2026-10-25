@@ -10,7 +10,8 @@ import site.qgames.game.api.dto.room.TimeControlMode
 import java.util.UUID
 
 /**
- * Фикстуры из app/src/test/resources/init/game.sql. Значения должны совпадать с SQL.
+ * Фикстуры из app/src/test/resources/init/game.sql; игроки (строки таблицы user с ником и аватаром) — из
+ * init/user-auth.sql. Значения должны совпадать с SQL.
  */
 object TestData {
 
@@ -20,7 +21,7 @@ object TestData {
     val DAVE: UUID = UUID.fromString("01990000-0000-7000-8000-00000000000d")
     val EVE: UUID = UUID.fromString("01990000-0000-7000-8000-00000000000e")
 
-    /** Пользователь, чей профиль ещё не реплицировался. */
+    /** Пользователь без строки в таблице user: профиля нет (ник и аватар в ответах — null). */
     val STRANGER: UUID = UUID.fromString("01990000-0000-7000-8000-0000000000ff")
 
     val NICKNAMES = mapOf(ALICE to "Alice", BOB to "Bob", CAROL to "Carol", DAVE to "Dave", EVE to "Eve")

@@ -12,6 +12,8 @@ bouncycastle = "1.86"
 springModulith = "2.1.2"
 springmockk = "5.0.1"
 wiremock = "3.13.2"
+# Exposed (ORM, DSL) не входит в Spring Boot BOM: свой BOM, интеграция с транзакциями Spring — стартер для Boot 4.
+exposed = "1.6.0"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
@@ -24,3 +26,9 @@ bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "boun
 springModulithBom = { module = "org.springframework.modulith:spring-modulith-bom", version.ref = "springModulith" }
 springmockk = { module = "com.ninja-squad:springmockk", version.ref = "springmockk" }
 wiremock = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
+exposedBom = { module = "org.jetbrains.exposed:exposed-bom", version.ref = "exposed" }
+exposedCore = { module = "org.jetbrains.exposed:exposed-core" }
+exposedJdbc = { module = "org.jetbrains.exposed:exposed-jdbc" }
+exposedJavaTime = { module = "org.jetbrains.exposed:exposed-java-time" }
+exposedJson = { module = "org.jetbrains.exposed:exposed-json" }
+exposedSpringBoot4Starter = { module = "org.jetbrains.exposed:exposed-spring-boot4-starter" }

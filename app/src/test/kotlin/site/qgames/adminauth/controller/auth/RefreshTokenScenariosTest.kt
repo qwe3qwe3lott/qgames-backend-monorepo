@@ -12,6 +12,12 @@ import site.qgames.adminauth.util.Hashing
 import java.time.Duration
 import java.time.Instant
 import java.util.stream.Stream
+import site.qgames.adminauth.table.auth.RefreshTokenTable
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.isNull
+import org.jetbrains.exposed.v1.core.isNotNull
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 
 class RefreshTokenScenariosTest : AdminAuthIntegrationTest() {
 
@@ -30,24 +36,25 @@ class RefreshTokenScenariosTest : AdminAuthIntegrationTest() {
         assertThat(listOf(session, first, second).map { it.tokens.refreshToken }).doesNotHaveDuplicates()
         assertThat(second.admin.id).isEqualTo(TestData.Root.ID)
         assertThat(verifiedClaims(second.tokens.accessToken).subject).isEqualTo(TestData.Root.ID.toString())
-        assertThat(countRows("\"admin_auth#refresh_token\" WHERE revoked_at IS NULL")).isEqualTo(1)
+        assertThat(count(RefreshTokenTable) { RefreshTokenTable.revokedAt.isNull() }).isEqualTo(1)
     }
 
     @Test
     fun `rotation gives the new refresh token the full lifetime`() {
         val session = startSession()
         // Сессия почти истекла: до конца срока refresh-токена осталась минута.
-        jdbcClient.sql("UPDATE \"admin_auth#refresh_token\" SET expires_at = now() + interval '1 minute'").update()
+        db { RefreshTokenTable.update { it[expiresAt] = Instant.now().plusSeconds(60) } }
 
         val rotated = refresh(session.tokens.refreshToken).andExpect { status { isOk() } }.session()
 
         assertThat(rotated.tokens.refreshTokenMaxAge).isBetween(Duration.ofMinutes(14), Duration.ofMinutes(15))
-        val fullLifetime = jdbcClient
-            .sql("SELECT expires_at - created_at = interval '15 minutes' FROM \"admin_auth#refresh_token\" WHERE token_hash = :hash")
-            .param("hash", Hashing.sha256Hex(rotated.tokens.refreshToken))
-            .query(Boolean::class.java)
-            .single()
-        assertThat(fullLifetime).isTrue()
+        val lifetime = db {
+            RefreshTokenTable.selectAll()
+                .where { RefreshTokenTable.tokenHash eq Hashing.sha256Hex(rotated.tokens.refreshToken) }
+                .single()
+                .let { Duration.between(it[RefreshTokenTable.createdAt], it[RefreshTokenTable.expiresAt]) }
+        }
+        assertThat(lifetime).isEqualTo(Duration.ofMinutes(15))
     }
 
     @ParameterizedTest(name = "{0}")
@@ -83,7 +90,7 @@ class RefreshTokenScenariosTest : AdminAuthIntegrationTest() {
                 jsonPath("$.code") { value("REFRESH_TOKEN_REUSED") }
             }
             refresh(rotated.tokens.refreshToken).andExpect { jsonPath("$.code") { value("REFRESH_TOKEN_REUSED") } }
-            assertThat(countRows("\"admin_auth#refresh_token\" WHERE revoked_at IS NULL")).isZero()
+            assertThat(count(RefreshTokenTable) { RefreshTokenTable.revokedAt.isNull() }).isZero()
         }
     }
 
@@ -101,13 +108,14 @@ class RefreshTokenScenariosTest : AdminAuthIntegrationTest() {
 
     /** Сдвигает момент ротации всех ротированных токенов в прошлое. */
     private fun moveRotationToPast(seconds: Long) {
-        jdbcClient.sql(
-            """
-            UPDATE "admin_auth#refresh_token"
-            SET rotated_at = rotated_at - make_interval(secs => :seconds), revoked_at = revoked_at - make_interval(secs => :seconds)
-            WHERE rotated_at IS NOT NULL
-            """,
-        ).param("seconds", seconds).update()
+        db {
+            RefreshTokenTable.selectAll().where { RefreshTokenTable.rotatedAt.isNotNull() }.toList().forEach { row ->
+                RefreshTokenTable.update({ RefreshTokenTable.id eq row[RefreshTokenTable.id] }) {
+                    it[rotatedAt] = row[RefreshTokenTable.rotatedAt]!!.minusSeconds(seconds)
+                    it[revokedAt] = row[RefreshTokenTable.revokedAt]?.minusSeconds(seconds)
+                }
+            }
+        }
     }
 
     @Test
@@ -133,8 +141,7 @@ class RefreshTokenScenariosTest : AdminAuthIntegrationTest() {
         assertThat(revokedAt()).isEqualTo(revokedAt)
     }
 
-    private fun revokedAt(): String? =
-        jdbcClient.sql("SELECT revoked_at::text FROM \"admin_auth#refresh_token\"").query(String::class.java).single()
+    private fun revokedAt(): Instant? = db { RefreshTokenTable.selectAll().single()[RefreshTokenTable.revokedAt] }
 
     @Test
     fun `logout is idempotent for unknown tokens`() {
@@ -152,7 +159,7 @@ class RefreshTokenScenariosTest : AdminAuthIntegrationTest() {
             arguments(
                 "expired token",
                 Setup { session ->
-                    jdbcClient.sql("UPDATE \"admin_auth#refresh_token\" SET expires_at = now() - interval '1 second'").update()
+                    db { RefreshTokenTable.update { it[expiresAt] = Instant.now().minusSeconds(1) } }
                     session.tokens.refreshToken
                 },
                 "INVALID_REFRESH_TOKEN",

@@ -11,7 +11,7 @@ import java.time.Clock
 /**
  * Удаляет комнаты, в которых нет присутствующих участников дольше qgames.game.room.empty-ttl. Отсутствующие игроки
  * идущей партии комнату не держат: их партия отменяется.
- * Комнаты выбираются без блокировки, затем каждая блокируется (FOR UPDATE SKIP LOCKED) с перепроверкой в своей
+ * Комнаты выбираются без блокировки, затем каждая обрабатывается под блокировкой комнаты с перепроверкой в своей
  * транзакции. По расписанию — только при qgames.game.room.cleanup-enabled.
  */
 @Component
@@ -29,7 +29,7 @@ class EmptyRoomCleanupJob(
         }
     }
 
-    /** Возвращает число удалённых комнат. Заблокированные другими запросами комнаты удалятся в следующий запуск. */
+    /** Возвращает число удалённых комнат. */
     fun run(): Int {
         val threshold = clock.instant().minus(properties.room.emptyTtl)
         val deleted = roomRepository.findIdsEmptySince(threshold, properties.room.cleanupBatchSize).count { roomId ->

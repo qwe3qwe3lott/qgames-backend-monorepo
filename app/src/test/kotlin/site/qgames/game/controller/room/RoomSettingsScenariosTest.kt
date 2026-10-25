@@ -25,6 +25,11 @@ import site.qgames.games.api.TimeControlRules
 import java.util.UUID
 import java.util.stream.Stream
 import site.qgames.games.api.TimeControlMode as GameTimeControlMode
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import site.qgames.game.table.room.RoomTable
 
 /**
  * Настройки комнаты: задаются при создании (POST /api/games/{gameCode}/rooms) и меняются владельцем между партиями
@@ -52,7 +57,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             jsonPath("$.code") { value("VALIDATION_ERROR") }
             jsonPath("$.errors['settings.$field']") { exists() }
         }
-        assertThat(countRows("\"game#room\"")).isZero()
+        assertThat(count(RoomTable)).isZero()
     }
 
     @ParameterizedTest(name = "{0}")
@@ -63,7 +68,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             jsonPath("$.code") { value("VALIDATION_ERROR") }
             if (field != null) jsonPath("$.errors['$field']") { exists() }
         }
-        assertThat(countRows("\"game#room\"")).isZero()
+        assertThat(count(RoomTable)).isZero()
     }
 
     @Test
@@ -85,7 +90,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             status { isNotFound() }
             jsonPath("$.code") { value("GAME_NOT_FOUND") }
         }
-        assertThat(countRows("\"game#room\"")).isZero()
+        assertThat(count(RoomTable)).isZero()
     }
 
     @Test
@@ -98,7 +103,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             jsonPath("$.code") { value("VALIDATION_ERROR") }
             jsonPath("$.errors['settings.timeControl.mode']") { exists() }
         }
-        assertThat(countRows("\"game#room\"")).isZero()
+        assertThat(count(RoomTable)).isZero()
     }
 
     @Test
@@ -114,10 +119,10 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         assertThat(started.session).isNotNull()
         assertThat(fullState(roomId).state.turns.rounds).isEqualTo(1)
         assertThat(fullState(roomId).state.timer).isNotNull()
-        val snapshot = jdbcClient.sql(
-            "SELECT time_control_mode, move_seconds, game_settings->>'rounds' AS rounds FROM \"game#room_session\" WHERE room_id = :id",
-        ).param("id", roomId).query().singleRow()
-        assertThat(snapshot).containsEntry("time_control_mode", "PER_MOVE").containsEntry("move_seconds", 45).containsEntry("rounds", "1")
+        val session = roomSessionRepository.findLatest(roomId)!!
+        assertThat(session.timeControl.mode.name).isEqualTo("PER_MOVE")
+        assertThat(session.timeControl.moveSeconds).isEqualTo(45)
+        assertThat(jsonMapper.readTree(session.gameSettings)["rounds"].asInt()).isEqualTo(1)
     }
 
     @ParameterizedTest(name = "{0}")
@@ -151,12 +156,15 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
     private data class StoredSettings(val mode: String, val moveSeconds: Int?, val rounds: Int)
 
     private fun storedSettings(roomId: UUID): StoredSettings =
-        jdbcClient.sql("SELECT time_control_mode, move_seconds, (game_settings->>'rounds')::int AS rounds FROM \"game#room\" WHERE id = :id")
-            .param("id", roomId)
-            .query { rs, _ ->
-                StoredSettings(rs.getString("time_control_mode"), rs.getObject("move_seconds") as Int?, rs.getInt("rounds"))
+        db {
+            RoomTable.selectAll().where { RoomTable.id eq roomId }.single().let {
+                StoredSettings(
+                    it[RoomTable.timeControlMode],
+                    it[RoomTable.moveSeconds],
+                    jsonMapper.readTree(it[RoomTable.gameSettings])["rounds"].asInt(),
+                )
             }
-            .single()
+        }
 
     private fun rounds(settings: RoomSettingsDto) =
         (settings.gameSettings as NothingSettingsDto).rounds

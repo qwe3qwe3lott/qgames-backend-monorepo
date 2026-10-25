@@ -26,6 +26,15 @@ import site.qgames.game.support.TestData.EVE
 import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
 import java.util.UUID
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.core.isNotNull
+import site.qgames.game.table.room.RoomTable
+import java.time.Duration
+import java.time.Instant
 
 class RoomMembershipScenariosTest : GameIntegrationTest() {
 
@@ -38,7 +47,7 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
     }
 
     @Test
-    fun `creator becomes owner and the first player, member profile comes from the replica`() {
+    fun `creator becomes owner and the first player, member profile comes from the user table`() {
         val room = createRoom(ALICE)
 
         assertThat(room.gameCode).isEqualTo(GameCode.NOTHING)
@@ -157,18 +166,15 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
         val deleted = emptyRoomCleanupJob.run()
 
         assertThat(deleted).isEqualTo(1)
-        assertThat(countRows("\"game#room\" WHERE id = :id", "id" to longEmpty)).isZero()
-        assertThat(countRows("\"game#room\" WHERE id IN (:ids)", "ids" to listOf(recentlyEmpty, occupied))).isEqualTo(2)
+        assertThat(count(RoomTable) { RoomTable.id eq longEmpty }).isZero()
+        assertThat(count(RoomTable) { RoomTable.id inList listOf(recentlyEmpty, occupied) }).isEqualTo(2)
     }
 
     private fun emptySince(roomId: UUID): Boolean =
-        countRows("\"game#room\" WHERE id = :id AND empty_since IS NOT NULL", "id" to roomId) == 1L
+        count(RoomTable) { (RoomTable.id eq roomId) and RoomTable.emptySince.isNotNull() } == 1L
 
     private fun markEmptyMinutesAgo(roomId: UUID, minutes: Int) {
-        jdbcClient.sql("UPDATE \"game#room\" SET empty_since = now() - make_interval(mins => :minutes) WHERE id = :id")
-            .param("id", roomId)
-            .param("minutes", minutes)
-            .update()
+        db { RoomTable.update({ RoomTable.id eq roomId }) { it[emptySince] = Instant.now().minus(Duration.ofMinutes(minutes.toLong())) } }
     }
 
     companion object {

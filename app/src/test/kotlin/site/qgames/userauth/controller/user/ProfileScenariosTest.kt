@@ -16,6 +16,9 @@ import site.qgames.userauth.support.GoogleIdTokens
 import site.qgames.userauth.support.TestData
 import java.util.UUID
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import site.qgames.userauth.table.user.UserTable
 
 class ProfileScenariosTest : UserAuthIntegrationTest() {
 
@@ -31,25 +34,24 @@ class ProfileScenariosTest : UserAuthIntegrationTest() {
 
         assertThat(response.nickname).isEqualTo(expectedNickname)
         assertThat(response.avatar).isEqualTo(expectedAvatar)
-        val stored = jdbcClient.sql("""SELECT nickname, avatar FROM "user_auth#user" WHERE id = :id""")
-            .param("id", TestData.PasswordOnly.ID)
-            .query()
-            .singleRow()
-        assertThat(stored).containsEntry("nickname", expectedNickname).containsEntry("avatar", expectedAvatar.name)
+        val stored = db {
+            UserTable.selectAll().where { UserTable.id eq TestData.PasswordOnly.ID }.single()
+                .let { it[UserTable.nickname] to it[UserTable.avatar] }
+        }
+        assertThat(stored).isEqualTo(expectedNickname to expectedAvatar.name)
 
         val event = publishedProfileEvents().single()
         assertThat(event.id).isEqualTo(TestData.PasswordOnly.ID)
         assertThat(event.nickname).isEqualTo(expectedNickname)
         assertThat(event.avatar).isEqualTo(expectedAvatar)
-        assertThat(event.version).isEqualTo(1).isEqualTo(storedVersion(TestData.PasswordOnly.ID))
     }
 
     @Test
-    fun `every profile change increases the version carried by the event`() {
+    fun `every profile change publishes its own event`() {
         patchProfile(mapOf("nickname" to "First"), TestData.PasswordOnly.ID).andExpect { status { isOk() } }
         patchProfile(mapOf("nickname" to "Second"), TestData.PasswordOnly.ID).andExpect { status { isOk() } }
 
-        assertThat(publishedProfileEvents().map { it.nickname to it.version }).containsExactly("First" to 1L, "Second" to 2L)
+        assertThat(publishedProfileEvents().map { it.nickname }).containsExactly("First", "Second")
     }
 
     @ParameterizedTest(name = "{0}")
@@ -69,7 +71,6 @@ class ProfileScenariosTest : UserAuthIntegrationTest() {
         patchProfile(mapOf("nickname" to "Player", "avatar" to "CAT"), TestData.PasswordOnly.ID).andExpect { status { isOk() } }
 
         assertThat(publishedProfileEvents()).isEmpty()
-        assertThat(storedVersion(TestData.PasswordOnly.ID)).isZero()
     }
 
     @Test
@@ -108,7 +109,6 @@ class ProfileScenariosTest : UserAuthIntegrationTest() {
         assertThat(event.id).isEqualTo(auth.user.id)
         assertThat(event.nickname).isEqualTo(auth.user.nickname)
         assertThat(event.avatar).isEqualTo(Avatar.CAT)
-        assertThat(event.version).isZero()
     }
 
     @Test
@@ -121,9 +121,6 @@ class ProfileScenariosTest : UserAuthIntegrationTest() {
 
         assertThat(publishedProfileEvents()).isEmpty()
     }
-
-    private fun storedVersion(userId: UUID): Long =
-        jdbcClient.sql("""SELECT version FROM "user_auth#user" WHERE id = :id""").param("id", userId).query(Long::class.java).single()
 
     private fun patchProfile(body: Map<String, Any?>, userId: UUID?) =
         mockMvc.patch("/api/users/me/profile") {

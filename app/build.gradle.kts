@@ -12,11 +12,15 @@ dependencies {
 
     implementation("org.springframework.boot:spring-boot-starter-security-oauth2-resource-server")
     implementation("org.springframework.boot:spring-boot-starter-liquibase")
-    // Реестр публикаций событий модулей (таблица event_publication): доставка после коммита, повтор при старте.
-    implementation("org.springframework.modulith:spring-modulith-starter-jdbc")
+    // Exposed в транзакциях Spring: SpringTransactionManager поверх DataSource (Hikari) — один на приложение.
+    implementation(libs.exposedSpringBoot4Starter)
+    implementation(libs.exposedJdbc)
     runtimeOnly("org.postgresql:postgresql")
 
     testImplementation(project(":libs:common-test"))
+    // Тесты читают и меняют БД через Exposed DSL и таблицы модулей (без сырого SQL).
+    testImplementation(libs.exposedJavaTime)
+    testImplementation(libs.exposedJson)
     // ApplicationModules.verify(): границы модулей.
     testImplementation("org.springframework.modulith:spring-modulith-starter-test")
     // Тесты game работают с моделями правил игр и сборкой состояний партий.

@@ -1,0 +1,22 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-22-INSERT-game
+      author: A Kozlov
+      runInTransaction: true
+      comment: Шашки скрыты из каталога (HIDDEN) до приёмки, доступны по прямой ссылке.
+      changes:
+        - insert:
+            tableName: game
+            columns:
+              - column: { name: id, value: 019a0000-0000-7000-8000-000000000003 }
+              - column: { name: code, value: checkers }
+              - column: { name: title, value: Шашки }
+              - column:
+                  name: description
+                  value: "Шашки на двоих: вариант правил выбирается в настройках комнаты. Сейчас доступны русские шашки."
+              - column: { name: sort_order, valueNumeric: 15 }
+              - column: { name: publish_status, value: HIDDEN }
+      rollback:
+        - delete:
+            tableName: game
+            where: code = 'checkers'

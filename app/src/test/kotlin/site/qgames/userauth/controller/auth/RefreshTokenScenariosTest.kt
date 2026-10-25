@@ -9,6 +9,14 @@ import org.junit.jupiter.params.provider.MethodSource
 import site.qgames.userauth.UserAuthIntegrationTest
 import site.qgames.userauth.support.TestData
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.core.isNull
+import org.jetbrains.exposed.v1.core.isNotNull
+import site.qgames.userauth.table.auth.RefreshTokenTable
+import java.time.Instant
 
 class RefreshTokenScenariosTest : UserAuthIntegrationTest() {
 
@@ -26,7 +34,7 @@ class RefreshTokenScenariosTest : UserAuthIntegrationTest() {
 
         assertThat(listOf(session, first, second).map { it.tokens.refreshToken }).doesNotHaveDuplicates()
         assertThat(second.user.id).isEqualTo(TestData.PasswordOnly.ID)
-        assertThat(countRows("\"user_auth#refresh_token\" WHERE revoked_at IS NULL")).isEqualTo(1)
+        assertThat(count(RefreshTokenTable) { RefreshTokenTable.revokedAt.isNull() }).isEqualTo(1)
     }
 
     @ParameterizedTest(name = "{0}")
@@ -62,19 +70,20 @@ class RefreshTokenScenariosTest : UserAuthIntegrationTest() {
                 jsonPath("$.code") { value("REFRESH_TOKEN_REUSED") }
             }
             refresh(rotated.tokens.refreshToken).andExpect { jsonPath("$.code") { value("REFRESH_TOKEN_REUSED") } }
-            assertThat(countRows("\"user_auth#refresh_token\" WHERE revoked_at IS NULL")).isZero()
+            assertThat(count(RefreshTokenTable) { RefreshTokenTable.revokedAt.isNull() }).isZero()
         }
     }
 
     /** Сдвигает момент ротации всех ротированных токенов в прошлое. */
     private fun moveRotationToPast(seconds: Long) {
-        jdbcClient.sql(
-            """
-            UPDATE "user_auth#refresh_token"
-            SET rotated_at = rotated_at - make_interval(secs => :seconds), revoked_at = revoked_at - make_interval(secs => :seconds)
-            WHERE rotated_at IS NOT NULL
-            """,
-        ).param("seconds", seconds).update()
+        db {
+            RefreshTokenTable.selectAll().where { RefreshTokenTable.rotatedAt.isNotNull() }.toList().forEach { row ->
+                RefreshTokenTable.update({ RefreshTokenTable.id eq row[RefreshTokenTable.id] }) {
+                    it[rotatedAt] = row[RefreshTokenTable.rotatedAt]!!.minusSeconds(seconds)
+                    it[revokedAt] = row[RefreshTokenTable.revokedAt]?.minusSeconds(seconds)
+                }
+            }
+        }
     }
 
     @Test
@@ -104,7 +113,7 @@ class RefreshTokenScenariosTest : UserAuthIntegrationTest() {
             arguments(
                 "expired token",
                 Setup { session ->
-                    jdbcClient.sql("UPDATE \"user_auth#refresh_token\" SET expires_at = now() - interval '1 second'").update()
+                    db { RefreshTokenTable.update { it[expiresAt] = Instant.now().minusSeconds(1) } }
                     session.tokens.refreshToken
                 },
                 "INVALID_REFRESH_TOKEN",

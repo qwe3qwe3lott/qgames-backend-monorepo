@@ -1,18 +1,17 @@
 package site.qgames.game.repository.session
 
 import org.springframework.stereotype.Repository
-import site.qgames.game.mapper.session.RoomSessionEntityMapper
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.RoomSessionStatus
+import site.qgames.game.util.newId
 import java.time.Instant
 import java.util.UUID
 
 @Repository
 class RoomSessionRepository(
-    private val roomSessionPostgresqlRepository: RoomSessionPostgresqlRepository,
-    private val roomSessionEntityMapper: RoomSessionEntityMapper,
+    private val roomSessionExposedRepository: RoomSessionExposedRepository,
 ) {
 
     /**
@@ -28,39 +27,39 @@ class RoomSessionRepository(
         gameSettings: String,
         players: List<UUID>,
         now: Instant,
-    ): RoomSessionModel = roomSessionEntityMapper.toModel(
-        roomSessionPostgresqlRepository.insert(
+    ): RoomSessionModel = roomSessionExposedRepository.insert(
+        RoomSessionModel(
+            id = newId(),
             roomId = roomId,
-            gameCode = gameCode.code,
-            status = RoomSessionStatus.IN_PROGRESS.name,
+            gameCode = gameCode,
+            status = RoomSessionStatus.IN_PROGRESS,
             stateSchemaVersion = stateSchemaVersion,
             seed = seed,
-            timeControlMode = timeControl.mode.name,
-            moveSeconds = timeControl.moveSeconds,
+            lastSeq = 0,
+            timeControl = timeControl,
             gameSettings = gameSettings,
-            players = players,
-            now = now,
+            moveDeadline = null,
+            createdAt = now,
+            finishedAt = null,
         ),
+        players,
     )
 
-    fun findById(id: UUID): RoomSessionModel? =
-        roomSessionPostgresqlRepository.findById(id)?.let(roomSessionEntityMapper::toModel)
+    fun findById(id: UUID): RoomSessionModel? = roomSessionExposedRepository.findById(id)
 
     /** Последняя партия комнаты (для показа результата после завершения или отмены). */
-    fun findLatest(roomId: UUID): RoomSessionModel? =
-        roomSessionPostgresqlRepository.findLatest(roomId)?.let(roomSessionEntityMapper::toModel)
+    fun findLatest(roomId: UUID): RoomSessionModel? = roomSessionExposedRepository.findLatest(roomId)
 
     /** Игроки партии в порядке мест. */
-    fun findPlayers(sessionId: UUID): List<UUID> = roomSessionPostgresqlRepository.findPlayers(sessionId)
+    fun findPlayers(sessionId: UUID): List<UUID> = roomSessionExposedRepository.findPlayers(sessionId)
 
     /**
      * Идущие партии с идущим таймером, у которых время хода истекло к [now], — самые просроченные первыми. Партии
      * неопубликованных игр (NOT_PUBLISHED) пропускаются. Без блокировок.
      */
-    fun findIdsWithExpiredMove(now: Instant, limit: Int): List<UUID> =
-        roomSessionPostgresqlRepository.findIdsWithExpiredMove(now, limit)
+    fun findIdsWithExpiredMove(now: Instant, limit: Int): List<UUID> = roomSessionExposedRepository.findIdsWithExpiredMove(now, limit)
 
     /** После записи событий журнала: последний seq [lastSeq], статус и проекция таймера [moveDeadline]. */
     fun advance(id: UUID, lastSeq: Long, status: RoomSessionStatus, moveDeadline: Instant?, finishedAt: Instant?) =
-        roomSessionPostgresqlRepository.advance(id, lastSeq, status.name, moveDeadline, finishedAt)
+        roomSessionExposedRepository.advance(id, lastSeq, status, moveDeadline, finishedAt)
 }

@@ -25,6 +25,14 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.core.isNull
+import org.jetbrains.exposed.v1.jdbc.insert
+import site.qgames.game.table.session.RoomSessionTable
+import site.qgames.game.table.session.RoomSessionEventTable
 
 /**
  * Пауза — действие таймера партии: ставит и снимает владелец (POST …/session/pause и …/resume, 204). На паузе ходы
@@ -54,7 +62,7 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
         assertThat(journal(roomId).map { it.second }).containsExactly("session-started", "game-paused")
         assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.IN_GAME)
         // Проекция таймера: на паузе дедлайна для MoveTimeoutJob нет.
-        assertThat(countRows("\"game#room_session\" WHERE move_deadline IS NULL")).isEqualTo(1)
+        assertThat(count(RoomSessionTable) { RoomSessionTable.moveDeadline.isNull() }).isEqualTo(1)
         moveRequest(ALICE, roomId).andExpect {
             status { isConflict() }
             jsonPath("$.code") { value("SESSION_PAUSED") }
@@ -92,9 +100,7 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
     fun `move timeout does not fire on a paused game`() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = perMove())
         pause(ALICE, roomId)
-        jdbcClient.sql("UPDATE \"game#room_session\" SET move_deadline = now() - interval '5 seconds' WHERE room_id = :id")
-            .param("id", roomId)
-            .update()
+        db { RoomSessionTable.update({ RoomSessionTable.roomId eq roomId }) { it[moveDeadline] = Instant.now().minusSeconds(5) } }
 
         moveTimeoutJob.run()
 
@@ -128,7 +134,7 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
     fun `resume shifts the move deadline by the pause length`() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = perMove())
         // Пауза длится минуту: её начало в журнале сдвинуто на минуту назад.
-        jdbcClient.sql("UPDATE \"game#room_session\" SET move_deadline = NULL WHERE room_id = :id").param("id", roomId).update()
+        db { RoomSessionTable.update({ RoomSessionTable.roomId eq roomId }) { it[moveDeadline] = null } }
         val pausedAt = Instant.now().minusSeconds(60)
         appendPause(roomId, pausedAt)
         val moveDeadline = fullState(roomId).state.timer!!.deadline!!
@@ -158,7 +164,7 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
         val room = room(roomId, ALICE)
         assertThat(room.status).isEqualTo(RoomStatus.WAITING)
         assertThat(room.session!!.status).isEqualTo(SessionStatus.CANCELLED)
-        assertThat(countRows("\"game#room_session\" WHERE move_deadline IS NULL AND status = 'CANCELLED'")).isEqualTo(1)
+        assertThat(count(RoomSessionTable) { RoomSessionTable.moveDeadline.isNull() and (RoomSessionTable.status eq "CANCELLED") }).isEqualTo(1)
     }
 
     @ParameterizedTest(name = "{0} {1}")
@@ -172,13 +178,13 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
         expectedCode: String,
     ) {
         val roomId = with(setup) { prepare() }
-        val eventsBefore = countRows("\"game#room_session_event\"")
+        val eventsBefore = count(RoomSessionEventTable)
 
         call(HttpMethod.POST, "/api/rooms/$roomId/session/$action", user).andExpect {
             status { isEqualTo(expectedStatus.value()) }
             jsonPath("$.code") { value(expectedCode) }
         }
-        assertThat(countRows("\"game#room_session_event\"")).isEqualTo(eventsBefore)
+        assertThat(count(RoomSessionEventTable)).isEqualTo(eventsBefore)
     }
 
     /** Пишет в журнал паузу таймера с момента [pausedAt] — как будто владелец поставил её тогда. */
@@ -186,24 +192,23 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
         val data = jsonMapper.writeValueAsString(
             mapOf("path" to listOf("state", "timer"), "value" to mapOf("status" to TimerStatus.PAUSED, "pausedAt" to pausedAt)),
         )
-        jdbcClient.sql(
-            """
-            INSERT INTO "game#room_session_event" (session_id, seq, method, code, data)
-            SELECT id, last_seq + 1, 'PATCH', 'game-paused', CAST(:data AS jsonb) FROM "game#room_session" WHERE id = :id
-            """,
-        )
-            .param("id", sessionId(roomId))
-            .param("data", data)
-            .update()
-        jdbcClient.sql("UPDATE \"game#room_session\" SET last_seq = last_seq + 1 WHERE id = :id").param("id", sessionId(roomId)).update()
+        val session = roomSessionRepository.findById(sessionId(roomId))!!
+        val seq = session.lastSeq + 1
+        db {
+            RoomSessionEventTable.insert {
+                it[sessionId] = session.id
+                it[RoomSessionEventTable.seq] = seq
+                it[method] = "PATCH"
+                it[code] = "game-paused"
+                it[RoomSessionEventTable.data] = data
+                it[createdAt] = Instant.now()
+            }
+            RoomSessionTable.update({ RoomSessionTable.id eq session.id }) { it[lastSeq] = seq }
+        }
     }
 
     private fun storedDeadline(roomId: UUID): Instant? =
-        jdbcClient.sql("SELECT move_deadline FROM \"game#room_session\" WHERE room_id = :id")
-            .param("id", roomId)
-            .query { rs, _ -> rs.getTimestamp("move_deadline")?.toInstant() }
-            .list()
-            .single()
+        db { RoomSessionTable.selectAll().where { RoomSessionTable.roomId eq roomId }.single()[RoomSessionTable.moveDeadline] }
 
     private fun perMove() = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30)
 

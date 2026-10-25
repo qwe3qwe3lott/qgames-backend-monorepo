@@ -1,20 +1,20 @@
 package site.qgames.game.publisher.room
 
-import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
 import site.qgames.game.model.room.RoomEventModel
 import site.qgames.game.model.room.RoomEventType
+import site.qgames.game.publisher.common.PgNotifier
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
 /**
- * Публикует события комнаты в шину между инстансами game: `pg_notify('room_events', …)`. Вызывается в транзакции
- * изменения: PostgreSQL доставляет уведомления только после коммита (при откате — никогда) и в порядке коммитов,
- * поэтому outbox не нужен. Уведомление — маленький внутренний JSON (без данных), его принимает RoomEventListener.
+ * Публикует события комнаты: `pg_notify('room_events', …)` ([PgNotifier]). Вызывается в транзакции изменения:
+ * PostgreSQL доставляет уведомления только после коммита (при откате — никогда) и в порядке коммитов, поэтому outbox
+ * не нужен. Уведомление — маленький внутренний JSON (без данных), его принимает RoomEventListener.
  */
 @Component
 class RoomEventPublisher(
-    private val jdbcClient: JdbcClient,
+    private val pgNotifier: PgNotifier,
     private val jsonMapper: JsonMapper,
 ) {
 
@@ -32,11 +32,7 @@ class RoomEventPublisher(
                 event.subscriberId?.let { put(SUBSCRIBER_ID, it.toString()) }
             },
         )
-        jdbcClient.sql("SELECT pg_notify(:channel, :payload)")
-            .param("channel", CHANNEL)
-            .param("payload", payload)
-            .query { _, _ -> }
-            .list()
+        pgNotifier.notify(CHANNEL, payload)
     }
 
     companion object {

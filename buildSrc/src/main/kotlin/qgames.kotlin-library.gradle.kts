@@ -36,11 +36,13 @@ kotlin {
 val libs = versionCatalogs.named("libs")
 
 dependencies {
-    // Версии зависимостей берутся из Spring Boot BOM (и BOM Spring Modulith, которого в нём нет) для всех модулей.
+    // Версии зависимостей берутся из Spring Boot BOM (и BOM Spring Modulith и Exposed, которых в нём нет) для всех модулей.
     "api"(platform(SpringBootPlugin.BOM_COORDINATES))
     "testImplementation"(platform(SpringBootPlugin.BOM_COORDINATES))
     "api"(platform(libs.findLibrary("springModulithBom").get()))
     "testImplementation"(platform(libs.findLibrary("springModulithBom").get()))
+    "api"(platform(libs.findLibrary("exposedBom").get()))
+    "testImplementation"(platform(libs.findLibrary("exposedBom").get()))
 }
 
 tasks.withType<Test>().configureEach {

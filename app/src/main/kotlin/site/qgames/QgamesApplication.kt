@@ -4,7 +4,6 @@ import org.springframework.boot.autoconfigure.SpringBootApplication
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan
 import org.springframework.boot.runApplication
 import org.springframework.context.annotation.FullyQualifiedAnnotationBeanNameGenerator
-import org.springframework.scheduling.annotation.EnableAsync
 import org.springframework.scheduling.annotation.EnableScheduling
 
 /**
@@ -13,12 +12,11 @@ import org.springframework.scheduling.annotation.EnableScheduling
  * модулями не считаются.
  *
  * Имена бинов — полные имена классов: в модулях есть одноимённые классы (AuthController, TokenService у user-auth
- * и admin-auth). Асинхронность нужна слушателям событий модулей (@ApplicationModuleListener), расписание — джобам game.
+ * и admin-auth). Расписание нужно джобам game.
  */
 @SpringBootApplication(nameGenerator = FullyQualifiedAnnotationBeanNameGenerator::class)
 @ConfigurationPropertiesScan
 @EnableScheduling
-@EnableAsync
 class QgamesApplication
 
 fun main(args: Array<String>) {

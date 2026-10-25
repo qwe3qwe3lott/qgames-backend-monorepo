@@ -11,6 +11,12 @@ import site.qgames.userauth.api.dto.user.ChangePasswordRequest
 import site.qgames.userauth.support.TestData
 import java.util.UUID
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.isNull
+import site.qgames.userauth.table.auth.RefreshTokenTable
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import site.qgames.userauth.table.user.UserTable
+import site.qgames.userauth.table.user.UserIdentityTable
 
 class PasswordChangeScenariosTest : UserAuthIntegrationTest() {
 
@@ -47,7 +53,7 @@ class PasswordChangeScenariosTest : UserAuthIntegrationTest() {
     ) {
         startSession()
         val identitiesBefore = identityRows()
-        val activeSessionsBefore = countRows("\"user_auth#refresh_token\" WHERE revoked_at IS NULL")
+        val activeSessionsBefore = count(RefreshTokenTable) { RefreshTokenTable.revokedAt.isNull() }
 
         putJson(PASSWORD_PATH, ChangePasswordRequest(currentPassword, NEW_PASSWORD), userId).andExpect {
             status { isEqualTo(expectedStatus) }
@@ -55,7 +61,7 @@ class PasswordChangeScenariosTest : UserAuthIntegrationTest() {
         }
 
         assertThat(identityRows()).isEqualTo(identitiesBefore)
-        assertThat(countRows("\"user_auth#refresh_token\" WHERE revoked_at IS NULL")).isEqualTo(activeSessionsBefore)
+        assertThat(count(RefreshTokenTable) { RefreshTokenTable.revokedAt.isNull() }).isEqualTo(activeSessionsBefore)
     }
 
     @Test
@@ -67,11 +73,10 @@ class PasswordChangeScenariosTest : UserAuthIntegrationTest() {
         }
     }
 
-    private fun userRow(id: UUID): Map<String, Any?> =
-        jdbcClient.sql("""SELECT * FROM "user_auth#user" WHERE id = :id""").param("id", id).query().singleRow()
+    private fun userRow(id: UUID): List<Any?> =
+        db { UserTable.selectAll().where { UserTable.id eq id }.single().let { row -> UserTable.columns.map { row[it] } } }
 
-    private fun identityRows(): List<Map<String, Any?>> =
-        jdbcClient.sql("SELECT * FROM \"user_auth#user_identity\" ORDER BY id").query().listOfRows()
+    private fun identityRows(): List<List<Any?>> = snapshot(UserIdentityTable)
 
     companion object {
         private const val PASSWORD_PATH = "/api/users/me/login-methods/password"

@@ -18,6 +18,8 @@ import site.qgames.userauth.util.Hashing
 import java.time.Duration
 import java.util.UUID
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import site.qgames.userauth.table.auth.RefreshTokenTable
 
 class LoginScenariosTest : UserAuthIntegrationTest() {
 
@@ -37,7 +39,7 @@ class LoginScenariosTest : UserAuthIntegrationTest() {
         }
 
         if (expectedUserId == null) {
-            assertThat(countRows("\"user_auth#refresh_token\"")).isZero()
+            assertThat(count(RefreshTokenTable)).isZero()
             return
         }
         val auth = result.session()
@@ -50,7 +52,7 @@ class LoginScenariosTest : UserAuthIntegrationTest() {
         assertThat(Duration.between(claims.issueTime.toInstant(), claims.expirationTime.toInstant()))
             .isEqualTo(Duration.ofMinutes(15))
 
-        val storedHashes = jdbcClient.sql("SELECT token_hash FROM \"user_auth#refresh_token\"").query(String::class.java).list()
+        val storedHashes = db { RefreshTokenTable.selectAll().map { it[RefreshTokenTable.tokenHash] } }
         assertThat(storedHashes)
             .containsExactly(Hashing.sha256Hex(auth.tokens.refreshToken))
             .doesNotContain(auth.tokens.refreshToken)

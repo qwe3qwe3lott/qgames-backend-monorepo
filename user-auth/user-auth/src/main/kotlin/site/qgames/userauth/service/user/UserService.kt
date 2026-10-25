@@ -85,11 +85,11 @@ class UserService(
         }
         val user = findUser(userId)
         val changed = user.copy(nickname = nickname ?: user.nickname, avatar = avatar ?: user.avatar)
-        // Без изменений не сохраняем: @Version увеличил бы версию, и событие ушло бы впустую.
+        // Без изменений не сохраняем и событие не публикуем.
         if (changed == user) {
             return describe(user)
         }
-        val updated = userRepository.update(changed)
+        val updated = userRepository.updateProfile(changed)
         userProfilePublisher.publish(updated)
         return describe(updated)
     }

@@ -2,35 +2,55 @@
 # Наружу публикуются приложение (8080: API портала и админки, Swagger) и PostgreSQL (5432) для IDE.
 
 services:
+  # Одна роль и одна БД приложения создаются самим образом из POSTGRES_USER/POSTGRES_DB при первом запуске на пустом томе.
+  # Настройки — под малую память (VPS 1 ГБ, один инстанс приложения с маленьким пулом), обоснование — CLAUDE.md §10.
   postgres:
     image: postgres:18-alpine
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: qgames
+      POSTGRES_PASSWORD: qgames
+      POSTGRES_DB: qgames
+    command:
+      - postgres
+      # Пул приложения (5) + соединение LISTEN + миграции, psql и запас.
+      - -c
+      - max_connections=20
+      - -c
+      - shared_buffers=16MB
+      - -c
+      - effective_cache_size=64MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=16MB
+      - -c
+      - wal_buffers=1MB
+      - -c
+      - max_wal_size=64MB
+      - -c
+      - jit=off
+      - -c
+      - huge_pages=off
+      - -c
+      - max_worker_processes=2
+      - -c
+      - max_parallel_workers=0
+      - -c
+      - max_parallel_workers_per_gather=0
+      - -c
+      - max_parallel_maintenance_workers=0
+      - -c
+      - autovacuum_max_workers=1
+    mem_limit: 128m
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U qgames -d qgames"]
       interval: 5s
       timeout: 5s
       retries: 10
-
-  # Роль и БД приложения (не суперпользователь). Скрипт идемпотентный и выполняется на каждом up (а не через initdb,
-  # который срабатывает только на пустом томе).
-  postgres-init:
-    image: postgres:18-alpine
-    environment:
-      PGHOST: postgres
-      PGUSER: postgres
-      PGPASSWORD: postgres
-    command: ["psql", "-v", "ON_ERROR_STOP=1", "-v", "qgames_password=qgames", "-f", "/init.sql"]
-    volumes:
-      - ./docker/postgres/init.sql:/init.sql:ro
-    depends_on:
-      postgres:
-        condition: service_healthy
 
   # Модульный монолит: модули user-auth, admin-auth, game в одном процессе.
   app:
@@ -59,8 +79,8 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      postgres-init:
-        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health/readiness"]
       interval: 10s

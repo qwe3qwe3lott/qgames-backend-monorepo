@@ -8,7 +8,6 @@ import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 import org.springframework.http.HttpHeaders
-import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm
 import org.springframework.security.oauth2.jwt.JwsHeader
 import org.springframework.security.oauth2.jwt.JwtClaimsSet
@@ -23,9 +22,14 @@ import org.springframework.test.context.jdbc.Sql
 import org.springframework.test.web.servlet.MockHttpServletRequestDsl
 import org.springframework.test.web.servlet.MockMvc
 import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.transaction.support.TransactionTemplate
+import org.jetbrains.exposed.v1.core.Op
+import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.jdbc.selectAll
 import site.qgames.common.test.container.PostgresTestContainer
 import site.qgames.common.test.wiremock.WireMockTestServer
 import site.qgames.game.repository.session.RoomSessionEventRepository
+import site.qgames.userauth.repository.user.UserRepository
 import site.qgames.game.service.session.SessionStreamService
 import site.qgames.game.stream.room.RoomStreamRegistry
 import site.qgames.game.stream.session.SessionStreamRegistry
@@ -37,11 +41,13 @@ import java.time.Instant
 import java.util.UUID
 import site.qgames.adminauth.config.CryptoConfig as AdminCryptoConfig
 import site.qgames.userauth.config.CryptoConfig as UserCryptoConfig
+import org.jetbrains.exposed.v1.core.SortOrder
 
 /**
  * База всех интеграционных тестов приложения: полный контекст (все модули, настоящие цепочки Security), реальная
- * PostgreSQL в контейнере, Google — в WireMock. Перед каждым тестом init/<модуль>.sql пересоздают данные (очистка +
- * фикстуры из TestData модуля). Запросы идут через MockMvc в настоящие контроллеры, состояние проверяется в БД.
+ * PostgreSQL в контейнере, Google — в WireMock. Перед каждым тестом init/<модуль>.sql пересоздают данные
+ * (очистка + фикстуры из TestData модуля). Запросы идут через MockMvc в настоящие контроллеры, состояние проверяется
+ * в БД через Exposed DSL и таблицы модулей ([db], [count]).
  *
  * Контекст один на прогон: все `@MockkSpyBean` объявлены здесь, а базы модулей (UserAuthIntegrationTest,
  * AdminAuthIntegrationTest, GameIntegrationTest) добавляют только хелперы. Пользователь запроса — настоящий
@@ -51,7 +57,7 @@ import site.qgames.userauth.config.CryptoConfig as UserCryptoConfig
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @RecordApplicationEvents
-@Sql("/init/app.sql", "/init/user-auth.sql", "/init/admin-auth.sql", "/init/game.sql")
+@Sql("/init/user-auth.sql", "/init/admin-auth.sql", "/init/game.sql")
 abstract class BaseIntegrationTest {
 
     @Autowired
@@ -61,7 +67,7 @@ abstract class BaseIntegrationTest {
     protected lateinit var jsonMapper: JsonMapper
 
     @Autowired
-    protected lateinit var jdbcClient: JdbcClient
+    private lateinit var transactionTemplate: TransactionTemplate
 
     /** События модулей, опубликованные в потоке теста. */
     @Autowired
@@ -92,6 +98,10 @@ abstract class BaseIntegrationTest {
     /** Поток партии: шпион, чтобы вклиниваться между регистрацией подписчика и снапшотом (гонки). */
     @MockkSpyBean
     protected lateinit var sessionStreamService: SessionStreamService
+
+    /** Аккаунты игроков: шпион, чтобы обойти проверку существования и проверить гонку на уникальном email (409). */
+    @MockkSpyBean
+    protected lateinit var userRepository: UserRepository
 
     @BeforeEach
     fun resetExternalSystems() {
@@ -136,10 +146,20 @@ abstract class BaseIntegrationTest {
         error("Timed out waiting for: $description")
     }
 
-    /** `SELECT count(*) FROM <sql>`: имя таблицы (в кавычках, с префиксом модуля) и, если нужно, условие. */
-    protected fun countRows(sql: String, vararg params: Pair<String, Any?>): Long =
-        jdbcClient.sql("SELECT count(*) FROM $sql").also { spec -> params.forEach { spec.param(it.first, it.second) } }
-            .query(Long::class.java).single()
+    /** Чтение или изменение БД в тесте: Exposed DSL в отдельной транзакции (как в репозиториях модулей). */
+    protected fun <T> db(block: () -> T): T = transactionTemplate.execute { block() }
+
+    /** Все строки таблицы [table] значениями колонок, по первичному ключу: чтобы сравнить состояние до и после. */
+    protected fun snapshot(table: Table): List<List<Any?>> = db {
+        val order = table.primaryKey!!.columns.map { it to SortOrder.ASC }.toTypedArray()
+        table.selectAll().orderBy(*order).map { row -> table.columns.map { row[it] } }
+    }
+
+    /** Число строк таблицы [table], при необходимости — по условию [where]. */
+    protected fun count(table: Table, where: (() -> Op<Boolean>)? = null): Long = db {
+        val query = table.selectAll()
+        (if (where != null) query.where(where) else query).count()
+    }
 
     private fun accessToken(encoder: JwtEncoder, keyId: String, issuer: String, subject: String, ttl: Duration): String {
         val now = Instant.now()

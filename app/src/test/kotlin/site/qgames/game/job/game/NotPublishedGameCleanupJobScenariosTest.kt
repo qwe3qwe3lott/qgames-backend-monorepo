@@ -11,6 +11,16 @@ import site.qgames.game.job.session.MoveTimeoutJob
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import site.qgames.game.table.room.RoomTable
+import site.qgames.game.table.room.RoomMemberTable
+import site.qgames.game.table.session.RoomSessionTable
+import site.qgames.game.table.session.RoomSessionPlayerTable
+import site.qgames.game.table.session.RoomSessionEventTable
+import java.time.Instant
 
 /**
  * Снятие игры с публикации (NOT_PUBLISHED): NotPublishedGameCleanupJob отменяет партии и удаляет комнаты игры, а
@@ -33,11 +43,11 @@ class NotPublishedGameCleanupJobScenariosTest : GameIntegrationTest() {
 
         assertThat(notPublishedGameCleanupJob.run()).isEqualTo(2)
 
-        assertThat(countRows("\"game#room\"")).isZero()
-        assertThat(countRows("\"game#room_member\"")).isZero()
-        assertThat(countRows("\"game#room_session\"")).isZero()
-        assertThat(countRows("\"game#room_session_player\"")).isZero()
-        assertThat(countRows("\"game#room_session_event\"")).isZero()
+        assertThat(count(RoomTable)).isZero()
+        assertThat(count(RoomMemberTable)).isZero()
+        assertThat(count(RoomSessionTable)).isZero()
+        assertThat(count(RoomSessionPlayerTable)).isZero()
+        assertThat(count(RoomSessionEventTable)).isZero()
         assertThat(notPublishedGameCleanupJob.run()).isZero()
     }
 
@@ -49,21 +59,19 @@ class NotPublishedGameCleanupJobScenariosTest : GameIntegrationTest() {
 
         assertThat(notPublishedGameCleanupJob.run()).isZero()
 
-        assertThat(countRows("\"game#room\" WHERE id = :id", "id" to roomId)).isEqualTo(1)
-        assertThat(countRows("\"game#room_session\" WHERE status = 'IN_PROGRESS'")).isEqualTo(1)
+        assertThat(count(RoomTable) { RoomTable.id eq roomId }).isEqualTo(1)
+        assertThat(count(RoomSessionTable) { RoomSessionTable.status eq "IN_PROGRESS" }).isEqualTo(1)
     }
 
     @Test
     fun `move timeout skips games of a not published game`() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
-        jdbcClient.sql("UPDATE \"game#room_session\" SET move_deadline = now() - interval '5 seconds' WHERE room_id = :id")
-            .param("id", roomId)
-            .update()
+        db { RoomSessionTable.update({ RoomSessionTable.roomId eq roomId }) { it[moveDeadline] = Instant.now().minusSeconds(5) } }
         setPublishStatus("nothing", "NOT_PUBLISHED")
 
         assertThat(moveTimeoutJob.run()).isZero()
 
-        assertThat(countRows("\"game#room_session_event\" WHERE code = 'player-passed'")).isZero()
+        assertThat(count(RoomSessionEventTable) { RoomSessionEventTable.code eq "player-passed" }).isZero()
     }
 
     @Test

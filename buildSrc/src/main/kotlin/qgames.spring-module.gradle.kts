@@ -11,7 +11,12 @@ dependencies {
     "implementation"("org.springframework.boot:spring-boot-starter-validation")
     "implementation"("tools.jackson.module:jackson-module-kotlin")
     "implementation"("org.jetbrains.kotlin:kotlin-reflect")
-    // Аннотации Swagger на контроллерах и @ApplicationModuleListener (события модулей).
+    // Аннотации Swagger на контроллерах.
     "implementation"(libs.findLibrary("swaggerAnnotations").get())
-    "implementation"("org.springframework.modulith:spring-modulith-events-api")
+    // Доступ к данным — Exposed DSL в транзакциях Spring; менеджер транзакций Exposed подключает app.
+    "implementation"(libs.findLibrary("exposedCore").get())
+    "implementation"(libs.findLibrary("exposedJdbc").get())
+    "implementation"(libs.findLibrary("exposedJavaTime").get())
+    "implementation"(libs.findLibrary("exposedJson").get())
+    "implementation"("org.springframework:spring-tx")
 }

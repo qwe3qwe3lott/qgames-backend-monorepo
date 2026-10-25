@@ -24,6 +24,12 @@ import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import site.qgames.game.table.room.RoomTable
+import site.qgames.game.table.session.RoomSessionTable
 
 /**
  * Выход из комнаты — закрытие последнего потока, вход — подключение к нему. Таймеров выхода нет: вне партии ушедший
@@ -290,12 +296,12 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
         leave(ALICE, roomId)
         assertThat(emptySince(roomId)).isNotNull()
         assertThat(emptyRoomCleanupJob.run()).isZero()
-        jdbcClient.sql("UPDATE \"game#room\" SET empty_since = now() - interval '31 minutes' WHERE id = :id").param("id", roomId).update()
+        db { RoomTable.update({ RoomTable.id eq roomId }) { it[emptySince] = Instant.now().minus(Duration.ofMinutes(31)) } }
 
         assertThat(emptyRoomCleanupJob.run()).isEqualTo(1)
 
-        assertThat(countRows("\"game#room\" WHERE id = :id", "id" to roomId)).isZero()
-        assertThat(countRows("\"game#room_session\"")).isZero()
+        assertThat(count(RoomTable) { RoomTable.id eq roomId }).isZero()
+        assertThat(count(RoomSessionTable)).isZero()
         // Журнал удалён вместе с комнатой: диспетчер не найдёт объявленных событий отмены и закроет поток партии.
         awaitUntil("session stream is closed") { sessionStreamRegistry.subscribers(sessionId).isEmpty() }
     }
@@ -308,12 +314,7 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
     private fun create(owner: UUID): RoomResponse =
         createRoomRequest(owner, CreateRoomRequest(nothingSettings())).andExpect { status { isOk() } }.body()
 
-    private fun emptySince(roomId: UUID): Instant? =
-        jdbcClient.sql("SELECT empty_since FROM \"game#room\" WHERE id = :id")
-            .param("id", roomId)
-            .query { rs, _ -> rs.getTimestamp("empty_since")?.toInstant() }
-            .list()
-            .single()
+    private fun emptySince(roomId: UUID): Instant? = db { RoomTable.selectAll().where { RoomTable.id eq roomId }.single()[RoomTable.emptySince] }
 
     private fun ownerCommands(roomId: UUID) = listOf(
         HttpMethod.POST to "/api/rooms/$roomId/session",

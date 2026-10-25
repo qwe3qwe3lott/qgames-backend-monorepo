@@ -1,28 +1,24 @@
 package site.qgames.game.publisher.session
 
-import org.springframework.jdbc.core.simple.JdbcClient
 import org.springframework.stereotype.Component
+import site.qgames.game.publisher.common.PgNotifier
 import tools.jackson.databind.json.JsonMapper
 import java.util.UUID
 
 /**
- * Публикует в шину между инстансами game (`pg_notify('session_events', …)`), что в журнал партии дописаны события
- * fromSeq..toSeq. Вызывается в транзакции записи: PostgreSQL доставит уведомление только после коммита и в порядке
- * коммитов. Данных событий в уведомлении нет: инстанс-получатель читает их из журнала, если у него есть подписчики.
+ * Публикует (`pg_notify('session_events', …)`, [PgNotifier]), что в журнал партии дописаны события fromSeq..toSeq.
+ * Вызывается в транзакции записи: PostgreSQL доставит уведомление только после коммита и в порядке коммитов. Данных
+ * событий в уведомлении нет: получатель читает их из журнала один раз, если у партии есть подписчики.
  */
 @Component
 class SessionEventPublisher(
-    private val jdbcClient: JdbcClient,
+    private val pgNotifier: PgNotifier,
     private val jsonMapper: JsonMapper,
 ) {
 
     fun publish(sessionId: UUID, fromSeq: Long, toSeq: Long) {
         val payload = jsonMapper.writeValueAsString(mapOf(SESSION_ID to sessionId.toString(), FROM_SEQ to fromSeq, TO_SEQ to toSeq))
-        jdbcClient.sql("SELECT pg_notify(:channel, :payload)")
-            .param("channel", CHANNEL)
-            .param("payload", payload)
-            .query { _, _ -> }
-            .list()
+        pgNotifier.notify(CHANNEL, payload)
     }
 
     companion object {

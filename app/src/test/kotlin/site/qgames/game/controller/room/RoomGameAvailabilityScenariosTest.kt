@@ -17,6 +17,14 @@ import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.core.isNull
+import site.qgames.game.table.room.RoomTable
+import site.qgames.game.table.room.RoomMemberTable
+import site.qgames.game.table.session.RoomSessionTable
 
 /**
  * Статус публикации игры и её комнаты: комнаты и партии — только у опубликованных и скрытых игр, а с комнатами
@@ -38,7 +46,7 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
             if (code != null) jsonPath("$.code") { value(code) }
         }
 
-        assertThat(countRows("\"game#room\"")).isEqualTo(if (code == null) 1L else 0L)
+        assertThat(count(RoomTable)).isEqualTo(if (code == null) 1L else 0L)
     }
 
     @Test
@@ -57,7 +65,7 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
             status { isNotFound() }
             jsonPath("$.code") { value("GAME_NOT_FOUND") }
         }
-        assertThat(countRows("\"game#room\"")).isZero()
+        assertThat(count(RoomTable)).isZero()
     }
 
     @ParameterizedTest(name = "{0}")
@@ -75,7 +83,7 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
             if (code != null) jsonPath("$.code") { value(code) }
         }
 
-        assertThat(countRows("\"game#room_session\"")).isEqualTo(if (code == null) 1L else 0L)
+        assertThat(count(RoomSessionTable)).isEqualTo(if (code == null) 1L else 0L)
     }
 
     @Test
@@ -105,11 +113,14 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
         }
 
         assertThat(sessionSnapshot()).isEqualTo(sessionBefore)
-        assertThat(countRows("\"game#room_member\" WHERE left_at IS NULL")).isEqualTo(2)
+        assertThat(count(RoomMemberTable) { RoomMemberTable.leftAt.isNull() }).isEqualTo(2)
     }
 
-    private fun sessionSnapshot(): Map<String, Any?> =
-        jdbcClient.sql("SELECT status, last_seq, move_deadline FROM \"game#room_session\"").query().singleRow()
+    private fun sessionSnapshot(): List<Any?> = db {
+        RoomSessionTable.selectAll().single().let {
+            listOf(it[RoomSessionTable.status], it[RoomSessionTable.lastSeq], it[RoomSessionTable.moveDeadline])
+        }
+    }
 
     companion object {
         @JvmStatic

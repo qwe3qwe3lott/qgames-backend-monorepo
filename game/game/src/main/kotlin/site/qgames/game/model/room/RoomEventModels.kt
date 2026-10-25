@@ -3,8 +3,8 @@ package site.qgames.game.model.room
 import java.util.UUID
 
 /**
- * Событие комнаты в шине между инстансами game (Postgres NOTIFY, канал room_events). Только сигнал: данные для потока
- * инстанс-получатель читает сам, когда раздаёт событие своим подписчикам.
+ * Событие комнаты (Postgres NOTIFY, канал room_events). Только сигнал: данные для потока диспетчер читает сам, когда
+ * раздаёт событие подписчикам, — уже после коммита изменения.
  */
 data class RoomEventModel(
     val roomId: UUID,

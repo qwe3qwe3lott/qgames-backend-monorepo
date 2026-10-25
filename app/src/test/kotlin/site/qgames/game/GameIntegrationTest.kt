@@ -1,11 +1,19 @@
 package site.qgames.game
 
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.context.ApplicationEventPublisher
-import org.springframework.transaction.support.TransactionTemplate
+import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.isNotNull
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 import site.qgames.BaseIntegrationTest
+import site.qgames.game.table.game.GameTable
+import site.qgames.game.table.room.RoomMemberTable
+import site.qgames.game.table.room.RoomTable
+import site.qgames.game.table.session.RoomSessionEventTable
 import site.qgames.userauth.api.dto.user.Avatar
-import site.qgames.userauth.api.event.user.UserProfileChanged
+import site.qgames.userauth.api.dto.user.UpdateProfileRequest
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.ResultActionsDsl
@@ -37,13 +45,9 @@ import java.util.UUID
 
 /**
  * Хелперы тестов модуля game: комнаты, потоки (SSE), партии. Пользователь запроса — access-JWT игрока
- * ([asUser]); профили в реплике `"game#user_auth#user"` — фикстуры init/game.sql или события модуля user-auth
- * ([publishProfile]).
+ * ([asUser]); профили (ник, аватар) game читает из таблицы user — фикстуры init/user-auth.sql.
  */
 abstract class GameIntegrationTest : BaseIntegrationTest() {
-
-
-
 
     @Autowired
     protected lateinit var roomOwnerGraceJob: RoomOwnerGraceJob
@@ -62,12 +66,6 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
 
     @Autowired
     protected lateinit var roomSessionRepository: RoomSessionRepository
-
-    @Autowired
-    private lateinit var eventPublisher: ApplicationEventPublisher
-
-    @Autowired
-    private lateinit var transactionTemplate: TransactionTemplate
 
     protected fun call(method: HttpMethod, path: String, userId: UUID?, body: Any? = null): ResultActionsDsl =
         mockMvc.request(method, path) {
@@ -128,12 +126,14 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
         streams(user, roomId).forEach { it.close() }
     }
 
-    /** Открытые потоки пользователя в комнате на этом инстансе. */
+    /** Открытые потоки пользователя в комнате. */
     protected fun streams(user: UUID, roomId: UUID) = roomStreamRegistry.subscribers(roomId).filter { it.userId == user }
 
     /** Сообщения SSE потока [stream] к этому моменту: пары (тип события, data). Комментарии пропускаются. */
     protected fun events(stream: MvcResult): List<Pair<String, String>> =
-        stream.response.getContentAsString(Charsets.UTF_8).split("\n\n")
+        // Поток пишется асинхронно и по частям: учитываются только сообщения, уже завершённые пустой строкой, иначе
+        // недописанное `event: snapshot` с пустым `data` выглядело бы как снапшот без состояния.
+        stream.response.getContentAsString(Charsets.UTF_8).substringBeforeLast("\n\n", "").split("\n\n")
             .filter { it.isNotBlank() }
             .mapNotNull { message ->
                 val lines = message.lines()
@@ -159,34 +159,28 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
 
     /** Сдвигает срок окна владения комнаты в прошлое (по расписанию RoomOwnerGraceJob в тестах выключен). */
     protected fun expireOwnerGrace(roomId: UUID) {
-        jdbcClient.sql(
-            "UPDATE \"game#room\" SET owner_grace_deadline = now() - interval '1 second' WHERE id = :roomId AND owner_grace_deadline IS NOT NULL",
-        )
-            .param("roomId", roomId)
-            .update()
+        db {
+            RoomTable.update({ (RoomTable.id eq roomId) and RoomTable.ownerGraceDeadline.isNotNull() }) {
+                it[ownerGraceDeadline] = Instant.now().minusSeconds(1)
+            }
+        }
     }
 
     /** Окно владения комнаты: (прежний владелец, срок) или null. */
-    protected fun ownerGrace(roomId: UUID): Pair<UUID, Instant>? =
-        jdbcClient.sql("SELECT owner_grace_user_id, owner_grace_deadline FROM \"game#room\" WHERE id = :roomId")
-            .param("roomId", roomId)
-            .query { rs, _ ->
-                rs.getObject("owner_grace_user_id", UUID::class.java)?.let { it to rs.getTimestamp("owner_grace_deadline").toInstant() }
-            }
-            .list()
-            .single()
+    protected fun ownerGrace(roomId: UUID): Pair<UUID, Instant>? = db {
+        val row = RoomTable.selectAll().where { RoomTable.id eq roomId }.single()
+        row[RoomTable.ownerGraceUserId]?.let { it to row[RoomTable.ownerGraceDeadline]!! }
+    }
 
     protected fun isMember(roomId: UUID, user: UUID): Boolean =
-        countRows("\"game#room_member\" WHERE room_id = :roomId AND user_id = :userId", "roomId" to roomId, "userId" to user) == 1L
+        count(RoomMemberTable) { (RoomMemberTable.roomId eq roomId) and (RoomMemberTable.userId eq user) } == 1L
 
     /** Когда игрок партии ушёл (room_member.left_at); null — присутствует. Участник должен быть в комнате. */
-    protected fun leftAt(roomId: UUID, user: UUID): Instant? =
-        jdbcClient.sql("SELECT left_at FROM \"game#room_member\" WHERE room_id = :roomId AND user_id = :userId")
-            .param("roomId", roomId)
-            .param("userId", user)
-            .query { rs, _ -> rs.getTimestamp("left_at")?.toInstant() }
-            .list()
-            .single()
+    protected fun leftAt(roomId: UUID, user: UUID): Instant? = db {
+        RoomMemberTable.selectAll()
+            .where { (RoomMemberTable.roomId eq roomId) and (RoomMemberTable.userId eq user) }
+            .single()[RoomMemberTable.leftAt]
+    }
 
     protected fun changeRole(user: UUID, roomId: UUID, role: RoomRole): RoomResponse =
         call(HttpMethod.PUT, "/api/rooms/$roomId/role", user, ChangeRoleRequest(role)).andExpect { status { isOk() } }.body()
@@ -216,11 +210,7 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
     // --- Партии ---
 
     /** Id последней партии комнаты. */
-    protected fun sessionId(roomId: UUID): UUID =
-        jdbcClient.sql("SELECT id FROM \"game#room_session\" WHERE room_id = :roomId ORDER BY created_at DESC, id DESC LIMIT 1")
-            .param("roomId", roomId)
-            .query(UUID::class.java)
-            .single()
+    protected fun sessionId(roomId: UUID): UUID = roomSessionRepository.findLatest(roomId)!!.id
 
     /** Полное состояние последней партии комнаты — свёртка журнала (как его видит сервер). */
     protected fun fullState(roomId: UUID): Session = sessionJournalService.full(roomSessionRepository.findById(sessionId(roomId))!!).session
@@ -230,11 +220,15 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
         sessionStateService.state(roomSessionRepository.findById(sessionId(roomId))!!, ViewerKey.Full).document
 
     /** Журнал последней партии комнаты: пары (seq, код) по порядку. */
-    protected fun journal(roomId: UUID): List<Pair<Long, String>> =
-        jdbcClient.sql("SELECT seq, code FROM \"game#room_session_event\" WHERE session_id = :id ORDER BY seq")
-            .param("id", sessionId(roomId))
-            .query { rs, _ -> rs.getLong("seq") to rs.getString("code") }
-            .list()
+    protected fun journal(roomId: UUID): List<Pair<Long, String>> {
+        val sessionId = sessionId(roomId)
+        return db {
+            RoomSessionEventTable.selectAll()
+                .where { RoomSessionEventTable.sessionId eq sessionId }
+                .orderBy(RoomSessionEventTable.seq to SortOrder.ASC)
+                .map { it[RoomSessionEventTable.seq] to it[RoomSessionEventTable.code] }
+        }
+    }
 
     /** Открывает поток партии (SSE). Поток остаётся открытым до конца партии или конца теста. */
     protected fun openSessionStream(
@@ -265,36 +259,16 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
 
     /** Статус публикации игры [code] в каталоге (позже его будет менять админка). */
     protected fun setPublishStatus(code: String, status: String) {
-        jdbcClient.sql("UPDATE \"game#game\" SET publish_status = :status WHERE code = :code")
-            .param("status", status)
-            .param("code", code)
-            .update()
+        db { GameTable.update({ GameTable.code eq code }) { it[publishStatus] = status } }
     }
 
 
-    // --- Профили (события модуля user-auth) ---
+    // --- Профили (таблица user модуля user-auth) ---
 
-    /**
-     * Публикует снапшот профиля так же, как user-auth: событием модуля в транзакции. Доставка слушателю game —
-     * после коммита, асинхронно ([awaitEventsDelivered]).
-     */
-    protected fun publishProfile(userId: UUID, nickname: String, avatar: Avatar = Avatar.CAT, version: Long = 0) {
-        transactionTemplate.executeWithoutResult {
-            eventPublisher.publishEvent(UserProfileChanged(userId, nickname, avatar, version))
-        }
+    /** Меняет профиль через ручку user-auth — так, как это делает пользователь. */
+    protected fun updateProfile(userId: UUID, nickname: String, avatar: Avatar = Avatar.CAT) {
+        call(HttpMethod.PATCH, "/api/users/me/profile", userId, UpdateProfileRequest(nickname, avatar)).andExpect { status { isOk() } }
     }
-
-    /** Ждёт, пока все публикации событий модулей доставлены (completion-mode: delete — реестр пуст). */
-    protected fun awaitEventsDelivered() {
-        awaitUntil("all module events delivered") { countRows("event_publication") == 0L }
-    }
-
-    protected fun storedNickname(userId: UUID): String? =
-        jdbcClient.sql("""SELECT nickname FROM "game#user_auth#user" WHERE id = :id""")
-            .param("id", userId)
-            .query(String::class.java)
-            .optional()
-            .orElse(null)
 
     companion object {
         const val PASS = "PASS"

@@ -1,0 +1,42 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-18-CREATE-room_session_player
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Места игроков партии. Игроки закреплены до конца партии: ушедший остаётся отсутствующим участником комнаты и,
+        вернувшись, продолжает с того же места.
+      changes:
+        - createTable:
+            tableName: room_session_player
+            columns:
+              - column:
+                  name: session_id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_session_player_pk
+                    foreignKeyName: room_session_player_session_fk
+                    referencedTableName: room_session
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: seat
+                  type: integer
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_session_player_pk
+              - column:
+                  name: user_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: room_session_player
+            indexName: room_session_player_user_uq
+            unique: true
+            columns:
+              - column:
+                  name: session_id
+              - column:
+                  name: user_id

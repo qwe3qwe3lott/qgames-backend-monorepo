@@ -17,6 +17,11 @@ import site.qgames.userauth.api.dto.user.UpdateProfileRequest
 import site.qgames.userauth.support.TestData
 import java.util.UUID
 import java.util.stream.Stream
+import site.qgames.userauth.table.user.UserTable
+import site.qgames.userauth.table.user.UserIdentityTable
+import site.qgames.userauth.table.auth.RefreshTokenTable as UserRefreshTokenTable
+import site.qgames.adminauth.table.admin.AdminTable
+import site.qgames.adminauth.table.auth.RefreshTokenTable as AdminRefreshTokenTable
 
 /**
  * Публичные запросы портала и админки валидируются в контроллерах модулей: заведомо невалидный запрос получает
@@ -51,11 +56,11 @@ class RequestValidationScenariosTest : BaseIntegrationTest() {
 
     /** Состояние таблиц, которые могли бы измениться: пользователи, способы входа, сессии, администраторы. */
     private fun snapshot(): List<Any?> = listOf(
-        jdbcClient.sql("""SELECT * FROM "user_auth#user" ORDER BY id""").query().listOfRows(),
-        jdbcClient.sql("""SELECT * FROM "user_auth#user_identity" ORDER BY id""").query().listOfRows(),
-        countRows("\"user_auth#refresh_token\""),
-        jdbcClient.sql("""SELECT * FROM "admin_auth#admin" ORDER BY id""").query().listOfRows(),
-        countRows("\"admin_auth#refresh_token\""),
+        snapshot(UserTable),
+        snapshot(UserIdentityTable),
+        count(UserRefreshTokenTable),
+        snapshot(AdminTable),
+        count(AdminRefreshTokenTable),
     )
 
     companion object {

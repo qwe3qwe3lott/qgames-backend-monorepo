@@ -24,7 +24,7 @@
 | Модуль | Назначение | Пути API |
 |---|---|---|
 | `user-auth` | Аккаунты игроков, способы входа (Google; пароль, добавленный в профиле), выпуск JWT игроков, куки сессии портала | `/api/auth/*`, `/api/users/me/*` |
-| `game` | Комнаты и партии **всех** игр, реплика профилей игроков (событие модуля user-auth). Правила конкретных игр подключаются модулями `games/*` | `/api/games/*`, `/api/rooms/*` |
+| `game` | Комнаты и партии **всех** игр; ник и аватар игроков читает из таблицы `user` модуля user-auth (только чтение, через `user-auth-api`). Правила конкретных игр подключаются модулями `games/*` | `/api/games/*`, `/api/rooms/*` |
 | `admin-auth` | Аккаунты администраторов (логин и пароль, без регистрации), выпуск JWT администраторов, куки сессии админки | `/api/admin/auth/*`, `/api/admin/admins/*` |
 | `app` | Приложение: `@SpringBootApplication`, Security (две цепочки), CORS, группы OpenAPI, `application.yml`, сводный Liquibase-master, Docker-образ | — |
 
@@ -43,7 +43,7 @@
 
 ```
 buildSrc/                      convention-плагины: qgames.kotlin-library, qgames.spring-module, qgames.spring-service
-gradle/libs.versions.toml      версии; всё, чем управляет Spring Boot BOM, без версий (Spring Modulith — своим BOM)
+gradle/libs.versions.toml      версии; всё, чем управляет Spring Boot BOM, без версий (Spring Modulith и Exposed — своими BOM)
 libs/                          общие ИНФРАСТРУКТУРНЫЕ модули (без бизнес-логики)
   common-exception             иерархия ошибок (QgamesException → ClientException/ServerException → …) и их обработчики, подключаются автоматически
   common-web                   RequestUserContext, OpenAPI-кастомизация (тянет common-exception через api)
@@ -55,7 +55,7 @@ games/                         ПРАВИЛА ИГР (бизнес-логика,
   <игра>                       правила конкретной игры (например, games/carcassonne)
 user-auth/, admin-auth/, game/ МОДУЛИ ПРИЛОЖЕНИЯ: <m>/<m> (реализация) и <m>/<m>-api (публичный контракт)
 app/                           приложение: собирает модули; Security, CORS, OpenAPI, конфигурация, миграции, все интеграционные тесты
-docker/                        Dockerfile приложения, init-скрипт PostgreSQL, dev-ключи
+docker/                        Dockerfile приложения, dev-ключи
 ```
 
 ### Модули игр (`games/`)
@@ -87,7 +87,7 @@ docker/                        Dockerfile приложения, init-скрип�
   - «ничто»: `player-passed` — `PATCH ["state"] {moves}`, по таймауту — `INFO {playerId, timeout: true}` (пропуски по времени в `moves` не считаются). Итог не ставит (`result` всегда `null`);
   - шашки: `piece-moved` (`PATCH ["state","pieces",{id}] {square}`), `piece-captured` (`DELETE` на каждую сбитую), `piece-crowned` (`PATCH {kind: KING}`), `last-move-changed` (`PUT ["state","lastMove"]`), `counters-changed` (`PATCH ["state"] {quietMoves}`), `player-resigned` и `move-timed-out` (`INFO {playerId}`). Ходы генерируются и проверяются только по флагам правил хода варианта (`CheckersMoveRules`, они же — `meta.moveRules`); `moveOptions` — только типы действий (`MOVE` у того, чей ход, `RESIGN` у обоих), пути не перечисляются. Окончания: `NO_PIECES`, `NO_MOVES`, `RESIGN` (вне очереди), `TIMEOUT` — победа; `DRAW_RULE` — 30 ходов подряд в сумме (по 15 у каждой стороны) только дамками без взятий. Цвета — случайно по seed.
   - Будущие механики (например, стадии игры) — новые модули со своими кодами.
-- Случайность (порядок тайлов, кубики) берётся из seed партии. Тогда события воспроизводимы на любом инстансе и при переигрывании журнала.
+- Случайность (порядок тайлов, кубики) берётся из seed партии. Тогда события воспроизводимы при переигрывании журнала.
 - Модуль приложения `game/game` подключает все модули `games/*` и отвечает за всё остальное: комнаты, хранение, очерёдность, таймеры, события.
 - Новая игра — это новый модуль `games/<игра>`. Кроме него нужны:
   - зависимость в `game/game/build.gradle.kts`;
@@ -96,7 +96,7 @@ docker/                        Dockerfile приложения, init-скрип�
   - если игра задаёт `moveRules` — DTO (`<Игра>MoveRulesDto`) как новый вариант `oneOf` `SessionMoveRulesDto` (`SessionMetaDto.moveRules`, без дискриминатора) и ветка в `SessionEventResponseMapper.moveRulesClass`;
   - если у хода есть параметры — DTO данных хода (`<Игра>MoveDataDto`) в `MoveDataSchemas.CLASSES` (см. §4 «Ручка хода»);
   - значение в enum `GameCode` модели game и контракта `game-api`, константа в `GameCodes` и код в `allowableValues` параметра `{gameCode}` (`GameApi`, `GameRoomApi`); `GameRules.code` модуля совпадает с кодом;
-  - строка в таблице `"game#game"` DML-миграцией `<дата>-INSERT-game#game` (см. §4 «Каталог игр»), та же строка — в `init/game.sql` и `TestData` тестов. Пока игра в разработке — статус `NOT_PUBLISHED`, модуль правил и DTO для неё ещё не обязательны;
+  - строка в таблице `game` DML-миграцией `<дата>-INSERT-game` (см. §4 «Каталог игр»), та же строка — в `init/game.sql` и `TestData` тестов. Пока игра в разработке — статус `NOT_PUBLISHED`, модуль правил и DTO для неё ещё не обязательны;
   - DTO настроек и границ (`<Игра>SettingsDto`, `<Игра>SettingsLimitsDto`) как новый вариант `oneOf` `GameSettingsDto`/`GameSettingsLimitsDto` (`@JsonSubTypes`, `discriminatorMapping`);
   - ветки в `RoomSettingsResponseMapper` (game);
   - новые варианты union и enum — в `PortalOpenApiContractScenariosTest` (app).
@@ -120,11 +120,10 @@ docker/                        Dockerfile приложения, init-скрип�
 | `app` | приложение (convention `qgames.spring-service`): `QgamesApplication` (пакет `site.qgames`), Security, CORS, OpenAPI-группы, `application.yml`, сводный Liquibase-master, `bootJar`, все интеграционные тесты |
 
 - Сейчас есть: `user-auth/{user-auth, user-auth-api}`, `admin-auth/{admin-auth, admin-auth-api}`, `game/{game, game-api}`, `app`. Модули явно перечисляются в `settings.gradle.kts`.
-- **Модуль зависит только от `libs/*`, `games/*` и `<other>-api` других модулей, никогда от `<other>/<other>`** (сейчас game → `user-auth-api` ради события профиля). app зависит от всех модулей.
+- **Модуль зависит только от `libs/*`, `games/*` и `<other>-api` других модулей, никогда от `<other>/<other>`** (сейчас game → `user-auth-api` ради события профиля и описания таблицы `user` для чтения профилей). app зависит от всех модулей.
 - **Границы проверяет Spring Modulith:** модули — прямые подпакеты `site.qgames` (`userauth`, `adminauth`, `game`, `app`), внутренние пакеты закрыты. Пакеты `-api` открыты как именованный интерфейс `api`: в каждом пакете `-api` с классами лежит `package-info.java` с `@NamedInterface("api")` (у пакета без классов аннотацию Modulith не видит). `site.qgames.common` (libs) и `site.qgames.games` (правила игр) модулями не считаются. Проверка — `ModularityTest` (`ApplicationModules.of(...).verify()`) в app.
 - **Пустые модули «на вырост» не заводим.** `-api` появляется вместе с первым содержимым.
-- **Имена бинов — полные имена классов** (`FullyQualifiedAnnotationBeanNameGenerator` у `@SpringBootApplication`, у каждого `@EnableJdbcRepositories` модуля — свой генератор): в модулях есть одноимённые классы (`AuthController`, `TokenService`). Бины одного типа в разных модулях (`PasswordEncoder`, ключ и кодировщик JWT) — именованные, внедряются через `@Qualifier` с константами `CryptoConfig` модуля. Общие бины (`Clock`) объявляет только app.
-- Каждый модуль с Spring Data-репозиториями объявляет свой `@EnableJdbcRepositories(basePackages = [<модуль>.repository])` (`PersistenceConfig`).
+- **Имена бинов — полные имена классов** (`FullyQualifiedAnnotationBeanNameGenerator` у `@SpringBootApplication`): в модулях есть одноимённые классы (`AuthController`, `TokenService`, `RefreshTokenRepository`). Бины одного типа в разных модулях (`PasswordEncoder`, ключ и кодировщик JWT) — именованные, внедряются через `@Qualifier` с константами `CryptoConfig` модуля. Общие бины (`Clock`) объявляет только app.
 - Контроллеры реализуют интерфейсы своего `<m>-api`, маршруты объявляются только в интерфейсе. Если контроллеру нужны `HttpServletRequest`/`HttpServletResponse`, они внедряются в конструктор (request-scoped прокси), а не попадают в сигнатуру контракта. SSE-ручки — тоже в интерфейсе: возвращают `ResponseEntity<ResponseBodyEmitter>` (`@GetExchange(…, accept = text/event-stream)`), контроллер отдаёт `SseEmitter` через `SseResponses.stream` (заголовки `Cache-Control: no-cache`, `X-Accel-Buffering: no`).
 - В KDoc не писать `games/*`, `libs/*`, `/api/**` и т.п.: в Kotlin `/*` внутри комментария открывает вложенный комментарий и ломает компиляцию.
 
@@ -136,22 +135,22 @@ docker/                        Dockerfile приложения, init-скрип�
 controller/auth/AuthController.kt      ✅
 service/auth/LoginService.kt
 repository/user/UserRepository.kt
-entity/user/UserEntity.kt
+table/user/UserTable.kt
 model/user/UserModel.kt
-mapper/user/UserEntityMapper.kt
+mapper/user/UserRowMapper.kt
 config/…, exception/…, util/…
 auth/controller/AuthController.kt      ❌ (domain-sliced — не используем)
 ```
 
-### Слои: entity, модель, репозиторий
+### Слои: таблица, модель, репозиторий
 
-- **Entity** (`entity/<фича>/<Имя>Entity`) — строка таблицы, ровно как в БД: перечисления хранятся `String`, nullable `id`/`version` для Spring Data JDBC. Entity живёт только в `entity/`, `mapper/` и `repository/`.
+- **Таблица** (`table/<фича>/<Имя>Table`) — описание таблицы Exposed (`object UserTable : Table("user")`), ровно как в БД: перечисления — `varchar` (имена enum модели), JSON — `json<String>` (как есть), время — `timestamp` (`Instant`), UUID — `javaUUID`. Таблица живёт только в `table/`, `mapper/` и `repository/` (и в тестах). Исключение — публичное описание для чтения другими модулями в `<m>-api` (§4 «Чужие таблицы»).
 - **Модель** (`model/<фича>/<Имя>Model`) — то, с чем работают сервисы, контроллеры, слушатели, джобы и паблишеры. Перечисления — enum модели с префиксом сущности (`GameCode`, `RoomStatus`, `UserAvatar`). Id не nullable: модель существует только для сохранённой строки.
-- **Маппер** entity ↔ модель — ручной `@Component` `mapper/<фича>/<Имя>EntityMapper` (`toModel`/`toEntity`), без кодогенерации.
+- **Маппер** строка → модель — ручной `@Component` `mapper/<фича>/<Имя>RowMapper` (`ResultRow` → модель), без кодогенерации.
 - **DTO** контрактов (`<m>-api`) живут только в контроллерах и их мапперах `mapper/<фича>/<Имя>ResponseMapper` (модель → DTO, DTO-enum → enum модели). Сервисы принимают и возвращают модели и примитивы, а составные ответы — композитными моделями (`RoomDetailsModel`, `AuthResultModel`). Данные для такой модели собирает сервис (`RoomDetailsService`); маппер в репозитории не ходит.
 - **Репозиторий — всегда два слоя:**
-  - `<Имя>Repository` (`@Repository`-класс) — единственный, кого видят сервисы. Принимает и возвращает модели и параметры (вставка — `insert(…)` с полями, а не готовой entity), маппит через бин-маппер;
-  - `<Имя><Хранилище>Repository` — работа с конкретным хранилищем на entity: `…PostgresqlRepository` (Spring Data `CrudRepository` или `JdbcClient`). Используется только своим фасадом.
+  - `<Имя>Repository` (`@Repository`-класс) — единственный, кого видят сервисы. Принимает и возвращает модели и параметры (вставка — `insert(…)` с полями, id новой строки задаёт он);
+  - `<Имя><Хранилище>Repository` — работа с конкретным хранилищем: `…ExposedRepository` (Exposed DSL над таблицами, строки → модели через бин-маппер). Используется только своим фасадом. Класс помечен `@Transactional`: вызов вне транзакции сервиса идёт в своей транзакции (Exposed без транзакции не работает), внутри — присоединяется к ней.
 - Доменные enum'ы в DTO контрактов (`<m>-api`) — свои; контроллер (или его маппер) переводит их в enum модели по имени (`RoomRole.valueOf(request.role.name)`).
 
 ### Ошибки (`libs/common-exception`)
@@ -172,7 +171,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - Бизнес-ошибки собраны в каталогах-фабриках `exception/<фича>/<Фича>Errors` (`RoomErrors.roomNotFound()` → `NotFoundException("ROOM_NOT_FOUND", …)`). Коды — часть контракта с фронтом. Общие коды и имя поля `code` — в `ErrorCodes`.
 - Обработчики подключаются автоконфигурацией при подключении библиотеки (модули подключают её явно, `common-web` — через `api`):
   - `QgamesExceptionHandler` — `QgamesException` по родительскому типу → ProblemDetail с `code` и `properties`; 400 `VALIDATION_ERROR` для `@Valid` и битого тела; ловушка `Exception` → лог ERROR и 500 `INTERNAL_ERROR` без деталей. Стандартные исключения Spring MVC (404 маршрута, 405) обрабатывает `ResponseEntityExceptionHandler`;
-  - `PersistenceExceptionHandler` (если в classpath есть spring-dao) — `DuplicateKeyException` и `OptimisticLockingFailureException` → 409 `CONFLICT`.
+  - `PersistenceExceptionHandler` — `SQLException` (Exposed бросает `ExposedSQLException`): нарушение уникальности (SQLSTATE `23505` в цепочке причин) → 409 `CONFLICT`, остальное — лог ERROR и 500 `INTERNAL_ERROR`.
 - Неизвестный или отсутствующий дискриминатор полиморфного DTO (`InvalidTypeIdException` Jackson) — 400 `VALIDATION_ERROR` с ошибкой по полю `errors[<путь>.<дискриминатор>]`, например `settings.gameSettings.gameCode`.
 - Advice библиотеки имеют самый низкий приоритет. **Собственный advice модуля** объявляет `@Order(Ordered.HIGHEST_PRECEDENCE)`, иначе его исключения может перехватить ловушка `Exception`.
 - `@Transactional(noRollbackFor = [QgamesException::class])` — когда изменение (счётчик попыток, отзыв сессии) должно сохраниться, несмотря на ошибку.
@@ -220,56 +219,43 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - **Каталог игр доступен гостям:** `GET /api/games` и `GET /api/games/{gameCode}` — permitAll в цепочке портала (только GET и только сами игры, комнаты требуют входа). Контроллер каталога пользователя не читает. Гость с протухшей access-кукой получает на этих ручках 401 (Bearer-фильтр проверяет токен и на permitAll) — принято осознанно, 401 описан в `@ApiResponses`.
 - **Пользователь запроса:** `RequestUserContext.userId()` (`libs/common-web`) — `sub` проверенного access-JWT из `SecurityContext` (в цепочке админки — id администратора). В сигнатурах `<m>-api` userId нет. Заголовка `X-User-Id` нет.
 - **Модуль ↔ модуль (синхронно):** вызов бина через интерфейс из `<m>-api` (заводится вместе с первой такой потребностью). Чужие таблицы, репозитории и сервисы не используются.
-- **Асинхронно — события модулей (Spring Modulith):** событие — Kotlin data class в `<m>-api` (`api.event.<фича>`), публикуется `ApplicationEventPublisher` в транзакции бизнес-изменения, принимается `@ApplicationModuleListener` (асинхронно после коммита, в своей транзакции). Подробности — в §4 «События модулей». Слушатели идемпотентны.
+- **Побочные эффекты между модулями — события модулей:** событие — Kotlin data class в `<m>-api` (`api.event.<фича>`), публикуется `ApplicationEventPublisher` в транзакции бизнес-изменения, принимается `@TransactionalEventListener(AFTER_COMMIT)` (синхронно после коммита; если слушателю нужна БД — своя транзакция `REQUIRES_NEW`). Реестра публикаций нет: событие, не доставленное из-за падения процесса между коммитом и слушателем, теряется — слушатели только рассылают уведомления, данные не копируют. Подробности — в §4 «События модулей».
 - **Real-time в играх:** REST (ходы и действия) + **SSE** (события).
   - **Цепочка:** браузер → app, поток отдают контроллеры game (`SseEmitter`, заголовки `Cache-Control: no-cache`, `X-Accel-Buffering: no`). JWT из куки проверяется **только при подписке**. Ошибки до старта потока — обычный ProblemDetail. Что отдавать каждому подключению, решает game.
-  - **Рассылка событий потокам** — Postgres `LISTEN/NOTIFY` (канал `room_events`). `RoomEventPublisher` делает `pg_notify` в транзакции изменения, а Postgres доставляет уведомление только после коммита, поэтому outbox не нужен. В уведомлении только `{roomId, type}`; данные читает инстанс-получатель, если у него есть подписчики комнаты. `RoomEventListener` держит отдельное соединение вне пула, при простое проверяет его (`isValid`), а при обрыве переподключается и закрывает все локальные потоки — клиенты переподключатся и получат свежий снапшот.
-  - **Подписки комнаты и партии — разные сущности.** Поток комнаты — `GET /api/rooms/{roomId}/events`: первым сообщением `snapshot` (как `GET` комнаты), затем `users-changed` (`ownerId` + полный список участников), `settings-changed`, `session-changed` (данных нет, клиент перечитывает комнату), `room-deleted` (поток закрывается). У событий комнаты нет seq: они несут полное значение (замена), повтор безопасен. Гонку снапшота с событиями закрывает маркер: подписчик регистрируется до транзакции подключения, в ней под `lock(room)` читается снапшот и шлётся `pg_notify` с маркером подписчика; всё полученное до маркера отбрасывается. Ping (`: ping`) раз в 5 с.
+  - **Рассылка событий потокам** — Postgres `LISTEN/NOTIFY` (каналы `room_events`, `session_events`). `RoomEventPublisher` и `SessionEventPublisher` делают `pg_notify` (`PgNotifier`) в транзакции изменения, а Postgres доставляет уведомление только после коммита и в порядке коммитов, поэтому outbox не нужен. В уведомлении только сигнал (`{roomId, type}`, `{sessionId, fromSeq, toSeq}`), данные диспетчер читает сам. `RoomEventListener` держит отдельное соединение вне пула, при простое проверяет его (`isValid`), а при обрыве переподключается и закрывает все потоки — клиенты переподключатся и получат свежий снапшот.
+  - **Подписки комнаты и партии — разные сущности.** Поток комнаты — `GET /api/rooms/{roomId}/events`: первым сообщением `snapshot` (как `GET` комнаты), затем `users-changed` (`ownerId` + полный список участников), `settings-changed`, `session-changed` (данных нет, клиент перечитывает комнату), `room-deleted` (поток закрывается). У событий комнаты нет seq: они несут полное значение (замена), повтор безопасен. Гонку снапшота с событиями закрывает маркер: подписчик регистрируется до транзакции подключения, в ней под `lock(room)` читается снапшот и публикуется маркер подписчика; всё полученное до маркера отбрасывается. Ping (`: ping`) раз в 5 с.
   - **Поток партии** — `GET /api/games/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events` (`GameRoomApi.sessionEvents`). Подписаться может участник комнаты (в том числе отсутствующий игрок партии); `sessionId` чужой комнаты — 404 `SESSION_NOT_FOUND`. Аренды и присутствия у него нет.
     - Первый кадр — `snapshot` без обёртки: `{seq, status, serverTime, meta, state}` (`state` — свёртка маскированных событий зрителя). Остальные — `event:` = метод в нижнем регистре (`put`/`patch`/`delete`/`info`), `data:` = `{seq, at, method, code, data}`, где `data` — `{path, value}` (PUT/PATCH), `{path}` (DELETE) или объект (INFO); seq монотонный у каждого события журнала; замаскированные события тоже доставляются, поэтому дыра в seq — реальная потеря.
     - Подписчик регистрируется до снапшота: события с `seq ≤ N` снапшота отбрасываются, пришедшие раньше снапшота копятся. Маркер не нужен.
     - `session-finished`/`session-cancelled` закрывают поток. Подписка на завершённую партию — снапшот `Full` и закрытие (так вошедший видит последнюю партию).
-    - Рассылка — `pg_notify('session_events', {sessionId, fromSeq, toSeq})`; диспетчер читает события из журнала один раз на инстанс и маскирует один раз на проекцию. `RoomEventListener` слушает оба канала и при обрыве закрывает оба реестра.
+    - Рассылка — `pg_notify('session_events', {sessionId, fromSeq, toSeq})`; диспетчер читает события из журнала один раз и маскирует один раз на проекцию. `RoomEventListener` слушает оба канала и при обрыве закрывает оба реестра.
     - OpenAPI: union `SessionStreamEvent` по `type` (`SessionSnapshotEvent` и `SessionPatchStreamEvent`), внутри — `SessionPatchEvent` по `method` (`SessionEventPut/Patch/Delete/Info`); `PathSegment` = `string | {id}`; `code` — строка без enum (известные коды — в описании). `value` не типизирован: строго типизированы только состояние у снапшота (`SessionStateDto` — `oneOf` схем игр) и `meta.moveRules` (`SessionMoveRulesDto` — `oneOf` правил хода игр, `null` у игры без них), оба без дискриминатора: игра определяется по `meta.game.code`, и по нему `SessionEventResponseMapper` разбирает их строго.
   - Общая инфраструктура потоков: `SseWriter` (очередь и поток записи на подписчика), `StreamIndex`, `SseResponses`.
 - **WebSocket** — только для будущих игр с real-time перемещением игроков (сейчас таких нет).
 
 ## 4. Данные
 
-- **PostgreSQL 18, одна БД `qgames` и одна роль `qgames` (не суперпользователь) на приложение.** Модуль читает и пишет только свои таблицы, чужие таблицы не читаем никогда.
-- Роль и БД создаёт идемпотентный `docker/postgres/init.sql`. Его выполняет одноразовый `postgres-init` в docker-compose на каждом `up` (`depends_on: postgres-init`, `service_completed_successfully` у app).
-- Нужны данные другого модуля → **событие модуля** → read model (реплика) у потребителя (подраздел «События модулей»). Таблицы модуля другим модулям не открываются.
-- **Доступ к данным без ORM:** Spring Data JDBC (`CrudRepository`) для простого CRUD, сложное — `@Query` с SQL или `JdbcClient`. JPA/Hibernate запрещены.
-- **Именование:** таблицы в единственном числе, snake_case, **с префиксом модуля через `#`, всегда в двойных кавычках** (и в DDL, и в своих SQL, и в `@Table`): `"user_auth#user"`, `"user_auth#user_identity"`, `"admin_auth#admin"`, `"game#room"`. Модуль в префиксе пишется через `_`. Так таблицы модулей не пересекаются в одной БД.
-  - **Индексы и ограничения** (имена в PostgreSQL уникальны на схему) — с тем же префиксом: `"user_auth#refresh_token_hash_uq"`, `"game#room_empty_since_idx"`;
-  - **исключение — служебные таблицы фреймворков,** чьё имя нельзя задать: `event_publication` (реестр событий Spring Modulith, имя зашито во фреймворке), `databasechangelog`/`databasechangeloglock` (Liquibase). Их создаёт и описывает app.
-  - Ниже в тексте таблицы модуля game названы без префикса (`room` — это `"game#room"`).
-- **ID:** UUID v7, генерируется в БД: `id uuid PRIMARY KEY DEFAULT uuidv7()`. В сущностях `@Id val id: UUID? = null`. Исключение — реплики (read model): первичный ключ приходит из источника.
-- **Время:** `timestamptz`, в коде `Instant` из бина `Clock`. В `JdbcClient` время передаётся как `Timestamp` (JDBC-драйвер PostgreSQL не принимает `Instant`).
+- **PostgreSQL 18, одна БД `qgames` и одна роль `qgames` на приложение** — их создаёт сам образ из `POSTGRES_USER`/`POSTGRES_DB` на пустом томе (отдельного init-скрипта нет). Модуль пишет только в свои таблицы.
+- **Доступ к данным — Exposed DSL** (последний стабильный 1.x, без DAO) в транзакциях Spring: `@Transactional` остаётся, менеджер транзакций — `SpringTransactionManager` Exposed (`exposed-spring-boot4-starter` в app). JPA/Hibernate и Spring Data JDBC не используются.
+- **Без сырого SQL:** доступ к БД — только через Exposed DSL, миграции — только абстрактные изменения Liquibase, диалектных функций нет. **Единственное исключение — `pg_notify` (`PgNotifier`) и `LISTEN` (`RoomEventListener`)**: у Exposed нет DSL для LISTEN/NOTIFY. SQL-фикстуры тестов — тестовые данные, не доступ из кода. Поэтому без `RETURNING` (выборка и изменение одних строк — в одной транзакции), без CHECK-ограничений и частичных индексов (их нет среди абстрактных изменений Liquibase open source: значения проверяет код через enum).
+- **Пул Hikari — 5 соединений** (`minimum-idle` 2) плюс одно соединение `RoomEventListener` вне пула: один инстанс, запросы короткие, а каждое соединение — отдельный процесс PostgreSQL.
+- **Блокировки:** `forUpdate()` Exposed там, где нужна блокировка строки (`lock(room)` — `SELECT … FOR UPDATE`). `SKIP LOCKED` не используется (один инстанс).
+- **Именование:** таблицы в единственном числе, snake_case, без префиксов модулей; **имя таблицы уникально в приложении**, при совпадении — уточнение по смыслу (`user_refresh_token`, `admin_refresh_token`). Индексы и ограничения — с именем таблицы, имена уникальны в БД: `user_refresh_token_hash_uq`, `room_empty_since_idx`, `room_member_pk`, `room_session_room_fk`. `user` — зарезервированное слово PostgreSQL: Exposed и Liquibase экранируют его сами, в SQL-фикстурах — `"user"`.
+- **Чужие таблицы — только чтение и только через описания из `<m>-api`:** модуль, которому нужны данные другого модуля, соединяет свои таблицы с его таблицей (join) через публичное описание Exposed в `<m>-api` (`api.table.<фича>`, только нужные колонки). Писать в чужие таблицы нельзя; полное описание таблицы — в реализации модуля-владельца, публичное — подмножество его колонок. Сейчас: `UserProfileTable` (`id`, `nickname`, `avatar` таблицы `user`) в `user-auth-api`, его читает game.
+- **ID:** UUID v7, генерирует приложение (`Uuid.generateV7()` Kotlin, `util/Ids.kt` модуля), не БД. Тип — родной `uuid` (`javaUUID` в Exposed, `type: uuid` в миграциях). Строки каталога игр (DML) — с фиксированными UUID.
+- **Время:** колонки `timestamptz` (`type: timestamp with time zone` в миграциях), в Exposed — `timestamp()`, в коде `Instant` из бина `Clock`. pgjdbc передаёт значение со смещением JVM, поэтому момент сохраняется верно при любом часовом поясе JVM; пояс не меняем. Точность — микросекунды.
+- **JSON** (настройки игры, данные событий журнала) — `json<String>` Exposed: строка JSON как есть (Jackson в мапперах), тип `json` (не `jsonb`: текст хранится как записан, порядок ключей сохраняется).
 
 ### События модулей
 
-- **Источник** (сейчас user-auth):
-  - событие — Kotlin data class в `<m>-api` (`api.event.<фича>`), **снапшот** реплицируемых полей строки (а не дельта) вместе с её `version`. Сейчас — `UserProfileChanged(id, nickname, avatar, version)`;
-  - публикуется `ApplicationEventPublisher` (`UserProfilePublisher`, `@Transactional(MANDATORY)`) в той же транзакции, что и бизнес-изменение;
-  - у реплицируемой таблицы источника есть колонка `version bigint NOT NULL DEFAULT 0` (Spring Data JDBC `@Version`). Она растёт при **любом** изменении строки, в собственных `UPDATE` — вручную (`version = version + 1`), и заодно даёт оптимистичную блокировку (409 при конфликте). Сохранение без изменений не выполняется, чтобы не публиковать пустые события.
-- **Доставка — реестр публикаций Spring Modulith (JDBC, таблица `event_publication`):** публикация пишется в реестр в транзакции события, слушатель вызывается после коммита. Доставленная публикация удаляется (`spring.modulith.events.completion-mode: delete`), недоставленные переотправляются при старте (`republish-outstanding-events-on-restart: true`). Таблицу создаёт Liquibase-миграция app (`2026-10-24-CREATE-event_publication`, схема v2 Spring Modulith), не сам фреймворк.
-- **Потребитель** (сейчас game):
-  - `@ApplicationModuleListener` (асинхронно, своя транзакция; `@EnableAsync` — на `QgamesApplication`) на тип события из `<m>-api` источника;
-  - применение идемпотентно: `INSERT … ON CONFLICT DO UPDATE … WHERE <реплика>.version < EXCLUDED.version` — повторы и перестановки безопасны.
-- **Таблица-реплика:**
-  - называется `"<модуль-владелец>#<модуль-источник>#<таблица-источник>"`, в SQL — всегда в двойных кавычках. Например, `"game#user_auth#user"`;
-  - содержит **только колонки оригинала** с теми же именами. Подмножество допустимо (email в game не реплицируется), своих колонок нет;
-  - `version` реплики — версия источника на момент последнего *реплицированного* изменения. Изменения нереплицируемых колонок (например, `email`) тоже увеличивают версию источника, но события не порождают;
-  - миграция называется по обычному правилу, `#` в имени файла и id changeSet допустим: `2026-10-18-CREATE-game#user_auth#user`.
-- **Реплики сейчас:** `"game#user_auth#user"` (id, nickname, avatar, version) из события `UserProfileChanged` user-auth.
-- Начальное наполнение реплики, если потребитель подключается к уже существующим данным источника (бэкфилл), — решить при первой такой необходимости.
+- **Источник** (сейчас user-auth): событие — Kotlin data class в `<m>-api` (`api.event.<фича>`), публикуется `ApplicationEventPublisher` (`UserProfilePublisher`, `@Transactional(MANDATORY)`) в транзакции бизнес-изменения. Сейчас — `UserProfileChanged(id, nickname, avatar)` при создании аккаунта и каждой смене профиля; сохранение без изменений события не публикует. Правки профиля — «последняя запись побеждает», версии строки нет.
+- **Потребитель** (сейчас game): `@TransactionalEventListener(AFTER_COMMIT)` на тип события из `<m>-api` источника, синхронно после коммита источника; читает БД в своей транзакции (`REQUIRES_NEW`). Данные источника потребитель не копирует: сами данные он читает из таблицы источника через описание из `<m>-api`. `UserProfileListener` game рассылает `users-changed` во все комнаты пользователя.
 
 ### Каталог игр (модуль `game`)
 
-- Игры объявляются в таблице `game` (`code`, `title`, `description`, `sort_order`, `publish_status`) DML-миграциями (`<дата>-INSERT-game#game`). `room.game_code` и `room_session.game_code` ссылаются на `game(code)`. Статус позже будет менять админка.
+- Игры объявляются в таблице `game` (`code`, `title`, `description`, `sort_order`, `publish_status`) DML-миграциями (`<дата>-INSERT-game`). `room.game_code` и `room_session.game_code` ссылаются на `game(code)`. Статус позже будет менять админка.
 - Набор кодов в таблице совпадает с enum `GameCode`, модуль правил обязателен для всех игр, кроме `NOT_PUBLISHED`. Это проверяет `GameCatalogVerifier` при старте приложения (после миграций); при расхождении приложение не стартует.
-- **Статусы публикации** (`publish_status`, CHECK в DDL) — три. Наружу статус не выходит (в публичных ответах поля нет): в каталоге и по прямой ссылке видны только доступные игры, поэтому `rules` в `GameDetailsResponse` всегда есть:
+- **Статусы публикации** (`publish_status`, значения — enum `GamePublishStatus`) — три. Наружу статус не выходит (в публичных ответах поля нет): в каталоге и по прямой ссылке видны только доступные игры, поэтому `rules` в `GameDetailsResponse` всегда есть:
 
   | Статус | В `GET /api/games` | `GET /api/games/{gameCode}`, комнаты, партии | Модуль правил |
   |---|---|---|---|
@@ -279,7 +265,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 
   `NOT_PUBLISHED` — игра в разработке или отключена; отключение игры — штатный перевод в `NOT_PUBLISHED`.
 - Доступность игры проверяет `GameService.checkAccessible` — при создании комнаты (до проверки настроек), старте партии и во всех остальных операциях с комнатой, по игре комнаты под её блокировкой.
-- **`NotPublishedGameCleanupJob`** (`qgames.game.catalog.not-published-cleanup-enabled`, интервал 1m): пачкой находит комнаты `NOT_PUBLISHED`-игр, каждую — `room FOR UPDATE SKIP LOCKED` с перепроверкой статуса, отменяет идущую партию и удаляет комнату (участники и партии — каскадно). `MoveTimeoutJob` и `RoomOwnerGraceJob` комнаты `NOT_PUBLISHED`-игр пропускают (фильтр в SQL).
+- **`NotPublishedGameCleanupJob`** (`qgames.game.catalog.not-published-cleanup-enabled`, интервал 1m): пачкой находит комнаты `NOT_PUBLISHED`-игр, каждую — под блокировкой комнаты с перепроверкой статуса, отменяет идущую партию и удаляет комнату (участники и партии — каскадно). `MoveTimeoutJob` и `RoomOwnerGraceJob` комнаты `NOT_PUBLISHED`-игр пропускают (фильтр в SQL).
 - Решить при реализации управления каталогом игр в админке:
   - перевод в `PUBLISHED`/`HIDDEN` разрешён только игре с модулем правил — проверка в ручке смены статуса (сейчас статус меняется миграциями, а проверяет `GameCatalogVerifier`; игра без модуля правил наружу и так не выдаётся — 404);
   - завершение партий и удаление комнат при смене статуса вызовом из админки и судьба периодического `NotPublishedGameCleanupJob`.
@@ -293,7 +279,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - иначе, если партия не идёт и есть место, — PLAYER;
   - в остальных случаях — SPECTATOR;
   - повторный вход ничего не меняет.
-- **Присутствие = открытый SSE-поток комнаты.** Ручек входа и выхода нет. Открытие потока — вход, закрытие последнего потока пользователя в комнате — выход. Подключений у пользователя может быть несколько (вкладки, устройства), каждое — строка `room_connection` с арендой (`lease` 20 с). `RoomConnectionHeartbeatJob` раз в 5 с шлёт ping в локальные потоки и продлевает аренду их подключений (`UPDATE … RETURNING id`); поток, чьё подключение не продлилось (его удалил чужой cleanup), закрывается — клиент переподключится и войдёт заново. `RoomConnectionCleanupJob` удаляет протухшие подключения (процесс упал или потерял БД) и уводит пользователей без подключений. Обрыв клиента замечается только по неудачной записи ping, обычно за 10–30 с.
+- **Присутствие = открытый SSE-поток комнаты.** Ручек входа и выхода нет. Открытие потока — вход, закрытие последнего потока пользователя в комнате — выход. Подключений у пользователя может быть несколько (вкладки, устройства), каждое — строка `room_connection` с арендой (`lease` 20 с). `RoomConnectionHeartbeatJob` раз в 5 с шлёт ping в потоки и продлевает аренду их подключений (выборка существующих id и `UPDATE` в одной транзакции); поток, чьё подключение не продлилось (его удалил cleanup), закрывается — клиент переподключится и войдёт заново. `RoomConnectionCleanupJob` удаляет протухшие подключения (процесс упал или потерял БД) и уводит пользователей без подключений. Обрыв клиента замечается только по неудачной записи ping, обычно за 10–30 с.
 - **Выход** — закрытие последнего потока. Таймеров выхода нет: участник сразу удаляется из комнаты, повторный вход — обычный новый вход (роль по правилам входа, при занятых местах — наблюдатель).
 - **Игроки идущей партии закреплены до её конца:** при уходе они остаются участниками с `room_member.left_at` (в ответах `leaving = true`), вход снимает признак, место в партии (`room_session_player`) сохраняется. Конец или отмена партии (ход, таймаут, отмена) удаляют отсутствующих и публикуют `users-changed`. Последствия отсутствия решает игра (§2), у «ничто» их нет. Наблюдатели во время партии уходят сразу, как вне партии.
 - **Окно владения** (`qgames.game.room.owner-grace`, 15 с; `room.owner_grace_user_id` и `owner_grace_deadline`): ушёл владелец — у комнаты нет владельца (`ownerId = null`, команды владельца не выполняет никто, `NOT_ROOM_OWNER`). Владелец-игрок идущей партии при этом остаётся отсутствующим игроком.
@@ -309,8 +295,8 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - передача владения — через окно владения (выше);
   - только владелец стартует партию, ставит её на паузу и продолжает, отменяет её (комната возвращается в ожидание).
 - **Партии.** В комнате идут несколько партий подряд; после конца или отмены комната снова в WAITING, а последняя партия видна в ответе.
-- **Автоудаление:** комната без присутствующих (подключённых) участников дольше `qgames.game.room.empty-ttl` (30m) удаляется `EmptyRoomCleanupJob`. Отсутствующие игроки партии комнату не держат. Джоб пачкой выбирает id, каждую комнату берёт `FOR UPDATE SKIP LOCKED` с перепроверкой, отменяет идущую партию и удаляет комнату (участники, подключения и партии — каскадно).
-- **Конкурентность:** каждая мутация комнаты, участников и партии идёт под `SELECT … FOR UPDATE` строки `room`. Джобы (`MoveTimeoutJob`, `RoomConnectionCleanupJob`, `RoomOwnerGraceJob`, `EmptyRoomCleanupJob`, `NotPublishedGameCleanupJob`) берут блокировки в том же порядке: сначала `room` (`FOR UPDATE … SKIP LOCKED`), потом перепроверка под блокировкой.
+- **Автоудаление:** комната без присутствующих (подключённых) участников дольше `qgames.game.room.empty-ttl` (30m) удаляется `EmptyRoomCleanupJob`. Отсутствующие игроки партии комнату не держат. Джоб пачкой выбирает id, каждую комнату берёт под блокировкой с перепроверкой, отменяет идущую партию и удаляет комнату (участники, подключения и партии — каскадно).
+- **Конкурентность:** каждая мутация комнаты, участников и партии идёт под блокировкой комнаты (`RoomRepository.lockById`, `SELECT … FOR UPDATE` строки `room`). Джобы (`MoveTimeoutJob`, `RoomConnectionCleanupJob`, `RoomOwnerGraceJob`, `EmptyRoomCleanupJob`, `NotPublishedGameCleanupJob`) выбирают id без блокировки, затем каждую комнату обрабатывают в своей транзакции под её блокировкой с перепроверкой.
 - **Real-time:** изменения комнаты идут по SSE-потоку комнаты, состояние партии — только по потоку партии (§3). В ответе комнаты партия краткая: `session {id, status}`; `session-changed` в потоке комнаты — на старт, конец и отмену партии.
 - Смена ника (`UserProfileListener`) публикует `users-changed` во все комнаты пользователя **без блокировки комнат**: если из-за гонки со снапшотом кто-то не увидит новый ник, это допустимо.
 
@@ -319,9 +305,9 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - Партия называется **сессией комнаты** (`room_session`, в коде `RoomSession*`). Таблицы общие для всех игр, своих таблиц у игры нет:
   - `room_session`: код игры (`game_code` → `game.code`), статус, `state_schema_version`, `seed`, `last_seq`, снапшот настроек комнаты, `move_deadline` (проекция таймера для индекса `MoveTimeoutJob`: дедлайн идущего таймера, на паузе NULL);
   - `room_session_player`: места игроков партии;
-  - `room_session_event`: **журнал событий** (`session_id`, `seq`, `method` с CHECK, `code`, `data jsonb` в форме кадра, `created_at` — время события для повтора). Состояние партии **не хранится**: это свёртка журнала.
+  - `room_session_event`: **журнал событий** (`session_id`, `seq`, `method`, `code`, `data` (JSON) в форме кадра, `created_at` — время события для повтора). Состояние партии **не хранится**: это свёртка журнала.
 - **Состояние партии** собирает `SessionStateService` через абстракцию `SessionStateCache` (Caffeine): ключ `(sessionId, viewerKey) → (seq, state)`. Берётся закешированное состояние на seq K, дочитываются события `K+1…N`, результат кладётся обратно; промах — свёртка с нуля. Журнал только дописывается, поэтому инвалидация не нужна. Новое полное состояние попадает в кеш только после коммита.
-- **Любое изменение партии** (старт, ход, таймаут, пауза, продолжение, конец, отмена) идёт через `SessionJournalService` под `lock(room)`: полное состояние на `last_seq` → события → `INSERT` в журнал с seq от `last_seq + 1`, обновление `last_seq`, статуса, `move_deadline` → `pg_notify`. На одно изменение может прийтись несколько событий, каждое со своим seq.
+- **Любое изменение партии** (старт, ход, таймаут, пауза, продолжение, конец, отмена) идёт через `SessionJournalService` под `lock(room)`: полное состояние на `last_seq` → события → `INSERT` в журнал с seq от `last_seq + 1`, обновление `last_seq`, статуса, `move_deadline` → событие шины. На одно изменение может прийтись несколько событий, каждое со своим seq.
 - **Мутации партии** (ход, пауза, продолжение, отмена) отвечают **204**: результат приходит событиями потока. Старт возвращает комнату.
 - **Ручка хода одна на все игры:** `POST /api/games/{gameCode}/rooms/{roomId}/moves`.
   - `gameCode` — строчный код игры (`GameCode.code`: `nothing`, `carcassonne`, `checkers`). Неизвестный код — 404 `GAME_NOT_FOUND`, не совпадает с игрой комнаты — 409 `GAME_TYPE_MISMATCH`.
@@ -330,7 +316,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - Ход проверяется по текущему полному состоянию под блокировкой комнаты, **без проверки версии**: если хода нет среди допустимых — 422 `MOVE_REJECTED` с машиночитаемой причиной в поле `reason` (например, `NOT_YOUR_TURN`).
 - **Таймер хода** (режим `PER_MOVE`, модуль `timer`):
   - старт и каждый ход ставят дедлайн `now + moveSeconds` (`timer-started`), конец и отмена партии останавливают таймер (`timer-stopped`, `STOPPED`);
-  - `MoveTimeoutJob` раз в секунду обрабатывает истёкшие дедлайны по проекции `move_deadline`. Выборка идёт без блокировки, затем на каждую партию — `room FOR UPDATE SKIP LOCKED` с перепроверкой, в отдельной транзакции;
+  - `MoveTimeoutJob` раз в секунду обрабатывает истёкшие дедлайны по проекции `move_deadline`. Выборка идёт без блокировки, затем на каждую партию — блокировка комнаты с перепроверкой, в отдельной транзакции;
   - таймаут идёт тем же путём, что ход: `onTimeout` игры → события, новый дедлайн или конец партии;
   - ход, пришедший после дедлайна, но раньше джоба, принимается (окно ~1 с).
 - **Пауза** (действие модуля `timer`; в игре без таймера — 409 `SESSION_NOT_PAUSABLE`):
@@ -346,38 +332,39 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 ```
 <m>/<m>/src/main/resources/db/changelog/<модуль>/      changelog'и модуля (папка — имя модуля: user-auth, admin-auth, game)
   db.changelog-master.yaml                                явный список include в хронологическом порядке (DDL и DML вперемешку)
-  DDL/2026-10-17-CREATE-user_auth#user.yaml               changeSet: id, author, runInTransaction, sqlFile + rollback sqlFile
-  DDL/SQL/2026-10-17-CREATE-user_auth#user.sql
-  DDL/SQL/2026-10-17-CREATE-user_auth#user-rollback.sql
-  DML/<имя>.yaml, DML/SQL/<имя>.sql, DML/SQL/<имя>-rollback.sql
+  DDL/2026-10-17-CREATE-user.yaml                         changeSet: id, author, runInTransaction, comment, абстрактные changes
+  DML/2026-10-18-INSERT-game.yaml                         insert + явный rollback
 app/src/main/resources/db/changelog/
-  db.changelog-master.yaml                                сводный master приложения: include master-файлов модулей и app
-  app/…                                                   служебные таблицы приложения (event_publication)
+  db.changelog-master.yaml                                сводный master приложения: include master-файлов модулей
 ```
 
 - Таблица `databasechangelog` одна на приложение. Пути changelog'ов модулей не пересекаются (папка модуля), поэтому одноимённые файлы разных модулей не конфликтуют.
-- **Имя миграции:** `<yyyy-MM-dd>-<ДЕЙСТВИЕ>-<таблица>` с полным именем таблицы (с префиксом модуля), например `2026-10-17-CREATE-user_auth#user_identity`, `2026-11-02-ALTER-user_auth#user`, `2026-11-02-INSERT-game#game`. Действие капсом: `CREATE`, `ALTER`, `DROP` (DDL), `INSERT`, `UPDATE`, `DELETE` (DML). Имя одновременно служит `id` changeSet'а. Если в один день над одной таблицей нужно два одинаковых действия — добавить уточнение в конец (`2026-11-02-ALTER-user_auth#user-add_nickname`).
-  - `#` в имени файла работает, но changelog'и модулей лежат во вложенных jar приложения, и Liquibase на файлах с двумя `#` (реплики) пишет при старте WARN `URISyntaxException … Defaulting to previous behavior` — миграции при этом применяются.
+- **Имя миграции:** `<yyyy-MM-dd>-<ДЕЙСТВИЕ>-<таблица>` без префикса модуля (файл лежит в папке модуля), например `2026-10-17-CREATE-user_identity`, `2026-11-02-ALTER-user`, `2026-11-02-INSERT-game`. Действие капсом: `CREATE`, `ALTER`, `DROP` (DDL), `INSERT`, `UPDATE`, `DELETE` (DML). Имя одновременно служит `id` changeSet'а. Если в один день над одной таблицей нужно два одинаковых действия — добавить уточнение в конец (`2026-11-02-ALTER-user-add_nickname`).
 - **Одна таблица — одна миграция.** Индексы и ограничения таблицы входят в её CREATE-миграцию.
 - **DDL** (структура) и **DML** (данные) лежат в разных папках. Порядок выполнения задаёт только master: файлы перечисляются явно, `includeAll` не используем.
 
+- **Изменения — только абстрактные** (`createTable` с колонками и ограничениями, `createIndex`, `insert`, `update`, `delete`…), без `sqlFile` и `sql`. Ограничения задаются в колонках `createTable`: `primaryKey` + `primaryKeyName` (составной ключ — тем же именем у нескольких колонок), `unique` + `uniqueConstraintName`, внешний ключ — `foreignKeyName`, `referencedTableName`, `referencedColumnNames`, `deleteCascade`. Составная уникальность — `createIndex` с `unique: true`. CHECK и частичных индексов среди абстрактных изменений нет.
+- Типы: `uuid`, `timestamp with time zone`, `json`, `varchar(n)`, `text`, `integer`, `bigint`; значения по умолчанию — только константы (`defaultValueNumeric`), время и id задаёт приложение.
 - yaml-changelog шаблон:
   ```yaml
   databaseChangeLog:
     - changeSet:
-        id: 2026-10-17-CREATE-user_auth#user
+        id: 2026-10-17-CREATE-user
         author: A Kozlov            # git config user.name автора миграции
         runInTransaction: true
+        comment: Аккаунты игроков.
         changes:
-          - sqlFile:
-              path: SQL/2026-10-17-CREATE-user_auth#user.sql
-              relativeToChangelogFile: true
-        rollback:
-          - sqlFile:
-              path: SQL/2026-10-17-CREATE-user_auth#user-rollback.sql
-              relativeToChangelogFile: true
+          - createTable:
+              tableName: user
+              columns:
+                - column:
+                    name: id
+                    type: uuid
+                    constraints:
+                      primaryKey: true
+                      primaryKeyName: user_pk
   ```
-- **Rollback-SQL обязателен** для каждой миграции.
+- **Rollback:** у `createTable`/`createIndex` Liquibase выводит его сам; явный `rollback` обязателен там, где не выводит (DML: `insert` → `delete` с условием).
 - **Пока проект нигде не используется** (нет прода и общих стендов с данными), ALTER-миграции не заводим: правится исходная CREATE-миграция таблицы, даже закоммиченная, а локальная БД пересоздаётся (`docker compose down -v`).
 - С появлением прода или общего стенда закоммиченные миграции не редактируются, изменения идут только новыми миграциями.
 
@@ -392,13 +379,13 @@ app/src/main/resources/db/changelog/
 - **Refresh-токен:** случайная строка, в БД — только SHA-256; TTL 30 дней; ротация при каждом обновлении.
   - **Окно терпимости 10 с** (`qgames.auth.refresh-reuse-grace`). Повтор уже ротированного токена в течение окна, если в семье есть активный токен, выдаёт ещё одну пару той же сессии. Так обновляют сессию параллельные вкладки.
   - Повтор позже окна, после logout или после обнаружения кражи отзывает всё семейство (`family_id`) с ошибкой `REFRESH_TOKEN_REUSED`.
-  - Ротацию от прочих отзывов отличает `refresh_token.rotated_at`.
+  - Ротацию от прочих отзывов отличает `rotated_at` (`user_refresh_token`, `admin_refresh_token`).
 - **Сессия админа (`admin-auth`):**
   - свой ключ подписи ES256 и issuer `qgames-admin-auth`;
   - access — 5 мин, refresh — 15 мин. Refresh скользящий: каждая ротация даёт полный TTL. Окно терпимости 10 с (`qgames.admin-auth.refresh-reuse-grace`), ротация и отзыв семьи — как у user-auth;
   - логин сравнивается точно, без lowercase и trim. При неизвестном логине проверяется dummy-хеш, чтобы время ответа не выдавало существующие логины.
-- **Первый админ:** регистрации нет. При старте приложения `AdminBootstrapService` создаёт админа из `ADMIN_BOOTSTRAP_LOGIN` / `ADMIN_BOOTSTRAP_PASSWORD`, только если таблица `"admin_auth#admin"` пуста.
-  - Вставка — одна команда `INSERT … WHERE NOT EXISTS (SELECT 1 FROM "admin_auth#admin") ON CONFLICT (login) DO NOTHING`. Если админ создан, пишется лог WARN.
+- **Первый админ:** регистрации нет. При старте приложения `AdminBootstrapService` создаёт админа из `ADMIN_BOOTSTRAP_LOGIN` / `ADMIN_BOOTSTRAP_PASSWORD`, только если таблица `admin` пуста.
+  - Проверка «таблица пуста» и вставка — в одной пишущей транзакции (`AdminExposedRepository.insertIfNoAdmins`). Если админ создан, пишется лог WARN.
   - Значений по умолчанию в `application.yml` нет: без env бутстрап выключен, а если задано только одно из двух, приложение не стартует. docker-compose задаёт `admin` / `admin`.
 - **Куки ставят и читают auth-контроллеры модулей** (`cookie/AuthCookies` в user-auth и admin-auth): `HttpOnly; Secure; SameSite=Lax`. Токены в теле ответов не отдаются.
   - Имена и пути — константы контракта `AuthCookieNames` в `<m>-api`: портал — `access_token` (`Path=/`) и `refresh_token` (`Path=/api/auth`); админка — `admin_access_token` (`Path=/api/admin`) и `admin_refresh_token` (`Path=/api/admin/auth`). Имена разные: оба фронта ходят в одно приложение, и одноимённые куки перетёрли бы друг друга. `secure`/`sameSite` — свойства модулей (`qgames.auth.cookies`, `qgames.admin-auth.cookies`, env `COOKIES_SECURE`).
@@ -418,22 +405,21 @@ app/src/main/resources/db/changelog/
   - ник (3–32 символа, без пробелов по краям, **не уникален** — игроки различаются по id) и аватар из enum `Avatar { CAT, DOG }`, набор аватаров определён на фронте;
   - новому Google-аккаунту генерируется ник `player-xxxxxx` и аватар `CAT`;
   - меняются через `PATCH /api/users/me/profile` (только переданные поля);
-  - каждое изменение публикуется событием модуля `UserProfileChanged` (§4 «События модулей»).
+  - создание аккаунта и каждое изменение публикуются событием модуля `UserProfileChanged` (§4 «События модулей»); правки — «последняя запись побеждает».
 - **Способы входа:** `user_identity(provider, subject)`, к одному аккаунту можно привязать несколько. Привязка **только явная** (из залогиненной сессии, `/api/users/me/login-methods/*`), автопривязки нет.
 - **Вход через Google** (`POST /api/auth/google`): Google-аккаунт привязан (по `subject`) — сессия его владельца; иначе email не подтверждён в Google — 400 `GOOGLE_EMAIL_NOT_VERIFIED` (email — логин для входа по паролю); иначе аккаунт с таким email уже есть — 409 `ACCOUNT_LINK_REQUIRED` (защитный случай, email в БД уникален); иначе — новый аккаунт.
 - Ключи подписи — из конфигурации/секретов, никогда не генерируются при старте. `docker/dev-keys` — только для локальной разработки: `jwt-*.pem` у user-auth (env `JWT_*`), `admin-jwt-*.pem` (kid `admin-dev-key-1`) у admin-auth (env `ADMIN_JWT_*`).
 
 ## 6. Один инстанс
 
-Одно приложение, один инстанс. Несколько инстансов app не поддерживаются: в памяти процесса живут реестры SSE-потоков и кеш состояний партий, а ShedLock убран.
+Одно приложение, один инстанс. Несколько инстансов app не поддерживаются: в памяти процесса живут реестры SSE-потоков и кеш состояний партий, ShedLock не нужен.
 
 - Состояние в памяти процесса допустимо только такое:
   - реестры открытых SSE-потоков (`RoomStreamRegistry`, `SessionStreamRegistry`): привязаны к соединениям, а присутствие хранится в БД (`room_connection` с арендой);
   - кеш состояний партий `SessionStateCache` (Caffeine): только ускоряет сборку, источник правды — журнал, состояние на seq неизменно.
-- Счётчики, лимиты, блокировки — в БД (атомарные `UPDATE … WHERE …`). Гонки на уникальных ключах → 409 (`DuplicateKeyException` обрабатывается).
-- Шедулеры (`@EnableScheduling` на `QgamesApplication`): джобы выбирают id без блокировки, затем берут `FOR UPDATE SKIP LOCKED` с перепроверкой, транзакция на комнату или партию (так джобы не конфликтуют с запросами). У каждого джоба свой флаг включения `…-enabled`. В тестах джобы выключены и вызываются напрямую через `run()`.
-- Рассылка событий SSE-потокам — Postgres `LISTEN/NOTIFY` (`pg_notify` в транзакции изменения, доставка после коммита); побочные эффекты между модулями — события модулей после коммита (§4).
-- Механизмы, рассчитанные на несколько инстансов (`LISTEN/NOTIFY`, аренды подключений, `SKIP LOCKED`), пока остаются — решить при переходе на встраиваемую БД (этап 3 перехода на монолит).
+- Счётчики, лимиты, блокировки — в БД (атомарные `UPDATE … WHERE …`). Гонки на уникальных ключах → 409 (`PersistenceExceptionHandler`).
+- **Присутствие — аренды в БД** (`room_connection`): приложение продлевает аренду живых потоков, а подключения, которые никто не продлевает (процесс упал или перезапущен, отключение не удалось), удаляет по истечении аренды `RoomConnectionCleanupJob`.
+- Шедулеры (`@EnableScheduling` на `QgamesApplication`): джобы выбирают id без блокировки, затем каждую комнату или партию обрабатывают в своей транзакции под блокировкой комнаты с перепроверкой. У каждого джоба свой флаг включения `…-enabled`. В тестах джобы выключены и вызываются напрямую через `run()`.
 
 ## 7. Тесты
 
@@ -441,8 +427,9 @@ app/src/main/resources/db/changelog/
 - **Все интеграционные тесты живут в `app/src/test/kotlin`** в пакетах модулей (`site.qgames.game.controller.room…`, `site.qgames.userauth…`); тесты Security, CORS, кук и OpenAPI — в `site.qgames.app…`; границы модулей — `ModularityTest`. Чистые тесты правил игр — в своих модулях `games/*`.
 - Один `site.qgames.BaseIntegrationTest`: в нём все `@MockkSpyBean`, поэтому контекст Spring один на прогон. Модульные базы (`UserAuthIntegrationTest`, `AdminAuthIntegrationTest`, `GameIntegrationTest`) наследуют его и добавляют только хелперы и `@Autowired` — новые `@MockkSpyBean` объявляются только в общей базе. Внешние системы (WireMock) сбрасываются в `@BeforeEach`.
 - **Пользователь в тестах** — настоящий access-JWT, подписанный тестовым ключом модуля (`userAccessToken`, `adminAccessToken`, `asUser`, `asAdmin` в базе). Сессии открываются через настоящие ручки, токены читаются из кук ответа.
-- **События модулей в тестах:** у источника — опубликованные события через `ApplicationEvents` (`@RecordApplicationEvents`); у потребителя — событие публикуется в транзакции (`publishProfile`), результат ждётся в БД; сквозной сценарий (изменение профиля в user-auth → строка в `"game#user_auth#user"`) — тоже ожиданием в БД. Доставку всех публикаций ждёт `awaitEventsDelivered` (реестр пуст).
-- **Тестовые данные:** `app/src/test/resources/init/<модуль>.sql` (и `init/app.sql` для служебных таблиц) выполняются перед каждым тестом (`@Sql` на `BaseIntegrationTest`): `TRUNCATE … CASCADE` всех таблиц модуля и вставка базовых фикстур с фиксированными UUID. Константы фикстур — в `support/TestData.kt` модуля и совпадают с его init-скриптом. Новая таблица добавляется в TRUNCATE скрипта своего модуля.
+- **События модулей в тестах:** у источника — опубликованные события через `ApplicationEvents` (`@RecordApplicationEvents`); у потребителя — сквозной сценарий через ручку источника (смена профиля → `users-changed` в потоках комнат и новый ник в снапшоте комнаты).
+- **Состояние БД в тестах** читается и меняется через Exposed DSL и таблицы модулей (`db { … }`, `count(table) { … }`, `snapshot(table)` в `BaseIntegrationTest`), без сырого SQL.
+- **Тестовые данные:** `app/src/test/resources/init/<модуль>.sql` выполняются перед каждым тестом (`@Sql` на `BaseIntegrationTest`): `TRUNCATE … CASCADE` всех таблиц модуля и вставка базовых фикстур с фиксированными UUID. Константы фикстур — в `support/TestData.kt` модуля и совпадают с его init-скриптом. Новая таблица добавляется в TRUNCATE скрипта своего модуля. Строки таблицы `user` для игроков тестов game — тоже в `init/user-auth.sql` (владелец таблицы — user-auth).
 - Тест, которому нужен готовый пользователь или сущность, берёт фикстуру, а не создаёт её через API. Через API идут только сценарии, которые проверяют сам процесс создания (например, создание аккаунта входом через Google).
 - Предпочитаем **параметризованные сценарные тесты** (`@ParameterizedTest` + `@MethodSource`), состояние проверяем в БД.
 - Контейнеры — singleton на прогон (`libs/common-test`), чтобы контекст Spring переиспользовался между классами.
@@ -450,7 +437,7 @@ app/src/main/resources/db/changelog/
 
 ## 8. Стек и версии
 
-Kotlin 2.4, JDK 25+ (сборка на любом JDK ≥ 25 без toolchain, байткод — Java 25), Gradle 9.6 (configuration cache включён), Spring Boot 4.1 (Spring MVC + virtual threads, Jackson 3), Spring Modulith 2.1 (свой BOM), springdoc 3.1, Spring Data JDBC, Liquibase, Testcontainers 2, springmockk 5. Версии — в `gradle/libs.versions.toml`.
+Kotlin 2.4, JDK 25+ (сборка на любом JDK ≥ 25 без toolchain, байткод — Java 25), Gradle 9.6 (configuration cache включён), Spring Boot 4.1 (Spring MVC + virtual threads, Jackson 3), Spring Modulith 2.1 (свой BOM), springdoc 3.1, Exposed 1.6 (свой BOM, `exposed-spring-boot4-starter`), PostgreSQL 18, Liquibase, Testcontainers 2, springmockk 5. Версии — в `gradle/libs.versions.toml`.
 
 ## 9. Локальный запуск
 
@@ -463,7 +450,7 @@ docker compose down -v                # остановить и удалить �
 - Приложение — http://localhost:8080: Swagger — http://localhost:8080/swagger-ui.html (группы `portal` и `admin`), OpenAPI — `/v3/api-docs/portal`, `/v3/api-docs/admin`.
 - Вход в админку на стенде: `admin` / `admin`.
 - Google-вход: заполнить `GOOGLE_CLIENT_IDS` в `.env` (см. `.env.example`).
-- Запуск из IDE: `docker compose up -d postgres postgres-init`, затем `QgamesApplication` (или `./gradlew :app:bootRun`) с рабочим каталогом `app/`: значения по умолчанию в `application.yml` смотрят на localhost и `../docker/dev-keys`.
+- Запуск из IDE: `docker compose up -d postgres`, затем `QgamesApplication` (или `./gradlew :app:bootRun`) с рабочим каталогом `app/`: значения по умолчанию в `application.yml` смотрят на localhost и `../docker/dev-keys`.
 - Переменные окружения app: `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, `JWT_KEY_ID`/`JWT_PRIVATE_KEY_LOCATION`/`JWT_PUBLIC_KEY_LOCATION` (игроки), `ADMIN_JWT_KEY_ID`/`ADMIN_JWT_PRIVATE_KEY_LOCATION`/`ADMIN_JWT_PUBLIC_KEY_LOCATION` (админы), `GOOGLE_CLIENT_IDS`, `ADMIN_BOOTSTRAP_LOGIN`/`ADMIN_BOOTSTRAP_PASSWORD`, `CORS_ALLOWED_ORIGINS`, `ADMIN_CORS_ALLOWED_ORIGINS`, `COOKIES_SECURE`.
 - Образ: multi-stage `docker/app.Dockerfile` (`:app:bootJar`). Контекст сборки — корень репозитория.
 
@@ -474,8 +461,9 @@ docker compose down -v                # остановить и удалить �
 - **Образы** собираются в CI и пушатся в registry, на VPS только `docker compose pull`. Gradle-сборка на VPS съела бы 2–3 ГБ RAM рабочего сервера.
 - **Наружу** открыт только reverse proxy с TLS, он проксирует в app. Swagger в проде не публикуется.
 - **Память:** лимит памяти контейнера app (`mem_limit`) — решить при деплое на VPS 1 ГБ (этап 4 перехода на монолит). Heap считается от лимита через `-XX:MaxRAMPercentage` (уже в `docker/app.Dockerfile`), без лимита JVM ориентируется на всю память хоста.
-- **Бэкапы PostgreSQL:** `pg_dump` по расписанию, копии хранятся вне VPS.
-- **Оценка ресурсов.** Замер локального стенда в простое (`docker stats`, без `mem_limit`, хост 30 ГБ): app ~630 МБ, PostgreSQL ~75 МБ — всего ~0,7 ГБ. Без лимита JVM не ужимает heap, с `mem_limit` потребление ниже; под нагрузкой heap растёт.
+- **PostgreSQL под малую память** (`command: -c …` в `docker-compose.yml`, `mem_limit: 128m`): `max_connections=20` (пул 5 + LISTEN + миграции, psql и запас), `shared_buffers=16MB` (горячие данные малы, остальное — кеш ОС), `effective_cache_size=64MB` (только подсказка планировщику), `work_mem=2MB`, `maintenance_work_mem=16MB`, `wal_buffers=1MB`, `max_wal_size=64MB`, `jit=off` (LLVM-JIT ест память и не нужен коротким запросам), `huge_pages=off`, без параллельных воркеров (`max_worker_processes=2`, `max_parallel_*=0`), `autovacuum_max_workers=1`.
+- **Бэкапы PostgreSQL:** `pg_dump` по расписанию, копии хранятся вне VPS — решить при этапе 4 перехода на монолит.
+- **Оценка ресурсов.** Замер локального стенда в простое (`docker stats`, без `mem_limit`, хост 30 ГБ): app ~630 МБ, PostgreSQL ~40 МБ (с настройками выше; без них было ~75 МБ). Без лимита JVM не ужимает heap, с `mem_limit` потребление ниже; под нагрузкой heap растёт.
 - Reverse proxy (Caddy или nginx), CI (GitHub Actions или GitLab CI), registry и хранение секретов — решить при реализации деплоя. Для SSE (`text/event-stream`) у proxy должны быть выключены буферизация и короткий read-timeout (app отдаёт `X-Accel-Buffering: no`, ping раз в 5 с); при выборе proxy проверить.
 
 ## 11. Отклонённые решения
@@ -499,6 +487,7 @@ docker compose down -v                # остановить и удалить �
 | Ход без кода игры в пути (`/api/rooms/{id}/session/moves`, тело `{move: {...}}`) | Из запроса не видно, чей это ход; некуда повесить схему хода игры | `/api/games/{gameCode}/rooms/{roomId}/moves` + конверт `{type, data}` |
 | WebSocket для Каркассона | Для пошаговой игры избыточно | REST + SSE; WS — только для real-time игр |
 | Короткий поллинг событий по `afterSeq` (в том числе каждым потоком из журнала) | Задержка доставки до интервала опроса, нагрузка на БД растёт с числом зрителей | Postgres LISTEN/NOTIFY |
+| Внутрипроцессная шина событий потоков (публикация в транзакции, номер по порядку коммитов, один поток раздачи) | Порядок коммитов пришлось бы воспроизводить самим (нумерация, пропуск откатов); NOTIFY даёт его даром | Postgres LISTEN/NOTIFY |
 | Long polling | Ожидающим запросам всё равно нужна рассылка о новом ходе (или частый опрос БД): сложность как у SSE без его преимуществ | SSE |
 | seq/version у событий комнаты | Нет случая, где нужно версионировать состояние комнаты | События с полным значением + маркер против гонки со снапшотом |
 | Отдельные события на вход, выход, роль, ник, владельца | Лишняя сложность на клиенте | Одно `users-changed` с владельцем и полным списком |
@@ -509,30 +498,27 @@ docker compose down -v                # остановить и удалить �
 |---|---|---|
 | Spring Boot 3.5 | Предыдущая линейка, срок поддержки короче | Spring Boot 4.x |
 | WebFlux + корутины | Сложнее в разработке и отладке, нужен R2DBC | Spring MVC + virtual threads |
-| JPA/Hibernate | Требование: без ORM | Spring Data JDBC + SQL |
+| JPA/Hibernate | Больше памяти (VPS 1 ГБ) и магии сессий/ленивых связей | Exposed DSL |
+| Spring Data JDBC (`CrudRepository`, `@Query`, `JdbcClient`) | `@Query` и `JdbcClient` — сырой SQL, непереносимый между БД | Exposed DSL |
 
 ### Данные
 
 | Вариант | Почему отклонён | Что вместо |
 |---|---|---|
-| Entity в сервисном слое | Сервисы зависят от формата хранения (строки вместо enum, nullable id) | Модели + бин-маппер в репозитории |
-| MapStruct для entity ↔ модель | kapt замедляет сборку, тонкости с Kotlin data-классами | Ручные `@Component`-мапперы |
-| Двухслойный репозиторий только при нескольких хранилищах | Spring Data-интерфейс сам по себе возвращает только entity; разнобой между сервисами | Всегда фасад + `…PostgresqlRepository` |
+| Строки таблиц (`ResultRow`) в сервисном слое | Сервисы зависят от формата хранения (строки вместо enum) | Модели + бин-маппер в репозитории |
+| MapStruct для строки ↔ модель | kapt замедляет сборку, тонкости с Kotlin data-классами | Ручные `@Component`-мапперы |
+| Двухслойный репозиторий только при нескольких хранилищах | Разнобой между сервисами, сервисы зависят от технологии хранения | Всегда фасад + `…ExposedRepository` |
 | Сервисы возвращают DTO контрактов | Бизнес-логика зависит от формата API | Модели; DTO — в контроллере через `*ResponseMapper` |
 | Ассемблер ответа, который сам ходит в репозитории | Чтение данных смешано с маппингом | Сервис собирает композитную модель, маппер только преобразует |
 | `ApiException(HttpStatus, …)` из сервисов | Сервисный слой знает про HTTP | Иерархия классов ошибок в `libs/common-exception` |
 | Плоская иерархия ошибок | Нельзя одной веткой отличить ошибки клиента от ошибок сервера | `ClientException` / `ServerException` |
 | Класс на каждую бизнес-ошибку | Десятки мелких классов без пользы | Каталоги-фабрики `<Фича>Errors` |
-| Создание ролей и БД init-скриптом в `/docker-entrypoint-initdb.d` | Выполняется только на пустом томе: новая роль или БД не создаётся на существующем стенде, а на VPS том не пересоздать | Идемпотентный скрипт в одноразовом `postgres-init` на каждом `up` |
-| Отдельные таблицы на каждую игру | Каждая игра тащит свои миграции и репозитории в общий модуль | JSONB-снапшот + журнал ходов |
+| Отдельные таблицы на каждую игру | Каждая игра тащит свои миграции и репозитории в общий модуль | JSON-настройки + журнал событий |
 | `bigint identity` для id | Предсказуемые id, неизвестны до вставки | UUID v7 |
-| UUID, генерируемый в приложении | Spring Data JDBC считает сущность с id существующей (нужен `Persistable`), а `RETURNING` закрывает потребность знать id | `DEFAULT uuidv7()` в БД |
-| Имена таблиц во множественном числе | Решили единообразно в единственном | Единственное число, `"user"` в кавычках |
-| Встраиваемая БД (SQLite/H2) вместо PostgreSQL | Теряется работа нескольких инстансов, пришлось бы переписать SQL и миграции (`uuidv7`, `jsonb`), а экономия ~200 МБ | Один PostgreSQL |
-| Реплицировать в game только id пользователя | Нечего показать в комнате; email раскрывать другим игрокам нельзя | Реплика id + ник + аватар |
-| Собственные имена таблиц-реплик (`user_profile`) | Не видно, из какого модуля и таблицы данные | `"<модуль-владелец>#<модуль-источник>#<таблица>"` |
-| `changed_at`/`updated_at` в реплике для порядка событий | Колонки нет в оригинале; время ненадёжно для порядка изменений | `version` в оригинале и реплике |
-| Реплика без колонки порядка | Нет защиты от повторного проигрывания старого события | `version` |
+| Имена таблиц во множественном числе | Решили единообразно в единственном | Единственное число |
+| Встраиваемая SQLite вместо PostgreSQL | Один писатель на всю БД; конкурентность через sqlite-jdbc потребовала обхода драйвера и тонких настроек транзакций (`DEFERRED` + `explicit_readonly`) | PostgreSQL с настройками под малую память |
+| Реплика профилей в game (таблица-копия по событию с `version`) | В одной БД копия не нужна: лишние таблица, событие с версией и идемпотентный upsert | Join с таблицей `user` через публичное описание в `user-auth-api` |
+| Реестр публикаций событий Spring Modulith (`event_publication`) | Нужен для доставки данных между процессами и повторов; слушатели теперь только рассылают уведомления | `@TransactionalEventListener(AFTER_COMMIT)` |
 | Сборка образов на VPS | Gradle съедает 2–3 ГБ RAM рабочего сервера | Сборка в CI + registry |
 
 ### Миграции
@@ -540,7 +526,9 @@ docker compose down -v                # остановить и удалить �
 | Вариант | Почему отклонён | Что вместо |
 |---|---|---|
 | Время или порядковый номер в имени миграции | Порядок и так задаёт master | `<дата>-<ДЕЙСТВИЕ>-<таблица>` |
-| Папка на каждую миграцию | Выбрана другая раскладка | yaml в `DDL/`, SQL в `DDL/SQL/` |
+| Папка на каждую миграцию | Выбрана другая раскладка | yaml в `DDL/` и `DML/` |
+| SQL-миграции (`sqlFile`) | Диалектный SQL непереносим между БД | Абстрактные изменения Liquibase в YAML |
+| Префикс модуля в имени таблицы и файла миграции (`"game#room"`) | В одной БД без схем хватает уникальности имён; `#` давал предупреждения Liquibase во вложенных jar | Имя таблицы уникально в приложении, файл — в папке модуля |
 | `includeAll` | DML, зависящий от DDL, может выполниться не вовремя | Явный список в master |
 | Фиксированный автор `qgames` | В `DATABASECHANGELOG` не видно, кто автор | `git config user.name` |
 | Несколько таблиц в одной миграции | Сложнее откатывать и ревьюить | Одна таблица — одна миграция |
@@ -604,7 +592,7 @@ docker compose down -v                # остановить и удалить �
 | Плоские nullable-поля настроек / нетипизированный `settings` | Поля копятся с каждой игрой / нет типов на фронте | Полиморфный `gameSettings` + границы в `GET /api/games/{gameCode}` |
 | Только `@Min/@Max` в DTO без ручки параметров игры | Границы одинаковы для всех игр, режимы фронт знает сам | `GET /api/games/{gameCode}` |
 | Таймауты лениво при GET комнаты | GET меняет данные, нечего публиковать в SSE | `MoveTimeoutJob` раз в секунду |
-| Джоб блокирует сначала партию, потом комнату | Обратный порядок к ходу — дедлоки | Сначала `room FOR UPDATE SKIP LOCKED` |
+| Джоб блокирует сначала партию, потом комнату | Обратный порядок к ходу — дедлоки | Сначала блокировка комнаты |
 | Пропуск хода по таймауту силами движка | Не во всех играх ход можно пропустить | `GameRules.onTimeout` |
 | `GameRules.applyMove` → новое состояние, хранимый `room_session.state` + отдельный `view` для участника | Нет событий для потока и повтора; маскировка состояния и событий расходилась бы | Журнал событий, `decide` → события, общий применитель патчей для полного состояния и проекций, кеш состояний по seq |
 | `version` партии + `expectedVersion` в ходе (409 `SESSION_CONFLICT`) | Событий много (личные, таймер), строгая сверка давала бы ложные конфликты | seq на каждое событие; ход проверяется по текущему состоянию, 422 `MOVE_REJECTED` |
@@ -628,3 +616,6 @@ docker compose down -v                # остановить и удалить �
 | bootBuildImage | Медленно и громоздко | Multi-stage Dockerfile |
 | init-скрипты только с очисткой, без фикстур | Тесты создавали бы данные через API, медленнее и шумнее | `init/<модуль>.sql` с фикстурами + `TestData` |
 | Программная очистка БД из кода теста | Состояние не видно из ресурсов | `init/<модуль>.sql` через `@Sql` |
+| Создание ролей и БД отдельным init-скриптом (`postgres-init`) | Одна роль приложения — её создаёт сам образ из `POSTGRES_USER`/`POSTGRES_DB` | Переменные образа postgres |
+| `jsonb` для JSON-колонок | Решение пользователя: поля JSON не запрашиваем, а `jsonb` переставляет ключи | `json` |
+| `timestamp` без пояса + UTC в JVM | Корректность держалась бы на поясе JVM | `timestamptz` |

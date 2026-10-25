@@ -1,6 +1,7 @@
 package site.qgames.userauth.controller.auth
 
 import org.assertj.core.api.Assertions.assertThat
+import io.mockk.every
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -14,6 +15,14 @@ import site.qgames.userauth.support.TestData
 import java.time.Instant
 import java.util.UUID
 import java.util.stream.Stream
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.core.SortOrder
+import site.qgames.userauth.table.user.UserTable
+import site.qgames.userauth.table.user.UserIdentityTable
+import site.qgames.userauth.table.auth.RefreshTokenTable
 
 class GoogleLoginScenariosTest : UserAuthIntegrationTest() {
 
@@ -24,8 +33,8 @@ class GoogleLoginScenariosTest : UserAuthIntegrationTest() {
             status { isUnauthorized() }
             jsonPath("$.code") { value("INVALID_GOOGLE_TOKEN") }
         }
-        assertThat(countRows("\"user_auth#user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT)
-        assertThat(countRows("\"user_auth#user_identity\" WHERE subject = '$NEW_SUB'")).isZero()
+        assertThat(count(UserTable)).isEqualTo(TestData.FIXTURE_USER_COUNT)
+        assertThat(count(UserIdentityTable) { UserIdentityTable.subject eq NEW_SUB }).isZero()
     }
 
     @Test
@@ -40,8 +49,27 @@ class GoogleLoginScenariosTest : UserAuthIntegrationTest() {
         assertThat(first.user.avatar).isEqualTo(Avatar.CAT)
         assertThat(first.user.loginMethods).containsExactly(LoginMethod.GOOGLE)
         assertThat(second.user.id).isEqualTo(first.user.id)
-        assertThat(countRows("\"user_auth#user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT + 1)
+        assertThat(count(UserTable)).isEqualTo(TestData.FIXTURE_USER_COUNT + 1)
         assertThat(publishedProfileEvents().map { it.id }).containsExactly(first.user.id)
+    }
+
+    /**
+     * Гонка двух первых входов с одним email: проверка «аккаунта с таким email нет» прошла у обоих, второй упирается в
+     * уникальность email в БД (SQLSTATE 23505) — 409 CONFLICT, и ничего не создаётся.
+     */
+    @Test
+    fun `concurrent account creation with the same email is a conflict`() {
+        every { userRepository.findByEmail(TestData.PasswordOnly.EMAIL) } returns null
+
+        loginWithGoogle(GoogleIdTokens.idToken(subject = NEW_SUB, email = TestData.PasswordOnly.EMAIL)).andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("CONFLICT") }
+        }
+
+        assertThat(count(UserTable)).isEqualTo(TestData.FIXTURE_USER_COUNT)
+        assertThat(count(UserIdentityTable) { UserIdentityTable.subject eq NEW_SUB }).isZero()
+        assertThat(count(RefreshTokenTable)).isZero()
+        assertThat(publishedProfileEvents()).isEmpty()
     }
 
     @ParameterizedTest(name = "{0}")
@@ -56,7 +84,7 @@ class GoogleLoginScenariosTest : UserAuthIntegrationTest() {
             .session()
 
         assertThat(auth.user.id).isEqualTo(expectedUserId)
-        assertThat(countRows("\"user_auth#user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT)
+        assertThat(count(UserTable)).isEqualTo(TestData.FIXTURE_USER_COUNT)
     }
 
     @Test
@@ -65,7 +93,7 @@ class GoogleLoginScenariosTest : UserAuthIntegrationTest() {
             status { isBadRequest() }
             jsonPath("$.code") { value("GOOGLE_EMAIL_NOT_VERIFIED") }
         }
-        assertThat(countRows("\"user_auth#user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT)
+        assertThat(count(UserTable)).isEqualTo(TestData.FIXTURE_USER_COUNT)
     }
 
     @ParameterizedTest(name = "{0}")
@@ -82,18 +110,20 @@ class GoogleLoginScenariosTest : UserAuthIntegrationTest() {
             jsonPath("$.code") { value("ACCOUNT_LINK_REQUIRED") }
         }
 
-        assertThat(countRows("\"user_auth#user_identity\" WHERE subject = '$NEW_SUB'")).isZero()
+        assertThat(count(UserIdentityTable) { UserIdentityTable.subject eq NEW_SUB }).isZero()
         assertThat(loginMethodsOf(userId)).isEqualTo(methodsBefore)
-        assertThat(countRows("\"user_auth#user\"")).isEqualTo(TestData.FIXTURE_USER_COUNT)
-        assertThat(countRows("\"user_auth#refresh_token\"")).isZero()
+        assertThat(count(UserTable)).isEqualTo(TestData.FIXTURE_USER_COUNT)
+        assertThat(count(RefreshTokenTable)).isZero()
         assertThat(publishedProfileEvents()).isEmpty()
     }
 
     private fun loginMethodsOf(userId: UUID): List<String> =
-        jdbcClient.sql("SELECT provider FROM \"user_auth#user_identity\" WHERE user_id = :userId ORDER BY provider")
-            .param("userId", userId)
-            .query(String::class.java)
-            .list()
+        db {
+            UserIdentityTable.selectAll()
+                .where { UserIdentityTable.userId eq userId }
+                .orderBy(UserIdentityTable.provider to SortOrder.ASC)
+                .map { it[UserIdentityTable.provider] }
+        }
             .filterNotNull()
 
     companion object {

@@ -20,13 +20,20 @@ import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.userauth.api.dto.user.Avatar
+import site.qgames.game.table.room.RoomMemberTable
+import site.qgames.game.table.room.RoomTable
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.update
 import java.util.UUID
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * Поток событий комнаты (SSE): первое сообщение — снапшот, дальше события из шины (Postgres NOTIFY), только после
- * коммита. Маркер подключения отсекает события, которые уже есть в снапшоте.
+ * Поток событий комнаты (SSE): первое сообщение — снапшот, дальше события из Postgres NOTIFY, только после
+ * коммита и в порядке коммитов. Маркер подключения отсекает события, которые уже есть в снапшоте.
  */
 class RoomEventsScenariosTest : GameIntegrationTest() {
 
@@ -118,17 +125,18 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
         val carolStream = AtomicReference<MvcResult>()
         val executor = Executors.newVirtualThreadPerTaskExecutor()
 
-        // Изменение держит блокировку комнаты, пока подписчик Карол уже зарегистрирован, а её подключение ждёт блокировку:
-        // уведомление об изменении придёт подписчику раньше его маркера.
+        // Изменение держит блокировку комнаты, пока подписчик Карол уже зарегистрирован, а её подключение ждёт
+        // блокировку: уведомление об изменении придёт подписчику раньше его маркера.
         transactionTemplate.executeWithoutResult {
-            jdbcClient.sql("SELECT id FROM \"game#room\" WHERE id = :id FOR UPDATE").param("id", roomId).query().listOfRows()
-            jdbcClient.sql("UPDATE \"game#room_member\" SET role = 'SPECTATOR' WHERE room_id = :id AND user_id = :user")
-                .param("id", roomId)
-                .param("user", BOB)
-                .update()
+            RoomTable.selectAll().where { RoomTable.id eq roomId }.forUpdate().single()
+            RoomMemberTable.update({ (RoomMemberTable.roomId eq roomId) and (RoomMemberTable.userId eq BOB) }) {
+                it[role] = RoomRole.SPECTATOR.name
+            }
             roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
             executor.submit { carolStream.set(openStream(CAROL, roomId)) }
-            awaitUntil("connection waits for the room lock") { lockWaiters() > 0 }
+            // Активность других соединений смотрим из отдельной транзакции: внутри транзакции pg_stat_activity
+            // не обновляется.
+            awaitUntil("connection waits for the room lock") { executor.submit<Long> { lockWaiters() }.get() > 0 }
         }
         awaitUntil("stream is opened") { carolStream.get()?.let { events(it).isNotEmpty() } == true }
         val stream = carolStream.get()
@@ -147,7 +155,7 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
         val stream = openStream(ALICE, roomId)
         awaitEvents(stream, 1)
 
-        publishProfile(BOB, "Bobby", Avatar.DOG, version = 1)
+        updateProfile(BOB, "Bobby", Avatar.DOG)
 
         val (type, data) = awaitEvents(stream, 2)[1]
         assertThat(type).isEqualTo("users-changed")
@@ -192,8 +200,10 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
         assertThat(roomStreamRegistry.all()).isEmpty()
     }
 
-    private fun lockWaiters(): Int =
-        jdbcClient.sql("SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()")
-            .query(Int::class.java)
-            .single()
+    private fun lockWaiters(): Long = count(PgStatActivity) { PgStatActivity.waitEventType eq "Lock" }
+
+    /** Системное представление PostgreSQL с активностью соединений — только для теста ожидания блокировки. */
+    private object PgStatActivity : Table("pg_stat_activity") {
+        val waitEventType = varchar("wait_event_type", 64).nullable()
+    }
 }

@@ -12,10 +12,15 @@ import site.qgames.game.support.TestData.BOB
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
+import site.qgames.game.table.room.RoomConnectionTable
 
 /**
  * Присутствие: открытый поток комнаты и есть нахождение в ней. Подключение входит в комнату, закрытие последнего потока
- * пользователя выводит из комнаты, подключения упавших инстансов истекают по аренде.
+ * пользователя выводит из комнаты, подключения упавшего процесса истекают по аренде.
  */
 class RoomPresenceScenariosTest : GameIntegrationTest() {
 
@@ -108,19 +113,14 @@ class RoomPresenceScenariosTest : GameIntegrationTest() {
     }
 
     private fun connections(roomId: UUID, user: UUID): Long =
-        countRows("\"game#room_connection\" WHERE room_id = :roomId AND user_id = :userId", "roomId" to roomId, "userId" to user)
+        count(RoomConnectionTable) { connection(roomId, user) }
 
     private fun expireConnections(roomId: UUID, user: UUID) {
-        jdbcClient.sql("UPDATE \"game#room_connection\" SET expires_at = now() - interval '1 second' WHERE room_id = :roomId AND user_id = :userId")
-            .param("roomId", roomId)
-            .param("userId", user)
-            .update()
+        db { RoomConnectionTable.update({ connection(roomId, user) }) { it[expiresAt] = Instant.now().minusSeconds(1) } }
     }
 
     private fun connectionExpiresAt(roomId: UUID, user: UUID): Instant =
-        jdbcClient.sql("SELECT expires_at FROM \"game#room_connection\" WHERE room_id = :roomId AND user_id = :userId")
-            .param("roomId", roomId)
-            .param("userId", user)
-            .query { rs, _ -> rs.getTimestamp("expires_at").toInstant() }
-            .single()
+        db { RoomConnectionTable.selectAll().where { connection(roomId, user) }.single()[RoomConnectionTable.expiresAt] }
+
+    private fun connection(roomId: UUID, user: UUID) = (RoomConnectionTable.roomId eq roomId) and (RoomConnectionTable.userId eq user)
 }

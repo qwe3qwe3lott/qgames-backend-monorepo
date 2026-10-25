@@ -10,6 +10,10 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.boot.DefaultApplicationArguments
 import site.qgames.adminauth.AdminAuthIntegrationTest
 import site.qgames.adminauth.support.TestData
+import site.qgames.adminauth.table.admin.AdminTable
+import org.jetbrains.exposed.v1.core.SortOrder
+import org.jetbrains.exposed.v1.jdbc.deleteAll
+import org.jetbrains.exposed.v1.jdbc.selectAll
 import java.util.stream.Stream
 
 /**
@@ -25,9 +29,7 @@ class AdminBootstrapScenariosTest : AdminAuthIntegrationTest() {
         val created = adminBootstrapService.bootstrap("admin", "bootstrap-password")
 
         assertThat(created).isTrue()
-        val (storedLogin, hash) = jdbcClient.sql("SELECT login, password_hash FROM \"admin_auth#admin\"")
-            .query { rs, _ -> rs.getString("login") to rs.getString("password_hash") }
-            .single()
+        val (storedLogin, hash) = db { AdminTable.selectAll().single().let { it[AdminTable.login] to it[AdminTable.passwordHash] } }
         assertThat(storedLogin).isEqualTo("admin")
         assertThat(hash).startsWith("\$argon2id\$").doesNotContain("bootstrap-password")
         assertThat(passwordEncoder.matches("bootstrap-password", hash)).isTrue()
@@ -43,7 +45,7 @@ class AdminBootstrapScenariosTest : AdminAuthIntegrationTest() {
         val createdAgain = adminBootstrapService.bootstrap("admin", "another-password")
 
         assertThat(createdAgain).isFalse()
-        assertThat(countRows("\"admin_auth#admin\"")).isEqualTo(1)
+        assertThat(count(AdminTable)).isEqualTo(1)
         login("admin", "bootstrap-password").andExpect { status { isOk() } }
     }
 
@@ -56,7 +58,7 @@ class AdminBootstrapScenariosTest : AdminAuthIntegrationTest() {
 
         assertThat(created).isFalse()
         assertThat(adminsSnapshot()).isEqualTo(before)
-        assertThat(countRows("\"admin_auth#admin\"")).isEqualTo(TestData.FIXTURE_ADMIN_COUNT)
+        assertThat(count(AdminTable)).isEqualTo(TestData.FIXTURE_ADMIN_COUNT)
     }
 
     @ParameterizedTest(name = "login={0}, password={1}")
@@ -67,7 +69,7 @@ class AdminBootstrapScenariosTest : AdminAuthIntegrationTest() {
         val created = adminBootstrapService.bootstrap(bootstrapLogin, bootstrapPassword)
 
         assertThat(created).isFalse()
-        assertThat(countRows("\"admin_auth#admin\"")).isZero()
+        assertThat(count(AdminTable)).isZero()
     }
 
     @Test
@@ -76,7 +78,7 @@ class AdminBootstrapScenariosTest : AdminAuthIntegrationTest() {
 
         adminBootstrapService.run(DefaultApplicationArguments())
 
-        assertThat(countRows("\"admin_auth#admin\"")).isZero()
+        assertThat(count(AdminTable)).isZero()
     }
 
     @ParameterizedTest(name = "login={0}, password={1}")
@@ -87,15 +89,16 @@ class AdminBootstrapScenariosTest : AdminAuthIntegrationTest() {
         assertThatThrownBy { adminBootstrapService.bootstrap(bootstrapLogin, bootstrapPassword) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("ADMIN_BOOTSTRAP_LOGIN")
-        assertThat(countRows("\"admin_auth#admin\"")).isZero()
+        assertThat(count(AdminTable)).isZero()
     }
 
     private fun removeAllAdmins() {
-        jdbcClient.sql("TRUNCATE \"admin_auth#admin\" CASCADE").update()
+        db { AdminTable.deleteAll() }
     }
 
-    private fun adminsSnapshot(): List<Map<String, Any?>> =
-        jdbcClient.sql("SELECT id, login, password_hash, created_at FROM \"admin_auth#admin\" ORDER BY id").query().listOfRows()
+    private fun adminsSnapshot(): List<List<Any?>> = db {
+        AdminTable.selectAll().orderBy(AdminTable.id to SortOrder.ASC).map { row -> AdminTable.columns.map { row[it] } }
+    }
 
     companion object {
         @JvmStatic

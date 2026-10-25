@@ -9,17 +9,19 @@ import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import site.qgames.adminauth.config.AuthProperties
 import site.qgames.adminauth.repository.admin.AdminRepository
+import java.time.Clock
 
 /**
  * Первый администратор: создаётся при старте (после миграций), если администраторов ещё нет. Логин и пароль берутся
  * из qgames.admin-auth.bootstrap (env ADMIN_BOOTSTRAP_LOGIN / ADMIN_BOOTSTRAP_PASSWORD); без них бутстрап выключен.
- * Проверка «таблица пуста» и вставка — одна команда, поэтому одновременный старт нескольких инстансов безопасен.
+ * Проверка «таблица пуста» и вставка идут в одной пишущей транзакции.
  */
 @Service
 class AdminBootstrapService(
     private val properties: AuthProperties,
     private val adminRepository: AdminRepository,
     @Qualifier(CryptoConfig.PASSWORD_ENCODER) private val passwordEncoder: PasswordEncoder,
+    private val clock: Clock,
 ) : ApplicationRunner {
 
     override fun run(args: ApplicationArguments) {
@@ -40,7 +42,7 @@ class AdminBootstrapService(
         check(configuredLogin != null && configuredPassword != null) {
             "Admin bootstrap needs both ADMIN_BOOTSTRAP_LOGIN and ADMIN_BOOTSTRAP_PASSWORD"
         }
-        val created = adminRepository.insertIfNoAdmins(configuredLogin, passwordEncoder.encode(configuredPassword)!!)
+        val created = adminRepository.insertIfNoAdmins(configuredLogin, passwordEncoder.encode(configuredPassword)!!, clock.instant())
         if (created) {
             log.warn("No admins found, created the first admin '{}' from ADMIN_BOOTSTRAP_LOGIN/ADMIN_BOOTSTRAP_PASSWORD", configuredLogin)
         }

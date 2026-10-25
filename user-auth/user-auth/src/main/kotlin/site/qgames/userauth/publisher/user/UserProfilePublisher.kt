@@ -9,10 +9,9 @@ import site.qgames.userauth.api.event.user.UserProfileChanged
 import site.qgames.userauth.model.user.UserModel
 
 /**
- * Публикует снапшот публичного профиля событием модуля [UserProfileChanged]. Вызывается в транзакции, которая создала
- * или изменила профиль, с уже сохранённой моделью: её version уходит в событие и определяет порядок применения у
- * потребителей. Spring Modulith записывает публикацию в реестр в той же транзакции и доставляет её слушателям после
- * коммита; незавершённые доставки переотправляются при старте.
+ * Публикует публичный профиль событием модуля [UserProfileChanged]. Вызывается в транзакции, которая создала или
+ * изменила профиль, с уже сохранённой моделью. Слушатели других модулей получают событие после коммита
+ * (`@TransactionalEventListener(AFTER_COMMIT)`); при откате оно не доставляется.
  */
 @Component
 class UserProfilePublisher(
@@ -26,7 +25,6 @@ class UserProfilePublisher(
                 id = user.id,
                 nickname = user.nickname,
                 avatar = Avatar.valueOf(user.avatar.name),
-                version = user.version,
             ),
         )
     }

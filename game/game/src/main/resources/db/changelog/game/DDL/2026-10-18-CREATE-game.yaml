@@ -1,0 +1,47 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-18-CREATE-game
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Каталог игр. Строки заводятся DML-миграциями; набор кодов совпадает с enum GameCode (проверяется при старте).
+        code — код игры в путях API и в модуле правил (GameRules.code); sort_order — порядок в каталоге по возрастанию.
+        publish_status — PUBLISHED (доступна), HIDDEN (не в каталоге, доступна по ссылке) или NOT_PUBLISHED (в разработке
+        или отключена: наружу не выдаётся, партии отменяются, комнаты удаляются); значения задаёт enum GamePublishStatus.
+      changes:
+        - createTable:
+            tableName: game
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: game_pk
+              - column:
+                  name: code
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: game_code_uq
+              - column:
+                  name: title
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: description
+                  type: text
+                  constraints:
+                    nullable: false
+              - column:
+                  name: sort_order
+                  type: integer
+                  constraints:
+                    nullable: false
+              - column:
+                  name: publish_status
+                  type: varchar(32)
+                  constraints:
+                    nullable: false

@@ -4,15 +4,13 @@ import site.qgames.userauth.api.dto.user.Avatar
 import java.util.UUID
 
 /**
- * Снапшот публичного профиля пользователя (колонки `"user_auth#user"`). user-auth публикует его в транзакции создания
- * аккаунта и каждой смены профиля; доставляет Spring Modulith после коммита (реестр публикаций в БД, незавершённые
- * доставки переотправляются при старте). Потребитель применяет событие, только если [version] больше уже сохранённой:
- * повторы и перестановки безопасны.
+ * Публичный профиль пользователя изменился (ник или аватар). user-auth публикует событие в транзакции изменения,
+ * слушатели получают его после коммита (`@TransactionalEventListener(AFTER_COMMIT)`). Сам профиль другие модули читают
+ * из таблицы `user` через [site.qgames.userauth.api.table.user.UserProfileTable]; событие нужно, чтобы отреагировать
+ * на изменение (например, разослать новый ник в комнаты).
  */
 data class UserProfileChanged(
     val id: UUID,
     val nickname: String,
     val avatar: Avatar,
-    /** Версия строки `"user_auth#user"` (растёт при каждом изменении). */
-    val version: Long,
 )

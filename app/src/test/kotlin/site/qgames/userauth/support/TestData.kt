@@ -10,7 +10,8 @@ object TestData {
     /** Пароль всех фикстур со способом входа PASSWORD. */
     const val PASSWORD = "correct-horse-1"
 
-    const val FIXTURE_USER_COUNT = 3L
+    /** Все строки таблицы user в фикстурах: три аккаунта ниже и пять игроков тестов game (game.support.TestData). */
+    const val FIXTURE_USER_COUNT = 8L
 
     /** Только вход по паролю (Google не привязан). */
     object PasswordOnly {

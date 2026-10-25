@@ -9,7 +9,7 @@ import site.qgames.games.api.session.ViewerKey
 import java.util.UUID
 
 /**
- * [SessionStateCache] в памяти инстанса: ограничен по числу записей и вытесняет давно не читанные. Потеря записи
+ * [SessionStateCache] в памяти процесса: ограничен по числу записей и вытесняет давно не читанные. Потеря записи
  * безопасна — состояние соберётся из журнала заново.
  */
 @Component
