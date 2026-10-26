@@ -7,7 +7,6 @@ import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.beans.factory.annotation.Autowired
-import org.springframework.http.HttpMethod
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.RoomResponse
@@ -24,7 +23,6 @@ import java.time.Instant
 import java.util.UUID
 import java.util.stream.Stream
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import site.qgames.game.table.room.RoomTable
@@ -32,9 +30,8 @@ import site.qgames.game.table.session.RoomSessionTable
 
 /**
  * Выход из комнаты — закрытие последнего потока, вход — подключение к нему. Таймеров выхода нет: вне партии ушедший
- * удаляется сразу, а игрок идущей партии закреплён до её конца и остаётся отсутствующим (leaving). Ушедший владелец
- * оставляет комнату без владельца на окно владения (15 с, application.yml): вернувшись, он снова владелец, а по
- * истечении окна RoomOwnerGraceJob отдаёт владение присутствующему участнику.
+ * удаляется сразу, а игрок идущей партии закреплён до её конца и остаётся отсутствующим (leaving). Ушёл владелец —
+ * владение сразу получает случайный присутствующий участник (выбор кандидатов — RoomMembershipScenariosTest).
  */
 class RoomLeaveScenariosTest : GameIntegrationTest() {
 
@@ -78,113 +75,29 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
     }
 
     @Test
-    fun `leaving owner is removed at once and nobody owns the room during the grace`() {
+    fun `leaving owner passes ownership at once`() {
         val roomId = roomWith(ALICE, BOB)
-        val before = Instant.now()
+        val stream = openStream(BOB, roomId)
+        val eventsBefore = events(stream).size
 
         leave(ALICE, roomId)
 
         assertThat(isMember(roomId, ALICE)).isFalse()
-        val (graceUser, deadline) = ownerGrace(roomId)!!
-        assertThat(graceUser).isEqualTo(ALICE)
-        assertThat(deadline).isBetween(before.plus(GRACE).minusMillis(1), Instant.now().plus(GRACE))
         val room = room(roomId, BOB)
-        assertThat(room.ownerId).isNull()
-        assertThat(room.members.map { it.userId to it.owner }).containsExactly(BOB to false)
-        ownerCommands(roomId).forEach { (method, path) ->
-            call(method, path, BOB).andExpect {
-                status { isForbidden() }
-                jsonPath("$.code") { value("NOT_ROOM_OWNER") }
-            }
-        }
+        assertThat(room.ownerId).isEqualTo(BOB)
+        assertThat(room.members.map { it.userId to it.owner }).containsExactly(BOB to true)
+        assertThat(awaitEvents(stream, eventsBefore + 1).last().first).isEqualTo("users-changed")
     }
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("ownerReturns")
-    fun `owner who comes back within the grace owns the room again`(case: String, setup: RoomSetup, expectedRole: RoomRole) {
-        val roomId = with(setup) { prepare() }
+    @Test
+    fun `former owner who comes back is an ordinary member`() {
+        val roomId = roomWith(ALICE, BOB)
         leave(ALICE, roomId)
-        join(EVE, roomId)
 
         val room = join(ALICE, roomId)
 
-        assertThat(room.ownerId).isEqualTo(ALICE)
-        assertThat(room.members.single { it.userId == ALICE }.role).isEqualTo(expectedRole)
-        assertThat(ownerGrace(roomId)).isNull()
-    }
-
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("ownershipAfterGrace")
-    fun `after the grace ownership goes to a present member`(case: String, setup: RoomSetup, expectedOwner: UUID) {
-        val roomId = with(setup) { prepare() }
-        leave(ALICE, roomId)
-        val stream = openStream(expectedOwner, roomId)
-        val eventsBefore = events(stream).size
-        expireOwnerGrace(roomId)
-
-        assertThat(roomOwnerGraceJob.run()).isEqualTo(1)
-
-        assertThat(room(roomId, expectedOwner).ownerId).isEqualTo(expectedOwner)
-        assertThat(ownerGrace(roomId)).isNull()
-        assertThat(awaitEvents(stream, eventsBefore + 1).last().first).isEqualTo("users-changed")
-        assertThat(roomOwnerGraceJob.run()).isZero()
-    }
-
-    @Test
-    fun `job ends only expired graces`() {
-        val expired = roomWith(ALICE, BOB).also { leave(ALICE, it) }
-        val running = roomWith(CAROL, DAVE).also { leave(CAROL, it) }
-        expireOwnerGrace(expired)
-
-        assertThat(roomOwnerGraceJob.run()).isEqualTo(1)
-
-        assertThat(room(expired, BOB).ownerId).isEqualTo(BOB)
-        assertThat(room(running, DAVE).ownerId).isNull()
-        assertThat(ownerGrace(running)?.first).isEqualTo(CAROL)
-    }
-
-    @Test
-    fun `in a room emptied during the grace the first visitor after the grace becomes the owner`() {
-        val roomId = roomWith(ALICE, BOB)
-        leave(BOB, roomId)
-        leave(ALICE, roomId)
-        assertThat(emptySince(roomId)).isNotNull()
-
-        val duringGrace = join(DAVE, roomId)
-        assertThat(duringGrace.ownerId).isNull()
-        leave(DAVE, roomId)
-
-        expireOwnerGrace(roomId)
-        assertThat(roomOwnerGraceJob.run()).isEqualTo(1)
-        assertThat(room(roomId, EVE).ownerId).isNull()
-
-        val room = join(EVE, roomId)
-        assertThat(room.ownerId).isEqualTo(EVE)
-        assertThat(emptySince(roomId)).isNull()
-    }
-
-    @Test
-    fun `newcomer does not become the owner during the grace`() {
-        val roomId = roomWith(ALICE, BOB)
-        leave(ALICE, roomId)
-
-        val room = join(CAROL, roomId)
-
-        assertThat(room.ownerId).isNull()
-        assertThat(room.members.map { it.owner }).containsOnly(false)
-    }
-
-    /** Окно истекло, а джоб ещё не сработал: вход сам закрывает окно. */
-    @Test
-    fun `expired grace is ended by the next join`() {
-        val roomId = roomWith(ALICE, BOB)
-        leave(ALICE, roomId)
-        expireOwnerGrace(roomId)
-
-        val room = join(CAROL, roomId)
-
         assertThat(room.ownerId).isEqualTo(BOB)
-        assertThat(ownerGrace(roomId)).isNull()
+        assertThat(room.members.single { it.userId == ALICE }.owner).isFalse()
     }
 
     // --- Создатель комнаты ---
@@ -194,25 +107,25 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
         val created = create(ALICE)
         assertThat(created.members).isEmpty()
         assertThat(created.ownerId).isNull()
-        assertThat(ownerGrace(created.id)?.first).isEqualTo(ALICE)
 
         val room = join(ALICE, created.id)
 
         assertThat(room.ownerId).isEqualTo(ALICE)
         assertThat(room.members.map { it.userId to it.role }).containsExactly(ALICE to RoomRole.PLAYER)
         assertThat(emptySince(created.id)).isNull()
-        assertThat(ownerGrace(created.id)).isNull()
+    }
+
+    @Test
+    fun `whoever connects first to a new room becomes the owner`() {
+        val roomId = create(ALICE).id
+
+        assertThat(join(BOB, roomId).ownerId).isEqualTo(BOB)
+        assertThat(join(ALICE, roomId).ownerId).isEqualTo(BOB)
     }
 
     @Test
     fun `room of a creator who never connects stays empty without an owner`() {
         val roomId = create(ALICE).id
-        assertThat(emptySince(roomId)).isNotNull()
-        assertThat(join(BOB, roomId).ownerId).isNull()
-        leave(BOB, roomId)
-
-        expireOwnerGrace(roomId)
-        roomOwnerGraceJob.run()
 
         val room = room(roomId, ALICE)
         assertThat(room.members).isEmpty()
@@ -232,7 +145,6 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
 
         assertThat(leftAt(roomId, BOB)).isNotNull()
         assertThat(room(roomId, ALICE).members.map { it.userId to it.leaving }).containsExactly(ALICE to false, BOB to true)
-        roomOwnerGraceJob.run()
         emptyRoomCleanupJob.run()
         assertThat(isMember(roomId, BOB)).isTrue()
 
@@ -252,16 +164,12 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
     }
 
     @Test
-    fun `owner who plays leaves the game and ownership passes through the grace`() {
+    fun `owner who plays leaves the game and ownership passes to a present member`() {
         val roomId = roomWith(ALICE, BOB, started = true)
 
         leave(ALICE, roomId)
 
         assertThat(leftAt(roomId, ALICE)).isNotNull()
-        assertThat(room(roomId, BOB).ownerId).isNull()
-        assertThat(ownerGrace(roomId)?.first).isEqualTo(ALICE)
-        expireOwnerGrace(roomId)
-        roomOwnerGraceJob.run()
         val room = room(roomId, BOB)
         assertThat(room.ownerId).isEqualTo(BOB)
         assertThat(room.members.map { Triple(it.userId, it.role, it.leaving) })
@@ -315,47 +223,12 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
 
     private fun emptySince(roomId: UUID): Instant? = db { RoomTable.selectAll().where { RoomTable.id eq roomId }.single()[RoomTable.emptySince] }
 
-    private fun ownerCommands(roomId: UUID) = listOf(
-        HttpMethod.POST to "/api/rooms/$roomId/session",
-        HttpMethod.DELETE to "/api/rooms/$roomId/session",
-    )
-
     companion object {
-        private val GRACE = Duration.ofSeconds(15)
-
         @JvmStatic
         fun leaversOutsideTheGame(): Stream<Arguments> = Stream.of(
             arguments("player while waiting", RoomSetup { roomWith(ALICE, BOB) }, BOB),
             arguments("spectator while waiting", RoomSetup { roomWith(ALICE, BOB).also { changeRole(BOB, it, RoomRole.SPECTATOR) } }, BOB),
             arguments("spectator of the running game", RoomSetup { roomWith(ALICE, BOB, started = true).also { join(CAROL, it) } }, CAROL),
-        )
-
-        @JvmStatic
-        fun ownerReturns(): Stream<Arguments> = Stream.of(
-            arguments("free seat: player", RoomSetup { roomWith(ALICE, BOB) }, RoomRole.PLAYER),
-            arguments("seats taken: spectator", RoomSetup { roomWith(ALICE, BOB, CAROL, DAVE) }, RoomRole.SPECTATOR),
-            arguments("player of the running game: back to the seat", RoomSetup { roomWith(ALICE, BOB, started = true) }, RoomRole.PLAYER),
-        )
-
-        /** Владелец ALICE уйдёт; ожидаемый владелец после окна. */
-        @JvmStatic
-        fun ownershipAfterGrace(): Stream<Arguments> = Stream.of(
-            arguments("the earliest player", RoomSetup { roomWith(ALICE, BOB, CAROL) }, BOB),
-            arguments(
-                "a later player over an earlier spectator",
-                RoomSetup { roomWith(ALICE, BOB, CAROL).also { changeRole(BOB, it, RoomRole.SPECTATOR) } },
-                CAROL,
-            ),
-            arguments(
-                "a spectator when no players remain",
-                RoomSetup { roomWith(ALICE, BOB).also { changeRole(BOB, it, RoomRole.SPECTATOR) } },
-                BOB,
-            ),
-            arguments(
-                "a present spectator over an absent player of the game",
-                RoomSetup { roomWith(ALICE, BOB, started = true).also { join(CAROL, it); leave(BOB, it) } },
-                CAROL,
-            ),
         )
 
         @JvmStatic

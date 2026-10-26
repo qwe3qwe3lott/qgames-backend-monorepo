@@ -13,6 +13,7 @@ import site.qgames.game.api.dto.room.ChangeRoleRequest
 import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomRole
+import site.qgames.game.api.dto.room.TransferOwnershipRequest
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
@@ -128,6 +129,7 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
             arguments("get", HttpMethod.GET, "/api/rooms/{id}", null),
             arguments("events", HttpMethod.GET, "/api/rooms/{id}/events", null),
             arguments("change role", HttpMethod.PUT, "/api/rooms/{id}/role", ChangeRoleRequest(RoomRole.SPECTATOR)),
+            arguments("transfer ownership", HttpMethod.PUT, "/api/rooms/{id}/owner", TransferOwnershipRequest(BOB)),
             arguments("start", HttpMethod.POST, "/api/rooms/{id}/session", null),
             arguments("cancel", HttpMethod.DELETE, "/api/rooms/{id}/session", null),
             arguments("pause", HttpMethod.POST, "/api/rooms/{id}/session/pause", null),

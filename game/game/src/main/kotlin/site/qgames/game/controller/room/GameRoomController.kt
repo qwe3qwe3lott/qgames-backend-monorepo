@@ -38,7 +38,7 @@ class GameRoomController(
 
     override fun createRoom(gameCode: String, request: CreateRoomRequest): RoomResponse =
         roomResponseMapper.toResponse(
-            roomService.create(requestUserContext.userId(), gameCode(gameCode), roomSettingsResponseMapper.toModel(request.settings)),
+            roomService.create(gameCode(gameCode), roomSettingsResponseMapper.toModel(request.settings)),
         )
 
     override fun updateRoomSettings(gameCode: String, roomId: UUID, request: RoomSettingsDto): RoomResponse =

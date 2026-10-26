@@ -111,7 +111,7 @@ data class RoomDeletedEvent(
 
 /** Владелец и полный список участников комнаты в порядке входа. */
 data class RoomUsersDto(
-    /** Нет в окне владения и в комнате без присутствующих (как RoomResponse.ownerId). */
+    /** Нет в комнате без присутствующих (как RoomResponse.ownerId). */
     val ownerId: UUID?,
     val members: List<RoomMemberResponse>,
 )

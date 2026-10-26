@@ -10,8 +10,6 @@ object RoomTable : Table("room") {
     val id = javaUUID("id")
     val gameCode = varchar("game_code", 32)
     val ownerId = javaUUID("owner_id").nullable()
-    val ownerGraceUserId = javaUUID("owner_grace_user_id").nullable()
-    val ownerGraceDeadline = timestamp("owner_grace_deadline").nullable()
     val status = varchar("status", 16)
     val currentSessionId = javaUUID("current_session_id").nullable()
     val emptySince = timestamp("empty_since").nullable()

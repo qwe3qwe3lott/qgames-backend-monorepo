@@ -44,6 +44,12 @@ data class ChangeRoleRequest(
     val role: RoomRole,
 )
 
+data class TransferOwnershipRequest(
+    /** Новый владелец — присутствующий участник комнаты. */
+    @field:NotNull
+    val userId: UUID,
+)
+
 data class MoveRequest(
     /** Вид действия, например `PASS` или `MOVE`. Набор видов задаёт игра. */
     @field:NotBlank
@@ -61,9 +67,8 @@ data class RoomResponse(
     val gameCode: GameCode,
     val status: RoomStatus,
     /**
-     * Нет в окне владения (владелец ушёл, 15 с ещё не прошли: команды владельца не может выполнить никто), в ответе
-     * создания комнаты (создатель ещё не подключился) и в комнате без присутствующих (владельцем станет первый
-     * вошедший).
+     * Нет в ответе создания комнаты (создатель ещё не подключился) и в комнате без присутствующих (владельцем станет
+     * первый вошедший).
      */
     val ownerId: UUID?,
     val minPlayers: Int,

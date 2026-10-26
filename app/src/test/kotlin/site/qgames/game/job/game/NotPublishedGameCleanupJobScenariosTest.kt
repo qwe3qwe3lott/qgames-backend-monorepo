@@ -72,16 +72,4 @@ class NotPublishedGameCleanupJobScenariosTest : GameIntegrationTest() {
 
         assertThat(count(RoomSessionEventTable) { RoomSessionEventTable.code eq "player-passed" }).isZero()
     }
-
-    @Test
-    fun `expired owner grace is not processed in a room of a not published game`() {
-        val roomId = roomWith(ALICE, BOB)
-        leave(ALICE, roomId)
-        expireOwnerGrace(roomId)
-        setPublishStatus("nothing", "NOT_PUBLISHED")
-
-        assertThat(roomOwnerGraceJob.run()).isZero()
-
-        assertThat(ownerGrace(roomId)?.first).isEqualTo(ALICE)
-    }
 }

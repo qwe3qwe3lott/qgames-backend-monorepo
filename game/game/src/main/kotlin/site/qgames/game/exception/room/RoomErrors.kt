@@ -23,6 +23,9 @@ object RoomErrors {
 
     fun notRoomMember() = ForbiddenException("NOT_ROOM_MEMBER", "User is not in the room")
 
+    /** Владение передают только присутствующему участнику комнаты. */
+    fun newOwnerNotPresent() = ConflictException("NEW_OWNER_NOT_PRESENT", "The new owner is not present in the room")
+
     fun notSessionPlayer() = ForbiddenException("NOT_SESSION_PLAYER", "User is not a player of the current game")
 
     fun roomNotWaiting() = ConflictException("ROOM_NOT_WAITING", "A game is in progress in the room")

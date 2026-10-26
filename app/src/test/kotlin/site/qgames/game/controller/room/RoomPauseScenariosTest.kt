@@ -35,7 +35,7 @@ import site.qgames.games.core.TimerStatus
 
 /**
  * Пауза — действие таймера партии: ставит и снимает владелец (POST …/session/pause и …/resume, 204). На паузе ходы
- * запрещены, дедлайн хода заморожен (окно владения — нет), отмена работает. У партии без таймера паузы нет.
+ * запрещены, дедлайн хода заморожен, отмена работает. У партии без таймера паузы нет.
  */
 class RoomPauseScenariosTest : GameIntegrationTest() {
 
@@ -107,15 +107,14 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
     }
 
     @Test
-    fun `owner grace is not frozen by the pause`() {
+    fun `owner leaving a paused game passes ownership at once`() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = perMove())
         pause(ALICE, roomId)
-        leave(ALICE, roomId)
-        expireOwnerGrace(roomId)
 
-        assertThat(roomOwnerGraceJob.run()).isEqualTo(1)
+        leave(ALICE, roomId)
 
         assertThat(room(roomId, BOB).ownerId).isEqualTo(BOB)
+        resume(BOB, roomId)
     }
 
     @Test

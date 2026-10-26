@@ -232,7 +232,7 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
     @Test
     fun `player who left keeps the seat and continues after returning`() {
         val roomId = roomWith(ALICE, BOB, started = true)
-        leaveCompletely(BOB, roomId)
+        leave(BOB, roomId)
 
         pass(ALICE, roomId)
         assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.IN_GAME)

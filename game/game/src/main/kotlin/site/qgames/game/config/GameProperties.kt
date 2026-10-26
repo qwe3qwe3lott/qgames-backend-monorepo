@@ -29,17 +29,6 @@ data class GameProperties(
         val cleanupEnabled: Boolean = true,
         /** Сколько пустых комнат удаляется за один запуск, остальные — в следующих. */
         val cleanupBatchSize: Int = 100,
-        /**
-         * Окно владения: столько ушедший владелец может вернуть владение, а у комнаты владельца нет. Потом владение
-         * получает присутствующий участник (RoomOwnerGraceJob).
-         */
-        val ownerGrace: Duration,
-        /** Как часто RoomOwnerGraceJob ищет комнаты с истёкшим окном владения. */
-        val ownerGraceCheckInterval: Duration,
-        /** Запуск RoomOwnerGraceJob по расписанию. В тестах выключен: job вызывается напрямую. */
-        val ownerGraceEnabled: Boolean = true,
-        /** Сколько комнат с истёкшим окном владения обрабатывается за один запуск, остальные — в следующих. */
-        val ownerGraceBatchSize: Int = 100,
         /** Подключения к потоку событий комнаты (SSE): открытый поток и есть нахождение в комнате. */
         val connection: Connection,
     )

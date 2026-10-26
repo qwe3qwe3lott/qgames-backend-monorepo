@@ -5,7 +5,6 @@ import org.springframework.stereotype.Component
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomModel
-import site.qgames.game.model.room.RoomOwnerGraceModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
 import site.qgames.game.model.user.UserAvatar
@@ -24,7 +23,6 @@ class RoomRowMapper(private val roomSettingsJsonMapper: RoomSettingsJsonMapper) 
             id = row[RoomTable.id],
             gameCode = GameCode.fromCode(gameCode) ?: error("Unknown game code '$gameCode'"),
             ownerId = row[RoomTable.ownerId],
-            ownerGrace = row[RoomTable.ownerGraceUserId]?.let { RoomOwnerGraceModel(it, row[RoomTable.ownerGraceDeadline]!!) },
             status = RoomStatus.valueOf(row[RoomTable.status]),
             currentSessionId = row[RoomTable.currentSessionId],
             emptySince = row[RoomTable.emptySince],

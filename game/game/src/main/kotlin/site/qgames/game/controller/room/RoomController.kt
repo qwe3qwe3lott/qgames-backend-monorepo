@@ -7,6 +7,7 @@ import site.qgames.common.web.context.RequestUserContext
 import site.qgames.game.api.dto.room.ChangeRoleRequest
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomStreamEventType
+import site.qgames.game.api.dto.room.TransferOwnershipRequest
 import site.qgames.game.api.web.RoomApi
 import site.qgames.game.mapper.room.RoomEventResponseMapper
 import site.qgames.game.mapper.room.RoomResponseMapper
@@ -55,6 +56,9 @@ class RoomController(
 
     override fun changeRole(roomId: UUID, request: ChangeRoleRequest): RoomResponse =
         roomResponseMapper.toResponse(roomService.changeRole(requestUserContext.userId(), roomId, RoomRole.valueOf(request.role.name)))
+
+    override fun transferOwnership(roomId: UUID, request: TransferOwnershipRequest): RoomResponse =
+        roomResponseMapper.toResponse(roomService.transferOwnership(requestUserContext.userId(), roomId, request.userId))
 
     override fun startSession(roomId: UUID): RoomResponse =
         roomResponseMapper.toResponse(roomSessionService.start(requestUserContext.userId(), roomId))

@@ -17,13 +17,11 @@ qgames:
       login: ""
       password: ""
   game:
-    # Шедулеры в тестах выключены: NotPublishedGameCleanupJob, EmptyRoomCleanupJob, RoomOwnerGraceJob и MoveTimeoutJob
-    # вызываются напрямую.
+    # Шедулеры в тестах выключены: NotPublishedGameCleanupJob, EmptyRoomCleanupJob и MoveTimeoutJob вызываются напрямую.
     catalog:
       not-published-cleanup-enabled: false
     room:
       cleanup-enabled: false
-      owner-grace-enabled: false
       connection:
         heartbeat-enabled: false
         cleanup-enabled: false

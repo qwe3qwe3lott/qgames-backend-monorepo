@@ -10,7 +10,6 @@ import site.qgames.game.model.room.RoomDetailsModel
 import site.qgames.game.model.room.RoomEventType
 import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomModel
-import site.qgames.game.model.room.RoomOwnerGraceModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.model.room.RoomStatus
@@ -35,9 +34,8 @@ import java.util.UUID
  * Нахождение в комнате — открытый поток её событий: подключение ([connect]) входит в комнату, а когда закрывается
  * последнее подключение пользователя ([disconnect]), он выходит из неё. Подключений у пользователя может быть
  * несколько (вкладки, устройства). Таймеров выхода нет: ушедший удаляется сразу, кроме игрока идущей партии — тот
- * закреплён до её конца и остаётся отсутствующим (`left_at`). Ушедший владелец оставляет комнату без владельца на окно
- * владения (qgames.game.room.owner-grace): вернувшись в срок, он снова владелец, а по истечении окна владение получает
- * присутствующий участник ([endOwnerGrace]).
+ * закреплён до её конца и остаётся отсутствующим (`left_at`). Ушёл владелец — владение сразу получает присутствующий
+ * участник ([nextOwner]); в комнате без присутствующих владельцем становится первый вошедший.
  */
 @Service
 class RoomService(
@@ -59,21 +57,18 @@ class RoomService(
     /**
      * Игра должна быть доступна для новых комнат (проверяется до настроек). Настройки проверяются по правилам игры;
      * ошибки — по полям тела запроса создания (`settings.…`). Создатель участником не становится: комната создаётся
-     * пустой, без владельца и с окном владения за создателем. Подключившись к потоку комнаты, он входит игроком и
-     * становится владельцем; если не подключится, пустую комнату удалит EmptyRoomCleanupJob.
+     * пустой и без владельца. Подключившись к потоку комнаты первым, он входит игроком и становится владельцем; если не
+     * подключится, пустую комнату удалит EmptyRoomCleanupJob.
      */
     @Transactional
-    fun create(userId: UUID, gameCode: GameCode, settings: RoomSettingsModel): RoomDetailsModel {
+    fun create(gameCode: GameCode, settings: RoomSettingsModel): RoomDetailsModel {
         gameService.checkAccessible(gameCode)
         roomSettingsValidator.check(gameCode, settings, fieldPrefix = "settings.")
-        val now = clock.instant()
         val room = roomRepository.insert(
             gameCode = gameCode,
-            creatorId = userId,
-            ownerGraceDeadline = now + properties.room.ownerGrace,
             timeControl = settings.timeControl,
             gameSettings = jsonMapper.writeValueAsString(settings.gameSettings),
-            now = now,
+            now = clock.instant(),
         )
         return roomDetailsService.details(room)
     }
@@ -161,22 +156,29 @@ class RoomService(
     }
 
     /**
-     * Окно владения истекло: владение получает присутствующий участник по [nextOwner], а если присутствующих нет,
-     * комната остаётся без владельца до первого вошедшего. Возвращает true, если окно закрыто.
+     * Владелец передаёт владение присутствующему участнику [newOwnerId] — в любой момент, в том числе во время партии.
+     * Отсутствующий игрок партии владельцем не становится. Передача самому себе ничего не меняет.
      */
     @Transactional
-    fun endOwnerGrace(roomId: UUID): Boolean {
-        val room = roomRepository.lockById(roomId) ?: return false
-        // Перепроверка под блокировкой: прежний владелец мог успеть вернуться.
-        val updated = endExpiredOwnerGrace(room, roomMemberRepository.findAll(roomId), clock.instant())
-        if (updated == room) {
-            return false
+    fun transferOwnership(userId: UUID, roomId: UUID, newOwnerId: UUID): RoomDetailsModel {
+        val room = lock(roomId)
+        val members = roomMemberRepository.findAll(roomId)
+        if (members.none { it.userId == userId }) {
+            throw RoomErrors.notRoomMember()
         }
+        if (room.ownerId != userId) {
+            throw RoomErrors.notRoomOwner()
+        }
+        if (members.none { it.userId == newOwnerId && it.leftAt == null }) {
+            throw RoomErrors.newOwnerNotPresent()
+        }
+        if (newOwnerId == userId) {
+            return roomDetailsService.details(room)
+        }
+        val updated = room.copy(ownerId = newOwnerId)
         roomRepository.update(updated)
-        if (updated.ownerId != null) {
-            roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
-        }
-        return true
+        roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
+        return roomDetailsService.details(updated)
     }
 
     /** Роли меняются только между партиями. */
@@ -253,27 +255,18 @@ class RoomService(
      * - новый участник — игрок, если партии нет и есть место, игрок идущей партии — на своё место, иначе наблюдатель;
      * - повторный вход присутствующего ничего не меняет.
      *
-     * Владение: ушедший владелец, вошедший в окно владения, снова владелец (роль — по входу). Если окна нет и владельца
-     * нет, владельцем становится вошедший. Пока окно идёт, никто другой владельцем не становится, даже в пустой комнате.
-     * Истёкшее, но ещё не закрытое джобом окно закрывается здесь же ([endExpiredOwnerGrace]).
+     * Владение: в комнате без владельца (никого не было) владельцем становится вошедший.
      * Возвращает true, если участники или владелец изменились.
      */
     private fun join(room: RoomModel, userId: UUID): Boolean {
         val now = clock.instant()
         val members = roomMemberRepository.findAll(room.id)
-        val current = endExpiredOwnerGrace(room, members, now)
         val member = members.firstOrNull { it.userId == userId }
         when {
-            member == null -> roomMemberRepository.insert(RoomMemberModel(room.id, userId, roleOnJoin(current, members, userId), now))
+            member == null -> roomMemberRepository.insert(RoomMemberModel(room.id, userId, roleOnJoin(room, members, userId), now))
             member.leftAt != null -> roomMemberRepository.updateLeftAt(room.id, userId, null)
         }
-        val grace = current.ownerGrace
-        val owner = when {
-            current.ownerId != null -> current.ownerId
-            grace == null || grace.userId == userId -> userId
-            else -> null
-        }
-        val updated = current.copy(ownerId = owner, ownerGrace = if (owner == null) grace else null, emptySince = null)
+        val updated = room.copy(ownerId = room.ownerId ?: userId, emptySince = null)
         if (updated != room) {
             roomRepository.update(updated)
         }
@@ -282,9 +275,10 @@ class RoomService(
 
     /**
      * Выход под блокировкой комнаты [roomId]: игрок идущей партии остаётся участником и помечается отсутствующим,
-     * остальные удаляются сразу. Ушёл владелец — у комнаты нет владельца, открывается окно владения за ним. Комната без
-     * присутствующих помечается пустой (для автоудаления). Повторный выход ничего не меняет. Комната читается заново:
-     * за одну транзакцию могут выйти несколько пользователей ([removeExpiredConnections]).
+     * остальные удаляются сразу. Ушёл владелец — владение сразу получает присутствующий участник ([nextOwner]), а если
+     * присутствующих нет, владельца нет до первого вошедшего. Комната без присутствующих помечается пустой (для
+     * автоудаления). Повторный выход ничего не меняет. Комната читается заново: за одну транзакцию могут выйти несколько
+     * пользователей ([removeExpiredConnections]).
      * Возвращает true, если участники изменились.
      */
     private fun leave(roomId: UUID, userId: UUID): Boolean {
@@ -300,28 +294,15 @@ class RoomService(
         } else {
             roomMemberRepository.delete(roomId, userId)
         }
-        val wasOwner = room.ownerId == userId
-        val anyonePresent = members.any { it.userId != userId && it.leftAt == null }
+        val others = members.filter { it.userId != userId }
+        val anyonePresent = others.any { it.leftAt == null }
         roomRepository.update(
             room.copy(
-                ownerId = if (wasOwner) null else room.ownerId,
-                ownerGrace = if (wasOwner) RoomOwnerGraceModel(userId, now + properties.room.ownerGrace) else room.ownerGrace,
+                ownerId = if (room.ownerId == userId) nextOwner(others) else room.ownerId,
                 emptySince = if (anyonePresent) null else room.emptySince ?: now,
             ),
         )
         return true
-    }
-
-    /**
-     * Комната без окна владения, если оно истекло к [now]: владелец — присутствующий участник по [nextOwner] или никто.
-     * Иначе [room] как есть.
-     */
-    private fun endExpiredOwnerGrace(room: RoomModel, members: List<RoomMemberModel>, now: Instant): RoomModel {
-        val grace = room.ownerGrace ?: return room
-        if (grace.deadline > now) {
-            return room
-        }
-        return room.copy(ownerId = nextOwner(members), ownerGrace = null)
     }
 
     private fun roleOnJoin(room: RoomModel, members: List<RoomMemberModel>, userId: UUID): RoomRole = when (room.status) {
@@ -334,12 +315,12 @@ class RoomService(
         room.status == RoomStatus.IN_GAME && userId in roomSessionRepository.findPlayers(room.currentSessionId!!)
 
     /**
-     * Новый владелец — присутствующий участник: самый ранний игрок, затем наблюдатель. Отсутствующие игроки партии
-     * владельцами не становятся. null — присутствующих нет.
+     * Новый владелец — случайный присутствующий игрок, а если игроков нет — случайный наблюдатель. Отсутствующие игроки
+     * партии владельцами не становятся. null — присутствующих нет.
      */
     private fun nextOwner(members: List<RoomMemberModel>): UUID? {
         val present = members.filter { it.leftAt == null }
-        return (present.firstOrNull { it.role == RoomRole.PLAYER } ?: present.firstOrNull())?.userId
+        return (present.filter { it.role == RoomRole.PLAYER }.randomOrNull() ?: present.randomOrNull())?.userId
     }
 
     /** Отменяет идущую партию и удаляет комнату [room] (участники, подключения и партии — каскадно). */

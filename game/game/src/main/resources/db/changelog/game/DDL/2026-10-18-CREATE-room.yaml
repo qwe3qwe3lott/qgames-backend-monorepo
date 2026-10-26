@@ -4,10 +4,8 @@ databaseChangeLog:
       author: A Kozlov
       runInTransaction: true
       comment: >-
-        Игровые комнаты. owner_id NULL — у комнаты нет владельца: идёт окно владения или в комнате никого нет (владельцем
-        станет первый вошедший). Окно владения (owner_grace_user_id и owner_grace_deadline, оба заданы или оба NULL):
-        ушедший владелец до срока может вернуть владение, потом RoomOwnerGraceJob отдаёт его присутствующему.
-        current_session_id — идущая партия (без FK: room_session ссылается на room). empty_since — с какого момента в комнате
+        Игровые комнаты. owner_id NULL — у комнаты нет владельца: в комнате никого нет (владельцем станет первый
+        вошедший). current_session_id — идущая партия (без FK: room_session ссылается на room). empty_since — с какого момента в комнате
         нет присутствующих участников (автоудаление). game_settings — настройки, с которыми стартует следующая партия:
         {"timeControl": шахматные часы или null, "gameSettings": настройки игры (формат задаёт модуль игры)}.
       changes:
@@ -31,12 +29,6 @@ databaseChangeLog:
               - column:
                   name: owner_id
                   type: uuid
-              - column:
-                  name: owner_grace_user_id
-                  type: uuid
-              - column:
-                  name: owner_grace_deadline
-                  type: timestamp with time zone
               - column:
                   name: status
                   type: varchar(16)
@@ -70,9 +62,3 @@ databaseChangeLog:
             columns:
               - column:
                   name: game_code
-        - createIndex:
-            tableName: room
-            indexName: room_owner_grace_deadline_idx
-            columns:
-              - column:
-                  name: owner_grace_deadline

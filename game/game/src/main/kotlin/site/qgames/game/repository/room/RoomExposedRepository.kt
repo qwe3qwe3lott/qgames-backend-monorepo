@@ -2,11 +2,8 @@ package site.qgames.game.repository.room
 
 import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.SortOrder
-import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.less
-import org.jetbrains.exposed.v1.core.lessEq
-import org.jetbrains.exposed.v1.core.neq
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
@@ -70,24 +67,10 @@ class RoomExposedRepository(
             .limit(limit)
             .map { it[RoomTable.id] }
 
-    fun findIdsWithExpiredOwnerGrace(now: Instant, limit: Int): List<UUID> =
-        RoomTable
-            .join(GameTable, JoinType.INNER, additionalConstraint = { GameTable.code eq RoomTable.gameCode })
-            .select(RoomTable.id)
-            .where {
-                (RoomTable.ownerGraceDeadline lessEq now) and
-                    (GameTable.publishStatus neq GamePublishStatus.NOT_PUBLISHED.name)
-            }
-            .orderBy(RoomTable.ownerGraceDeadline to SortOrder.ASC)
-            .limit(limit)
-            .map { it[RoomTable.id] }
-
     /** Изменяемые колонки комнаты (всё, кроме id и created_at). */
     private fun RoomTable.write(statement: org.jetbrains.exposed.v1.core.statements.UpdateBuilder<*>, room: RoomModel) {
         statement[gameCode] = room.gameCode.code
         statement[ownerId] = room.ownerId
-        statement[ownerGraceUserId] = room.ownerGrace?.userId
-        statement[ownerGraceDeadline] = room.ownerGrace?.deadline
         statement[status] = room.status.name
         statement[currentSessionId] = room.currentSessionId
         statement[emptySince] = room.emptySince

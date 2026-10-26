@@ -5,7 +5,6 @@ import java.util.UUID
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.beans.factory.annotation.Autowired
@@ -27,7 +26,6 @@ import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.room.TimeControlDto
-import site.qgames.game.job.room.RoomOwnerGraceJob
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.session.SessionJournalService
 import site.qgames.game.service.session.SessionStateService
@@ -35,7 +33,6 @@ import site.qgames.game.stream.room.RoomStreamRegistry
 import site.qgames.game.stream.session.SessionStreamRegistry
 import site.qgames.game.table.game.GameTable
 import site.qgames.game.table.room.RoomMemberTable
-import site.qgames.game.table.room.RoomTable
 import site.qgames.game.table.session.RoomSessionEventTable
 import site.qgames.games.core.Session
 import site.qgames.games.core.ViewerKey
@@ -47,9 +44,6 @@ import site.qgames.userauth.api.dto.user.UpdateProfileRequest
  * ([asUser]); профили (ник, аватар) game читает из таблицы user — фикстуры init/user-auth.sql.
  */
 abstract class GameIntegrationTest : BaseIntegrationTest() {
-
-    @Autowired
-    protected lateinit var roomOwnerGraceJob: RoomOwnerGraceJob
 
     @Autowired
     protected lateinit var roomStreamRegistry: RoomStreamRegistry
@@ -147,31 +141,6 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
     protected fun awaitEvents(stream: MvcResult, count: Int): List<Pair<String, String>> {
         awaitUntil("$count events in the stream") { events(stream).size >= count }
         return events(stream)
-    }
-
-    /**
-     * Выход, доведённый до конца: пользователь закрыл потоки, а окно владения (если он был владельцем) истекло и
-     * RoomOwnerGraceJob передал владение — так, как будто он не вернулся вовремя.
-     */
-    protected fun leaveCompletely(user: UUID, roomId: UUID) {
-        leave(user, roomId)
-        expireOwnerGrace(roomId)
-        roomOwnerGraceJob.run()
-    }
-
-    /** Сдвигает срок окна владения комнаты в прошлое (по расписанию RoomOwnerGraceJob в тестах выключен). */
-    protected fun expireOwnerGrace(roomId: UUID) {
-        db {
-            RoomTable.update({ (RoomTable.id eq roomId) and RoomTable.ownerGraceDeadline.isNotNull() }) {
-                it[ownerGraceDeadline] = Instant.now().minusSeconds(1)
-            }
-        }
-    }
-
-    /** Окно владения комнаты: (прежний владелец, срок) или null. */
-    protected fun ownerGrace(roomId: UUID): Pair<UUID, Instant>? = db {
-        val row = RoomTable.selectAll().where { RoomTable.id eq roomId }.single()
-        row[RoomTable.ownerGraceUserId]?.let { it to row[RoomTable.ownerGraceDeadline]!! }
     }
 
     protected fun isMember(roomId: UUID, user: UUID): Boolean =

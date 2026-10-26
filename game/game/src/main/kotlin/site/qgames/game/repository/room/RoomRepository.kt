@@ -4,7 +4,6 @@ import org.springframework.stereotype.Repository
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.game.GamePublishStatus
 import site.qgames.game.model.room.RoomModel
-import site.qgames.game.model.room.RoomOwnerGraceModel
 import site.qgames.game.model.room.RoomStatus
 import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.util.newId
@@ -18,13 +17,10 @@ class RoomRepository(
 
     /**
      * Новая комната ждёт игроков ([RoomStatus.WAITING]). [timeControl] — часы (null — без таймера), [gameSettings] — JSON
-     * настроек игры. Участников и владельца у неё нет, она пустая с [now], а окно владения до [ownerGraceDeadline] — за
-     * создателем [creatorId].
+     * настроек игры. Участников и владельца у неё нет, она пустая с [now]: первый вошедший станет владельцем.
      */
     fun insert(
         gameCode: GameCode,
-        creatorId: UUID,
-        ownerGraceDeadline: Instant,
         timeControl: RoomTimeControlModel?,
         gameSettings: String,
         now: Instant,
@@ -33,7 +29,6 @@ class RoomRepository(
             id = newId(),
             gameCode = gameCode,
             ownerId = null,
-            ownerGrace = RoomOwnerGraceModel(creatorId, ownerGraceDeadline),
             status = RoomStatus.WAITING,
             currentSessionId = null,
             emptySince = now,
@@ -62,11 +57,4 @@ class RoomRepository(
 
     /** Комнаты, пустующие с момента раньше [threshold] (не больше [limit]). Без блокировок. */
     fun findIdsEmptySince(threshold: Instant, limit: Int): List<UUID> = roomExposedRepository.findIdsEmptySince(threshold, limit)
-
-    /**
-     * Комнаты, у которых окно владения истекло к [now] (не больше [limit]), самые просроченные первыми. Комнаты
-     * неопубликованных игр (NOT_PUBLISHED) пропускаются: их удалит NotPublishedGameCleanupJob. Без блокировок.
-     */
-    fun findIdsWithExpiredOwnerGrace(now: Instant, limit: Int): List<UUID> =
-        roomExposedRepository.findIdsWithExpiredOwnerGrace(now, limit)
 }
