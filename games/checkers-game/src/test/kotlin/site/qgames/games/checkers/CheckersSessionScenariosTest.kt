@@ -29,8 +29,9 @@ import java.util.UUID
 import java.util.stream.Stream
 
 /**
- * Партия шашек (русский вариант) на платформе: генерация и проверка ходов по флагам правил, события, окончания и
- * маскировка — чистые функции, без сервиса. Позиции задаются поверх начального журнала событиями-патчами.
+ * Партия шашек на платформе: генерация и проверка ходов по флагам правил, события, окончания и маскировка — чистые
+ * функции, без сервиса. Основные сценарии — на русском варианте, для международного и английского — их отличия.
+ * Позиции задаются поверх начального журнала событиями-патчами.
  */
 class CheckersSessionScenariosTest {
 
@@ -112,11 +113,109 @@ class CheckersSessionScenariosTest {
     }
 
     @Test
-    fun `only available variants pass the settings check`() {
-        assertThat(checkers.validateSettings(CheckersSettings(CheckersVariant.RUSSIAN))).isEmpty()
-        assertThat(checkers.validateSettings(CheckersSettings(CheckersVariant.INTERNATIONAL)).map { it.field }).containsExactly("variant")
-        assertThat(checkers.validateSettings(CheckersSettings(CheckersVariant.ENGLISH)).map { it.field }).containsExactly("variant")
-        assertThat(checkers.settingsLimits).isEqualTo(CheckersSettingsLimits(listOf(CheckersVariant.RUSSIAN)))
+    fun `all variants pass the settings check`() {
+        assertThat(CheckersVariant.entries.flatMap { checkers.validateSettings(CheckersSettings(it)) }).isEmpty()
+        assertThat(checkers.settingsLimits).isEqualTo(CheckersSettingsLimits(CheckersVariant.entries))
+    }
+
+    @Test
+    fun `international - 10x10 board with four rows of men, white moves first`() {
+        val document = fold(engine.start(rules, listOf(ALICE, BOB), SEED, INTERNATIONAL, NO_TIMER, NOW))
+        val game = document.session.state.game as CheckersGameState
+
+        assertThat(document.session.state.turns.currentPlayerId).isEqualTo(white)
+        assertThat(game.pieces).hasSize(40)
+        assertThat(game.pieces).allMatch { it.kind == CheckersPieceKind.MAN && (it.square[0] + it.square[1]) % 2 == 0 }
+        assertThat(game.pieces.filter { it.color == WHITE }.map { it.square[1] }.toSet()).containsExactlyInAnyOrder(1, 2, 3, 4)
+        assertThat(game.pieces.filter { it.color == BLACK }.map { it.square[1] }.toSet()).containsExactlyInAnyOrder(7, 8, 9, 10)
+        assertThat(game.pieces.filter { it.color == WHITE }).hasSize(20)
+    }
+
+    @Test
+    fun `international - only the branch with the most captures is allowed`() {
+        val pieces = listOf(w("w1", 3, 3), b("b1", 4, 4), b("b2", 6, 6), b("b3", 2, 4), b("b4", 1, 7))
+        val journal = position(pieces, settings = INTERNATIONAL)
+
+        assertThat(rejection(journal, white, 3 to 3, 1 to 5)).isEqualTo("ILLEGAL_MOVE")
+        accepted(journal, white, 3 to 3, 5 to 5, 7 to 7)
+        // В русских можно взять любую ветку.
+        accepted(position(pieces), white, 3 to 3, 1 to 5)
+    }
+
+    @Test
+    fun `international - a man passing the last row in a capture stays a man and captures on backward`() {
+        val journal = position(listOf(w("w1", 2, 8), b("b1", 3, 9), b("b2", 5, 9), b("b3", 10, 2)), settings = INTERNATIONAL)
+
+        assertThat(rejection(journal, white, 2 to 8, 4 to 10)).isEqualTo("ILLEGAL_MOVE")
+        assertThat(rejection(journal, white, 2 to 8, 4 to 10, 7 to 7)).isEqualTo("ILLEGAL_MOVE")
+        val events = accepted(journal, white, 2 to 8, 4 to 10, 6 to 8)
+
+        assertThat(events.map { it.code }).doesNotContain("piece-crowned")
+        assertThat(game(journal + events).pieces.single { it.id == "w1" }.kind).isEqualTo(CheckersPieceKind.MAN)
+    }
+
+    @Test
+    fun `international - a man ending the move on the last row becomes a king`() {
+        val journal = position(listOf(w("w1", 2, 8), b("b1", 3, 9), b("b2", 10, 2)), settings = INTERNATIONAL)
+
+        val events = accepted(journal, white, 2 to 8, 4 to 10)
+
+        assertThat(events.map { it.code }).contains("piece-crowned")
+        assertThat(game(journal + events).pieces.single { it.id == "w1" }.kind).isEqualTo(CheckersPieceKind.KING)
+    }
+
+    @Test
+    fun `english - black moves first`() {
+        val document = fold(engine.start(rules, listOf(ALICE, BOB), SEED, ENGLISH, NO_TIMER, NOW))
+
+        assertThat(document.session.state.turns.currentPlayerId).isEqualTo(black)
+        assertThat((document.session.state.game as CheckersGameState).pieces).hasSize(24)
+    }
+
+    @Test
+    fun `english - a man does not capture backward`() {
+        // Белая шашка позади чёрной: в русских бой назад обязателен, в английских его нет.
+        val pieces = listOf(b("b1", 4, 4), w("w1", 5, 5), wk("w2", 1, 7))
+
+        assertThat(rejection(position(pieces, settings = ENGLISH), black, 4 to 4, 6 to 6)).isEqualTo("ILLEGAL_MOVE")
+        accepted(position(pieces, settings = ENGLISH), black, 4 to 4, 3 to 3)
+    }
+
+    @Test
+    fun `english - a king moves and captures one square in any direction`() {
+        val far = position(listOf(bk("b1", 1, 1), w("w1", 3, 3), wk("w2", 8, 8)), settings = ENGLISH)
+        assertThat(rejection(far, black, 1 to 1, 4 to 4)).isEqualTo("ILLEGAL_MOVE")
+        accepted(far, black, 1 to 1, 2 to 2)
+
+        val near = position(listOf(bk("b1", 2, 2), w("w1", 3, 3), wk("w2", 8, 8)), settings = ENGLISH)
+        assertThat(rejection(near, black, 2 to 2, 5 to 5)).isEqualTo("ILLEGAL_MOVE")
+        accepted(near, black, 2 to 2, 4 to 4)
+    }
+
+    @Test
+    fun `english - reaching the last row in a capture crowns and ends the move`() {
+        val journal = position(listOf(b("b1", 6, 3), w("w1", 5, 2), w("w2", 3, 2), wk("w3", 8, 8)), settings = ENGLISH)
+
+        assertThat(rejection(journal, black, 6 to 3, 4 to 1, 2 to 3)).isEqualTo("ILLEGAL_MOVE")
+        val events = accepted(journal, black, 6 to 3, 4 to 1)
+
+        assertThat(events.map { it.code }).contains("piece-crowned")
+        assertThat(game(journal + events).pieces.single { it.id == "b1" }.kind).isEqualTo(CheckersPieceKind.KING)
+    }
+
+    @ParameterizedTest(name = "{0}: {1}")
+    @MethodSource("drawLimits")
+    fun `quiet king moves draw at the limit of the variant`(variant: CheckersVariant, limit: Int) {
+        val pieces = listOf(wk("w1", 1, 1), bk("b1", 8, 2))
+        val settings = CheckersSettings(variant)
+        val mover = if (CheckersMoveRules.of(variant).firstColor == WHITE) white else black
+        val path = if (mover == white) arrayOf(1 to 1, 2 to 2) else arrayOf(8 to 2, 7 to 3)
+
+        val before = accepted(position(pieces, quietMoves = limit - 2, settings = settings), mover, *path)
+        assertThat(before.map { it.code }).contains("turn-changed")
+
+        val atLimit = position(pieces, quietMoves = limit - 1, settings = settings)
+        assertThat(fold(atLimit + accepted(atLimit, mover, *path)).session.state.result).isEqualTo(ResultState(ResultOutcome.DRAW, emptyList(), "DRAW_RULE"))
     }
 
     @Test
@@ -341,13 +440,14 @@ class CheckersSessionScenariosTest {
         assertThat(fold(journal).session.status).isEqualTo(SessionStatus.FINISHED)
     }
 
-    /** Позиция поверх начального журнала: шашки, счётчик и очередь белых. */
+    /** Позиция поверх начального журнала варианта: шашки, счётчик; очередь — того, кто ходит первым в варианте. */
     private fun position(
         pieces: List<CheckersPiece>,
         quietMoves: Int = 0,
         timeControl: TimeControl = NO_TIMER,
+        settings: CheckersSettings = RUSSIAN,
     ): List<SessionEvent> {
-        val started = engine.start(rules, listOf(ALICE, BOB), SEED, RUSSIAN, timeControl, NOW)
+        val started = engine.start(rules, listOf(ALICE, BOB), SEED, settings, timeControl, NOW)
         return started + listOf(
             SessionEvents.put("test-position", SessionEvents.path("state", "pieces"), pieces),
             SessionEvents.patch("test-position", SessionEvents.path("state"), mapOf("quietMoves" to quietMoves)),
@@ -382,6 +482,8 @@ class CheckersSessionScenariosTest {
         private val NOW = Instant.parse("2026-10-22T10:00:00Z")
         private const val SEED = 7L
         private val RUSSIAN = CheckersSettings(CheckersVariant.RUSSIAN)
+        private val INTERNATIONAL = CheckersSettings(CheckersVariant.INTERNATIONAL)
+        private val ENGLISH = CheckersSettings(CheckersVariant.ENGLISH)
         private val NO_TIMER = TimeControl(TimeControlMode.NONE, null)
 
         private fun w(id: String, x: Int, y: Int) = CheckersPiece(id, WHITE, CheckersPieceKind.MAN, listOf(x, y))
@@ -430,6 +532,13 @@ class CheckersSessionScenariosTest {
                 ResultOutcome.DRAW,
                 "DRAW_RULE",
             ),
+        )
+
+        @JvmStatic
+        fun drawLimits(): Stream<Arguments> = Stream.of(
+            arguments(CheckersVariant.RUSSIAN, 30),
+            arguments(CheckersVariant.INTERNATIONAL, 50),
+            arguments(CheckersVariant.ENGLISH, 80),
         )
 
         @JvmStatic

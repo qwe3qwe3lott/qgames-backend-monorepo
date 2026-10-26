@@ -13,7 +13,6 @@ import site.qgames.game.api.dto.game.GameListResponse
 import site.qgames.game.api.dto.room.CheckersSettingsDto
 import site.qgames.game.api.dto.room.CheckersSettingsLimitsDto
 import site.qgames.game.api.dto.room.CheckersVariant
-import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.room.RoomStatus
@@ -52,19 +51,22 @@ class CheckersGameScenariosTest : GameIntegrationTest() {
         assertThat(details.rules.minPlayers).isEqualTo(2)
         assertThat(details.rules.maxPlayers).isEqualTo(2)
         assertThat(details.rules.timeControl.modes).containsExactly(TimeControlMode.NONE, TimeControlMode.PER_MOVE)
-        assertThat(details.rules.gameSettingsLimits).isEqualTo(CheckersSettingsLimitsDto(GameCode.CHECKERS, listOf(CheckersVariant.RUSSIAN)))
+        assertThat(details.rules.gameSettingsLimits).isEqualTo(
+            CheckersSettingsLimitsDto(GameCode.CHECKERS, listOf(CheckersVariant.RUSSIAN, CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH)),
+        )
         assertThat(details.rules.defaultSettings).isEqualTo(CHECKERS_DEFAULT_SETTINGS)
     }
 
     @Test
-    fun `variant outside the available ones is a validation error of the field`() {
+    fun `the variant of the room sets the move rules and the board of the game`() {
         val settings = RoomSettingsDto(TimeControlDto(TimeControlMode.NONE, null), CheckersSettingsDto(GameCode.CHECKERS, CheckersVariant.INTERNATIONAL))
+        val roomId = roomWith(ALICE, BOB, started = true, settings = settings)
+        val stream = openSessionStream(ALICE, roomId, gameCode = GameCodes.CHECKERS)
 
-        createRoomRequest(ALICE, CreateRoomRequest(settings), GameCodes.CHECKERS).andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("VALIDATION_ERROR") }
-            jsonPath("$.errors['settings.gameSettings.variant']") { exists() }
-        }
+        val snapshot = snapshot(stream)
+        assertThat(jsonMapper.treeToValue(snapshot.path("meta").path("moveRules"), CheckersMoveRulesDto::class.java))
+            .isEqualTo(CheckersMoveRulesDto(10, CheckersColor.WHITE, false, true, true, true, true, false, true))
+        assertThat(jsonMapper.treeToValue(snapshot.path("state"), CheckersSessionStateDto::class.java).pieces).hasSize(40)
     }
 
     @Test

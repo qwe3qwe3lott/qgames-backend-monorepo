@@ -33,7 +33,7 @@ import kotlin.random.Random
  * (`INFO {playerId}`) и поражение.
  *
  * Окончание: у соперника нет шашек (`NO_PIECES`) или ходов (`NO_MOVES`), сдача (`RESIGN`), таймаут (`TIMEOUT`) — победа;
- * [DRAW_QUIET_MOVES] ходов подряд только дамками без взятий — ничья (`DRAW_RULE`).
+ * [drawQuietMoves] варианта ходов подряд только дамками без взятий — ничья (`DRAW_RULE`).
  */
 class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSettings> {
 
@@ -86,7 +86,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
             )
             move.type != MOVE -> Decision.Rejected(UNKNOWN_MOVE, "Allowed moves are $MOVE and $RESIGN")
             current != playerId -> Decision.Rejected(NOT_YOUR_TURN, "It is not your turn")
-            else -> movePiece(state, moveRules(settings), playerId, move.data)
+            else -> movePiece(state, moveRules(settings), drawQuietMoves(settings.variant), playerId, move.data)
         }
     }
 
@@ -105,6 +105,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
     private fun movePiece(
         state: SessionState<CheckersGameState>,
         moveRules: CheckersMoveRules,
+        drawQuietMoves: Int,
         playerId: UUID,
         data: CheckersMoveData?,
     ): Decision {
@@ -136,7 +137,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
             when {
                 pieces.none { it.color == opponentColor } -> addAll(win(playerId, REASON_NO_PIECES))
                 CheckersBoard(moveRules, pieces).legalMoves(opponentColor).isEmpty() -> addAll(win(playerId, REASON_NO_MOVES))
-                quietMoves >= DRAW_QUIET_MOVES -> addAll(listOf(ResultModule.draw(REASON_DRAW_RULE), SessionEvents.finished()))
+                quietMoves >= drawQuietMoves -> addAll(listOf(ResultModule.draw(REASON_DRAW_RULE), SessionEvents.finished()))
                 else -> add(TurnsModule.changed(state.turns.copy(currentPlayerId = opponent)))
             }
         }
@@ -166,10 +167,17 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
         const val RESIGN = "RESIGN"
 
         /** Варианты правил, доступные в настройках. */
-        val VARIANTS = listOf(CheckersVariant.RUSSIAN)
+        val VARIANTS = listOf(CheckersVariant.RUSSIAN, CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH)
 
-        /** Ничья: столько ходов подряд (обеих сторон в сумме, по 15 у каждой) только дамками без взятий. */
-        const val DRAW_QUIET_MOVES = 30
+        /**
+         * Ничья: столько ходов подряд (обеих сторон в сумме) только дамками без взятий — по 15 у каждой в русских, по 25
+         * в международных, по 40 в английских. Клиенту не нужен, поэтому не в [CheckersMoveRules].
+         */
+        fun drawQuietMoves(variant: CheckersVariant): Int = when (variant) {
+            CheckersVariant.RUSSIAN -> 30
+            CheckersVariant.INTERNATIONAL -> 50
+            CheckersVariant.ENGLISH -> 80
+        }
 
         const val PIECE_MOVED = "piece-moved"
         const val PIECE_CAPTURED = "piece-captured"

@@ -1,6 +1,6 @@
 package site.qgames.games.checkers
 
-/** Вариант правил: настройка комнаты. Сейчас доступен только [RUSSIAN] (см. [CheckersMoveRules.of]). */
+/** Вариант правил: настройка комнаты (флаги — [CheckersMoveRules.of]). */
 enum class CheckersVariant {
     RUSSIAN,
     INTERNATIONAL,
@@ -72,13 +72,41 @@ data class CheckersMoveRules(
             removeCapturedAfterMove = true,
         )
 
+        /** Международные шашки (FMJD): доска 10×10, брать максимум, дамкой становятся только в конце хода. */
+        val INTERNATIONAL = CheckersMoveRules(
+            boardSize = 10,
+            firstColor = CheckersColor.WHITE,
+            menMoveBackward = false,
+            menCaptureBackward = true,
+            flyingKings = true,
+            captureRequired = true,
+            maxCaptureRequired = true,
+            promoteMidCapture = false,
+            removeCapturedAfterMove = true,
+        )
+
         /**
-         * Правила хода варианта. Реализованы только варианты из [CheckersGameRules.VARIANTS]: другие настройки не
-         * проходят проверку и до старта партии не доходят.
+         * Английские шашки (чекерс): первыми ходят чёрные, простая бьёт только вперёд, дамка ходит и бьёт на одну
+         * клетку. Отдельный флаг «превращение завершает ход» не нужен: вперёд с последнего ряда бить некуда, а без
+         * [promoteMidCapture] простая не продолжает бой дамкой.
          */
+        val ENGLISH = CheckersMoveRules(
+            boardSize = 8,
+            firstColor = CheckersColor.BLACK,
+            menMoveBackward = false,
+            menCaptureBackward = false,
+            flyingKings = false,
+            captureRequired = true,
+            maxCaptureRequired = false,
+            promoteMidCapture = false,
+            removeCapturedAfterMove = true,
+        )
+
+        /** Правила хода варианта. */
         fun of(variant: CheckersVariant): CheckersMoveRules = when (variant) {
             CheckersVariant.RUSSIAN -> RUSSIAN
-            CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH -> error("Checkers variant $variant is not supported yet")
+            CheckersVariant.INTERNATIONAL -> INTERNATIONAL
+            CheckersVariant.ENGLISH -> ENGLISH
         }
     }
 }

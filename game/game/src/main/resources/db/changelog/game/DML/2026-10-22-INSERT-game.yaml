@@ -12,7 +12,7 @@ databaseChangeLog:
               - column: { name: title, value: Шашки }
               - column:
                   name: description
-                  value: "Шашки на двоих: вариант правил выбирается в настройках комнаты. Сейчас доступны русские шашки."
+                  value: "Шашки на двоих: русские, международные или английские — вариант правил выбирается в настройках комнаты."
               - column: { name: sort_order, valueNumeric: 15 }
               - column: { name: publish_status, value: PUBLISHED }
       rollback:
