@@ -27,13 +27,13 @@ class LoginScenariosTest : UserAuthIntegrationTest() {
     @MethodSource("credentials")
     fun `password login scenario`(
         case: String,
-        email: String,
+        login: String,
         password: String,
         expectedStatus: HttpStatus,
         expectedCode: String?,
         expectedUserId: UUID?,
     ) {
-        val result = login(email, password).andExpect {
+        val result = login(login, password).andExpect {
             status { isEqualTo(expectedStatus.value()) }
             if (expectedCode != null) jsonPath("$.code") { value(expectedCode) }
         }
@@ -74,17 +74,17 @@ class LoginScenariosTest : UserAuthIntegrationTest() {
     companion object {
         @JvmStatic
         fun credentials(): Stream<Arguments> = Stream.of(
-            arguments("correct credentials", TestData.PasswordOnly.EMAIL, PASSWORD, HttpStatus.OK, null, TestData.PasswordOnly.ID),
-            arguments("email in different case", "PLAYER@example.com", PASSWORD, HttpStatus.OK, null, TestData.PasswordOnly.ID),
+            arguments("correct credentials", TestData.PasswordOnly.LOGIN, PASSWORD, HttpStatus.OK, null, TestData.PasswordOnly.ID),
+            arguments("login in different case with spaces", " PLAYER ", PASSWORD, HttpStatus.OK, null, TestData.PasswordOnly.ID),
             arguments(
                 "user with both login methods",
-                TestData.PasswordAndGoogle.EMAIL, PASSWORD, HttpStatus.OK, null, TestData.PasswordAndGoogle.ID,
+                TestData.PasswordAndGoogle.LOGIN, PASSWORD, HttpStatus.OK, null, TestData.PasswordAndGoogle.ID,
             ),
-            arguments("wrong password", TestData.PasswordOnly.EMAIL, "wrong-password", HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null),
-            arguments("unknown email looks like wrong password", "ghost@example.com", PASSWORD, HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null),
+            arguments("wrong password", TestData.PasswordOnly.LOGIN, "wrong-password", HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null),
+            arguments("unknown login looks like wrong password", "ghost", PASSWORD, HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null),
             arguments(
                 "google-only account has no password",
-                TestData.GoogleOnly.EMAIL, PASSWORD, HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null,
+                TestData.GoogleOnly.LOGIN, PASSWORD, HttpStatus.UNAUTHORIZED, "INVALID_CREDENTIALS", null,
             ),
         )
     }

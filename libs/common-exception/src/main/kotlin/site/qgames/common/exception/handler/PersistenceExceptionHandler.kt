@@ -9,13 +9,14 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 import site.qgames.common.exception.exception.ErrorCodes
+import site.qgames.common.exception.exception.UniqueViolations
 import java.sql.SQLException
 
 /**
- * Гонки на уникальных ключах превращаются в 409: одновременная вставка того же ключа (например, создание аккаунта
- * с одним email). Нарушение уникальности узнаётся по SQLSTATE `23505` в цепочке причин — так обработчик не зависит
- * от ORM (Exposed бросает `ExposedSQLException` с драйверным исключением внутри). Остальные ошибки БД — как ловушка
- * [Exception] в [QgamesExceptionHandler]: лог ERROR и 500 без деталей.
+ * Гонки на уникальных ключах превращаются в 409: одновременная вставка того же ключа (например, регистрация двух
+ * аккаунтов с одним логином), если сервис не перевёл её в свой код. Нарушение уникальности узнаётся через
+ * [UniqueViolations]. Остальные ошибки БД — как ловушка [Exception] в [QgamesExceptionHandler]: лог ERROR и 500 без
+ * деталей.
  * Приоритет выше, чем у ловушки [Exception] в [QgamesExceptionHandler].
  */
 @RestControllerAdvice
@@ -24,7 +25,7 @@ class PersistenceExceptionHandler {
 
     @ExceptionHandler(SQLException::class)
     fun handleSqlException(ex: SQLException): ResponseEntity<ProblemDetail> {
-        if (isUniqueViolation(ex)) {
+        if (UniqueViolations.isUniqueViolation(ex)) {
             val problem = ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, "Resource was modified concurrently")
             problem.setProperty(ErrorCodes.CODE_PROPERTY, ErrorCodes.CONFLICT)
             return ResponseEntity.status(HttpStatus.CONFLICT).body(problem)
@@ -35,12 +36,7 @@ class PersistenceExceptionHandler {
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem)
     }
 
-    private fun isUniqueViolation(ex: Throwable): Boolean =
-        generateSequence(ex) { it.cause.takeIf { cause -> cause !== it } }
-            .any { it is SQLException && it.sqlState == UNIQUE_VIOLATION_SQL_STATE }
-
     companion object {
-        private const val UNIQUE_VIOLATION_SQL_STATE = "23505"
         private val log = LoggerFactory.getLogger(PersistenceExceptionHandler::class.java)
     }
 }

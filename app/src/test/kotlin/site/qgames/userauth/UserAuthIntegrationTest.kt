@@ -15,6 +15,7 @@ import org.springframework.test.web.servlet.put
 import site.qgames.BaseIntegrationTest
 import site.qgames.userauth.api.cookie.AuthCookieNames
 import site.qgames.userauth.api.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.api.dto.auth.GoogleRegisterRequest
 import site.qgames.userauth.api.dto.auth.LoginRequest
 import site.qgames.userauth.api.dto.user.UserResponse
 import site.qgames.userauth.api.event.user.UserProfileChanged
@@ -78,11 +79,14 @@ abstract class UserAuthIntegrationTest : BaseIntegrationTest() {
     protected fun publishedProfileEvents(): List<UserProfileChanged> =
         applicationEvents.stream(UserProfileChanged::class.java).toList()
 
-    protected fun login(email: String, password: String = TestData.PASSWORD) =
-        postJson("/api/auth/login", LoginRequest(email, password))
+    protected fun login(login: String, password: String = TestData.PASSWORD) =
+        postJson("/api/auth/login", LoginRequest(login, password))
 
     protected fun loginWithGoogle(idToken: String) =
-        postJson("/api/auth/google", GoogleIdTokenRequest(idToken))
+        postJson("/api/auth/google/login", GoogleIdTokenRequest(idToken))
+
+    protected fun registerWithGoogle(idToken: String, login: String, password: String? = null) =
+        postJson("/api/auth/google/register", GoogleRegisterRequest(idToken, login, password))
 
     protected fun refresh(refreshToken: String) =
         mockMvc.post("/api/auth/refresh") { cookie(Cookie(AuthCookieNames.REFRESH_TOKEN, refreshToken)) }
@@ -91,6 +95,6 @@ abstract class UserAuthIntegrationTest : BaseIntegrationTest() {
         mockMvc.post("/api/auth/logout") { cookie(Cookie(AuthCookieNames.REFRESH_TOKEN, refreshToken)) }
 
     /** Новая сессия фикстуры с паролем. */
-    protected fun startSession(email: String = TestData.PasswordOnly.EMAIL): AuthSession =
-        login(email).andExpect { status { isOk() } }.session()
+    protected fun startSession(login: String = TestData.PasswordOnly.LOGIN): AuthSession =
+        login(login).andExpect { status { isOk() } }.session()
 }

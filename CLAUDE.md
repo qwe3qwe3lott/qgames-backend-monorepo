@@ -24,7 +24,7 @@
 
 | Модуль | Назначение | Пути API |
 |---|---|---|
-| `user-auth` | Аккаунты игроков, способы входа (Google; пароль, добавленный в профиле), выпуск JWT игроков, куки сессии портала | `/api/auth/*`, `/api/users/me/*` |
+| `user-auth` | Аккаунты игроков (неизменяемый логин, ник), регистрация через Google, способы входа (Google, логин и пароль), выпуск JWT игроков, куки сессии портала | `/api/auth/*`, `/api/users/me/*` |
 | `game` | Комнаты и партии **всех** игр; ник и аватар игроков читает из таблицы `user` модуля user-auth (только чтение, через `user-auth-api`). Правила конкретных игр подключаются модулями `games/*` | `/api/games/*`, `/api/rooms/*` |
 | `admin-auth` | Аккаунты администраторов (логин и пароль, без регистрации), выпуск JWT администраторов, куки сессии админки | `/api/admin/auth/*`, `/api/admin/admins/*` |
 | `app` | Приложение: `@SpringBootApplication`, Security (две цепочки), группы OpenAPI, `application.yml`, сводный Liquibase-master, Docker-образ | — |
@@ -38,7 +38,7 @@
 - пути аутентификации (`…/auth/login`, `…/auth/refresh`, `…/auth/logout`) и 401 `UNAUTHENTICATED` устроены одинаково, отличается только префикс (`/api/auth`, `/api/admin/auth`): на этом держится общий fetch-mutator фронта;
 - текущий админ — `GET /api/admin/admins/me` (по нему фронт определяет, вошёл ли админ), список админов — `GET /api/admin/admins`;
 - ролей нет, все админы равны;
-- admin-auth — упрощённая копия user-auth (без email, Google и событий): имена классов и раскладка те же.
+- admin-auth — упрощённая копия user-auth (без регистрации, Google и событий): имена классов и раскладка те же.
 
 ## 2. Структура репозитория и модулей
 
@@ -123,7 +123,8 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 - Бизнес-ошибки собраны в каталогах-фабриках `exception/<фича>/<Фича>Errors` (`RoomErrors.roomNotFound()` → `NotFoundException("ROOM_NOT_FOUND", …)`). Коды — часть контракта с фронтом. Общие коды и имя поля `code` — в `ErrorCodes`.
 - Обработчики подключаются автоконфигурацией при подключении библиотеки (модули подключают её явно, `common-web` — через `api`):
   - `QgamesExceptionHandler` — `QgamesException` по родительскому типу → ProblemDetail с `code` и `properties`; 400 `VALIDATION_ERROR` для `@Valid` и битого тела; ловушка `Exception` → лог ERROR и 500 `INTERNAL_ERROR` без деталей. Стандартные исключения Spring MVC (404 маршрута, 405) обрабатывает `ResponseEntityExceptionHandler`;
-  - `PersistenceExceptionHandler` — `SQLException` (Exposed бросает `ExposedSQLException`): нарушение уникальности (SQLSTATE `23505` в цепочке причин) → 409 `CONFLICT`, остальное — лог ERROR и 500 `INTERNAL_ERROR`.
+  - `PersistenceExceptionHandler` — `SQLException` (Exposed бросает `ExposedSQLException`): нарушение уникальности (SQLSTATE `23505` в цепочке причин, `UniqueViolations`) → 409 `CONFLICT`, остальное — лог ERROR и 500 `INTERNAL_ERROR`.
+  - Если клиенту важна причина гонки за уникальный индекс, сервис переводит нарушение в доменный код через `UniqueViolations.isUniqueViolationOf` (по имени индекса), например `LoginService.registerWithGoogle`: `user_login_uq` → `LOGIN_TAKEN`. `ExposedSQLException` — checked `SQLException`, поэтому ловится `Exception`. Общий `CONFLICT` — запасной вариант, когда смысл не важен.
 - Неизвестный или отсутствующий дискриминатор полиморфного DTO (`InvalidTypeIdException` Jackson) — 400 `VALIDATION_ERROR` с ошибкой по полю `errors[<путь>.<дискриминатор>]`, например `settings.gameSettings.gameCode`.
 - Advice библиотеки имеют самый низкий приоритет. **Собственный advice модуля** объявляет `@Order(Ordered.HIGHEST_PRECEDENCE)`, иначе его исключения может перехватить ловушка `Exception`.
 - `@Transactional(noRollbackFor = [QgamesException::class])` — когда изменение (счётчик попыток, отзыв сессии) должно сохраниться, несмотря на ошибку.
@@ -135,7 +136,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
   - Одноимённые DTO разных групп (например, `LoginRequest` user-auth и admin-auth) допустимы: у каждой группы свои components. Внутри одной группы простые имена классов DTO уникальны: swagger-core называет схему по простому имени класса.
 - **Документация API (Swagger):** у каждой ручки в `<m>-api` интерфейсе обязательно есть:
   - `@Operation(summary, description)` на русском: что делает метод, зачем он нужен и какие у него особенности;
-  - `@ApiResponses` со всеми реально возможными статусами (200, 400, 401, …). Описания на русском, у ошибок в описании указаны значения `code` (например, «Неверный email или пароль (INVALID_CREDENTIALS)»);
+  - `@ApiResponses` со всеми реально возможными статусами (200, 400, 401, …). Описания на русском, у ошибок в описании указаны значения `code` (например, «Неверный логин или пароль (INVALID_CREDENTIALS)»);
   - у интерфейса — `@Tag(name, description)`:
     - `name` — латиница kebab-case (`auth`, `users`, `games`, `rooms`, `admins`) во всех модулях: из тегов Orval в режиме `tags-split` строит имена файлов клиента;
     - `description` — на русском и начинается с русского названия («Аутентификация. Вход через Google…»). Одноимённые теги разных групп (`auth` портала и админки) — с разными описаниями, у каждой группы свои теги;
@@ -250,7 +251,7 @@ app/src/main/resources/db/changelog/
 - Состояние в памяти процесса допустимо только такое:
   - реестры открытых SSE-потоков (`RoomStreamRegistry`, `SessionStreamRegistry`): привязаны к соединениям, а присутствие хранится в БД (`room_connection` с арендой);
   - кеш состояний партий `SessionStateCache` (Caffeine): только ускоряет сборку, источник правды — журнал, состояние на seq неизменно.
-- Счётчики, лимиты, блокировки — в БД (атомарные `UPDATE … WHERE …`). Гонки на уникальных ключах → 409 (`PersistenceExceptionHandler`).
+- Счётчики, лимиты, блокировки — в БД (атомарные `UPDATE … WHERE …`). Гонки на уникальных ключах → 409: доменный код, если причина важна клиенту, иначе `CONFLICT` (`PersistenceExceptionHandler`), см. §2.
 - **Присутствие — аренды в БД** (`room_connection`): приложение продлевает аренду живых потоков, а подключения, которые никто не продлевает (процесс упал или перезапущен, отключение не удалось), удаляет по истечении аренды `RoomConnectionCleanupJob`.
 - Шедулеры (`@EnableScheduling` на `QgamesApplication`): джобы выбирают id без блокировки, затем каждую комнату или партию обрабатывают в своей транзакции под блокировкой комнаты с перепроверкой. У каждого джоба свой флаг включения `…-enabled`. В тестах джобы выключены и вызываются напрямую через `run()`.
 
@@ -281,9 +282,10 @@ docker compose down -v                # остановить и удалить �
 ```
 
 - Приложение — http://localhost:8080: Swagger — http://localhost:8080/swagger-ui.html (группы `portal` и `admin`), OpenAPI — `/v3/api-docs/portal`, `/v3/api-docs/admin`.
-- Вход в админку на стенде: `admin` / `admin`.
+- **Профиль `local`** — локальный стенд: `app/src/main/resources/application-local.yml` накладывается поверх `application.yml` и содержит только переопределения и добавления (основной конфиг не дублируется). docker-compose включает его через `SPRING_PROFILES_ACTIVE=local`. Значения только для стенда (первый админ, тестовые игроки) живут в нём, а не в env compose. Для прода будет профиль `prod` (`application-prod.yml`, `SPRING_PROFILES_ACTIVE=prod`) — решить при подготовке деплоя.
+- Вход на стенде: админка — `admin` / `admin`; портал — тестовые игроки с логинами `qwe3qwe1` … `qwe3qwe10`, пароль `qwe3qwe3`.
 - Google-вход: заполнить `GOOGLE_CLIENT_IDS` в `.env` (см. `.env.example`).
-- Запуск из IDE: `docker compose up -d postgres`, затем `QgamesApplication` (или `./gradlew :app:bootRun`) с рабочим каталогом `app/`: значения по умолчанию в `application.yml` смотрят на localhost и `../docker/dev-keys`.
+- Запуск из IDE: `docker compose up -d postgres`, затем `QgamesApplication` (или `./gradlew :app:bootRun`) с рабочим каталогом `app/` и профилем `local` (без него нет админа и тестовых игроков): значения по умолчанию в `application.yml` смотрят на localhost и `../docker/dev-keys`.
 - Переменные окружения app: `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, `JWT_KEY_ID`/`JWT_PRIVATE_KEY_LOCATION`/`JWT_PUBLIC_KEY_LOCATION` (игроки), `ADMIN_JWT_KEY_ID`/`ADMIN_JWT_PRIVATE_KEY_LOCATION`/`ADMIN_JWT_PUBLIC_KEY_LOCATION` (админы), `GOOGLE_CLIENT_IDS`, `ADMIN_BOOTSTRAP_LOGIN`/`ADMIN_BOOTSTRAP_PASSWORD`, `COOKIES_SECURE`, `API_DOCS_ENABLED` (OpenAPI и Swagger UI, по умолчанию `true`; при `false` их ручки отвечают 404).
 - Фронты на стенде: образ `web` фронтенда (nginx) — портал на 3000, админка на 3001, `/api` проксируется в app на 8080.
 - Образ: multi-stage `docker/app.Dockerfile` (`:app:bootJar`). Контекст сборки — корень репозитория.

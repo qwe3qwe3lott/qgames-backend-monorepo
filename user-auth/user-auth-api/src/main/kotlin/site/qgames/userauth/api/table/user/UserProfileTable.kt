@@ -5,7 +5,7 @@ import org.jetbrains.exposed.v1.core.java.javaUUID
 
 /**
  * Публичный профиль из таблицы `user` модуля user-auth — только для чтения другими модулями (join по id пользователя).
- * Подмножество колонок: email и прочие детали аккаунта наружу не выходят. Пишет в таблицу только user-auth, у него
+ * Подмножество колонок: логин и прочие детали аккаунта наружу не выходят. Пишет в таблицу только user-auth, у него
  * своё полное описание таблицы. Аватар — имя enum [site.qgames.userauth.api.dto.user.Avatar].
  */
 object UserProfileTable : Table("user") {

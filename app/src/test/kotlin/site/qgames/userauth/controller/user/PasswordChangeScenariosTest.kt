@@ -35,8 +35,8 @@ class PasswordChangeScenariosTest : UserAuthIntegrationTest() {
         listOf(firstDevice, secondDevice).forEach { refresh(it.tokens.refreshToken).andExpect { status { isUnauthorized() } } }
         refresh(changed.tokens.refreshToken).andExpect { status { isOk() } }
 
-        login(TestData.PasswordOnly.EMAIL, TestData.PASSWORD).andExpect { jsonPath("$.code") { value("INVALID_CREDENTIALS") } }
-        login(TestData.PasswordOnly.EMAIL, NEW_PASSWORD).andExpect { status { isOk() } }
+        login(TestData.PasswordOnly.LOGIN, TestData.PASSWORD).andExpect { jsonPath("$.code") { value("INVALID_CREDENTIALS") } }
+        login(TestData.PasswordOnly.LOGIN, NEW_PASSWORD).andExpect { status { isOk() } }
 
         assertThat(userRow(TestData.PasswordOnly.ID)).isEqualTo(userBefore)
         assertThat(publishedProfileEvents()).isEmpty()

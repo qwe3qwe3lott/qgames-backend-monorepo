@@ -98,12 +98,12 @@ class ProfileScenariosTest : UserAuthIntegrationTest() {
     }
 
     @Test
-    fun `new google account gets a generated nickname, default avatar and a published snapshot`() {
-        val auth = loginWithGoogle(GoogleIdTokens.idToken("google-new", "newcomer@gmail.com"))
-            .andExpect { status { isOk() } }
+    fun `registered account gets the login as nickname, default avatar and a published snapshot`() {
+        val auth = registerWithGoogle(GoogleIdTokens.idToken("google-new"), "newcomer")
+            .andExpect { status { isCreated() } }
             .session()
 
-        assertThat(auth.user.nickname).matches("player-[0-9a-f]{6}")
+        assertThat(auth.user.nickname).isEqualTo("newcomer")
         assertThat(auth.user.avatar).isEqualTo(Avatar.CAT)
         val event = publishedProfileEvents().single()
         assertThat(event.id).isEqualTo(auth.user.id)
@@ -115,7 +115,7 @@ class ProfileScenariosTest : UserAuthIntegrationTest() {
     fun `linking google to an existing account publishes nothing`() {
         postJson(
             "/api/users/me/login-methods/google",
-            GoogleIdTokenRequest(GoogleIdTokens.idToken("google-new", "other@gmail.com")),
+            GoogleIdTokenRequest(GoogleIdTokens.idToken("google-new")),
             TestData.PasswordOnly.ID,
         ).andExpect { status { isOk() } }
 

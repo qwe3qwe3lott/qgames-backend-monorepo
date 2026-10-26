@@ -10,8 +10,8 @@ import org.jetbrains.exposed.v1.javatime.timestamp
  */
 object UserTable : Table("user") {
     val id = javaUUID("id")
-    /** Логин входа по паролю (email Google-аккаунта, которым создан аккаунт), уникален. */
-    val email = varchar("email", 320)
+    /** Уникален и не меняется: задаётся при регистрации, по нему входят по паролю. */
+    val login = varchar("login", 32)
     /** Не уникален: игроки различаются по id. */
     val nickname = varchar("nickname", 32)
     val avatar = varchar("avatar", 16)

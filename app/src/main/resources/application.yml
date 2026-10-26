@@ -78,7 +78,7 @@ qgames:
     # Скользящий: каждая ротация выдаёт refresh-токен на полный срок.
     refresh-token-ttl: 15m
     refresh-reuse-grace: 10s
-    # Первый администратор. Значений по умолчанию нет: без env бутстрап выключен (docker-compose задаёт admin/admin).
+    # Первый администратор. Значений по умолчанию нет: без env бутстрап выключен (профиль local задаёт admin/admin).
     bootstrap:
       login: ${ADMIN_BOOTSTRAP_LOGIN:}
       password: ${ADMIN_BOOTSTRAP_PASSWORD:}

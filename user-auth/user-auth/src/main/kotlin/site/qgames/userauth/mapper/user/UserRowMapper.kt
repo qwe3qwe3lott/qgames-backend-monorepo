@@ -15,7 +15,7 @@ class UserRowMapper {
 
     fun toUser(row: ResultRow) = UserModel(
         id = row[UserTable.id],
-        email = row[UserTable.email],
+        login = row[UserTable.login],
         nickname = row[UserTable.nickname],
         avatar = UserAvatar.valueOf(row[UserTable.avatar]),
         createdAt = row[UserTable.createdAt],

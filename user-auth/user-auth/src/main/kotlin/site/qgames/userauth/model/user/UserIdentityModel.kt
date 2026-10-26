@@ -4,7 +4,7 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Способ входа пользователя. Для PASSWORD subject — email, для GOOGLE — claim `sub` из Google ID token.
+ * Способ входа пользователя. Для PASSWORD subject — логин пользователя (не меняется), для GOOGLE — claim `sub` из Google ID token.
  */
 data class UserIdentityModel(
     val id: UUID,

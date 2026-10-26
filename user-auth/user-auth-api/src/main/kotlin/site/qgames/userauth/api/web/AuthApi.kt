@@ -5,10 +5,13 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import jakarta.validation.Valid
+import org.springframework.http.HttpStatus
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.ResponseStatus
 import org.springframework.web.service.annotation.HttpExchange
 import org.springframework.web.service.annotation.PostExchange
 import site.qgames.userauth.api.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.api.dto.auth.GoogleRegisterRequest
 import site.qgames.userauth.api.dto.auth.LoginRequest
 import site.qgames.userauth.api.dto.user.UserResponse
 
@@ -18,48 +21,64 @@ import site.qgames.userauth.api.dto.user.UserResponse
  */
 @Tag(
     name = "auth",
-    description = "Аутентификация. Вход через Google (он же создаёт аккаунт) и по email и паролю, обновление сессии " +
-        "и выход. Токены выдаются только в HttpOnly-куках access_token и refresh_token, в теле ответа их нет.",
+    description = "Аутентификация. Регистрация только через внешнего провайдера (Google) с выбором логина, вход по " +
+        "логину и паролю или через привязанный Google, обновление сессии и выход. Токены выдаются только в " +
+        "HttpOnly-куках access_token и refresh_token, в теле ответа их нет.",
 )
 @HttpExchange("/api/auth")
 interface AuthApi {
 
     @Operation(
-        summary = "Вход по email и паролю",
-        description = "Открывает сессию: ставит куки access_token (15 минут) и refresh_token (30 дней). Пароль " +
-            "задаётся в профиле аккаунта, созданного через Google, логин — email этого Google-аккаунта. Сброса пароля " +
-            "нет: забывший пароль входит через Google и задаёт новый.",
+        summary = "Вход по логину и паролю",
+        description = "Открывает сессию: ставит куки access_token (15 минут) и refresh_token (30 дней). Логин " +
+            "сравнивается без учёта регистра и пробелов по краям. Пароль задаётся при регистрации или позже в " +
+            "профиле. Сброса пароля нет: забывший пароль входит через Google и задаёт новый.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Вход выполнен, возвращены данные пользователя"),
         ApiResponse(responseCode = "400", description = "Невалидный запрос (VALIDATION_ERROR)"),
-        ApiResponse(responseCode = "401", description = "Неверный email или пароль (INVALID_CREDENTIALS)"),
+        ApiResponse(responseCode = "401", description = "Неверный логин или пароль (INVALID_CREDENTIALS)"),
     )
     @PostExchange("/login")
     fun login(@Valid @RequestBody request: LoginRequest): UserResponse
 
     @Operation(
         summary = "Вход через Google",
-        description = "Принимает Google ID token из Google Identity Services. Это единственный способ создать аккаунт: " +
-            "новый Google-аккаунт создаёт аккаунт с email из Google (он должен быть подтверждён в Google: это логин для " +
-            "входа по паролю), ником вида player-a1b2c3 и аватаром CAT — их можно сменить в профиле. К существующему " +
-            "аккаунту с тем же email Google автоматически не привязывается.",
+        description = "Принимает Google ID token из Google Identity Services и открывает сессию аккаунта, к которому " +
+            "привязан этот Google-аккаунт. Аккаунт не создаётся: для нового Google-аккаунта — 404 " +
+            "REGISTRATION_REQUIRED, тогда клиент спрашивает логин и вызывает /api/auth/google/register с тем же токеном.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Вход выполнен, возвращены данные пользователя"),
+        ApiResponse(responseCode = "400", description = "Невалидный запрос (VALIDATION_ERROR)"),
+        ApiResponse(responseCode = "401", description = "ID token недействителен (INVALID_GOOGLE_TOKEN)"),
         ApiResponse(
-            responseCode = "400",
-            description = "Невалидный запрос (VALIDATION_ERROR) или email не подтверждён в Google (GOOGLE_EMAIL_NOT_VERIFIED)",
+            responseCode = "404",
+            description = "Google-аккаунт не привязан ни к одному аккаунту, нужна регистрация (REGISTRATION_REQUIRED)",
         ),
+    )
+    @PostExchange("/google/login")
+    fun loginWithGoogle(@Valid @RequestBody request: GoogleIdTokenRequest): UserResponse
+
+    @Operation(
+        summary = "Регистрация через Google",
+        description = "Создаёт аккаунт, привязанный к Google-аккаунту из ID token, и открывает сессию. Логин задаётся " +
+            "один раз и не меняется; ник сначала равен логину, аватар — CAT, их можно сменить в профиле. Если передан " +
+            "пароль, сразу добавляется вход по логину и паролю.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "201", description = "Аккаунт создан, вход выполнен, возвращены данные пользователя"),
+        ApiResponse(responseCode = "400", description = "Невалидный запрос: логин или пароль не по правилам (VALIDATION_ERROR)"),
         ApiResponse(responseCode = "401", description = "ID token недействителен (INVALID_GOOGLE_TOKEN)"),
         ApiResponse(
             responseCode = "409",
-            description = "Аккаунт с таким email уже есть, а этот Google-аккаунт к нему не привязан: нужно войти и " +
-                "привязать Google явно (ACCOUNT_LINK_REQUIRED)",
+            description = "Логин занят, в том числе одновременной регистрацией (LOGIN_TAKEN); этот Google-аккаунт уже " +
+                "зарегистрирован, в том числе одновременным запросом, — нужно войти (ACCOUNT_ALREADY_EXISTS)",
         ),
     )
-    @PostExchange("/google")
-    fun loginWithGoogle(@Valid @RequestBody request: GoogleIdTokenRequest): UserResponse
+    @PostExchange("/google/register")
+    @ResponseStatus(HttpStatus.CREATED)
+    fun registerWithGoogle(@Valid @RequestBody request: GoogleRegisterRequest): UserResponse
 
     @Operation(
         summary = "Обновление сессии",

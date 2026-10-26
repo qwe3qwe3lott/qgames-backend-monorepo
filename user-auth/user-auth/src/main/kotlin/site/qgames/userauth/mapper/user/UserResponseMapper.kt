@@ -15,7 +15,7 @@ class UserResponseMapper {
         val user = details.user
         return UserResponse(
             id = user.id,
-            email = user.email,
+            login = user.login,
             nickname = user.nickname,
             avatar = Avatar.valueOf(user.avatar.name),
             loginMethods = details.loginMethods.map { LoginMethod.valueOf(it.name) },

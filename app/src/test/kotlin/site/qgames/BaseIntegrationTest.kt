@@ -29,6 +29,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import site.qgames.common.test.container.PostgresTestContainer
 import site.qgames.common.test.wiremock.WireMockTestServer
 import site.qgames.game.repository.session.RoomSessionEventRepository
+import site.qgames.userauth.repository.user.UserIdentityRepository
 import site.qgames.userauth.repository.user.UserRepository
 import site.qgames.game.service.session.SessionStreamService
 import site.qgames.game.stream.room.RoomStreamRegistry
@@ -99,9 +100,13 @@ abstract class BaseIntegrationTest {
     @MockkSpyBean
     protected lateinit var sessionStreamService: SessionStreamService
 
-    /** Аккаунты игроков: шпион, чтобы обойти проверку существования и проверить гонку на уникальном email (409). */
+    /** Аккаунты игроков: шпион, чтобы обойти проверку существования и проверить гонку на уникальном логине. */
     @MockkSpyBean
     protected lateinit var userRepository: UserRepository
+
+    /** Способы входа игроков: шпион, чтобы обойти проверку привязки Google и проверить гонку регистрации. */
+    @MockkSpyBean
+    protected lateinit var userIdentityRepository: UserIdentityRepository
 
     @BeforeEach
     fun resetExternalSystems() {

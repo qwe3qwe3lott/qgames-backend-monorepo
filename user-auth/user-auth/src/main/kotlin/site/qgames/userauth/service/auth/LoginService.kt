@@ -5,6 +5,7 @@ import site.qgames.userauth.config.CryptoConfig
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import site.qgames.common.exception.exception.UniqueViolations
 import site.qgames.userauth.model.user.IdentityProvider
 import site.qgames.userauth.model.user.UserModel
 import site.qgames.userauth.exception.auth.AuthErrors
@@ -14,7 +15,6 @@ import site.qgames.userauth.repository.user.UserRepository
 import site.qgames.userauth.service.user.UserService
 import site.qgames.userauth.model.user.UserAvatar
 import site.qgames.userauth.publisher.user.UserProfilePublisher
-import site.qgames.userauth.util.Nicknames
 import java.time.Clock
 
 @Service
@@ -33,8 +33,8 @@ class LoginService(
     private val dummyPasswordHash: String by lazy { passwordEncoder.encode("dummy-password")!! }
 
     @Transactional
-    fun loginWithPassword(rawEmail: String, password: String): AuthResultModel {
-        val identity = userIdentityRepository.findByProviderAndSubject(IdentityProvider.PASSWORD, rawEmail.trim().lowercase())
+    fun loginWithPassword(rawLogin: String, password: String): AuthResultModel {
+        val identity = userIdentityRepository.findByProviderAndSubject(IdentityProvider.PASSWORD, rawLogin.trim().lowercase())
         if (identity?.passwordHash == null) {
             passwordEncoder.matches(password, dummyPasswordHash)
             throw AuthErrors.invalidCredentials()
@@ -46,30 +46,54 @@ class LoginService(
         return startSession(user)
     }
 
-    /**
-     * Вход через Google — единственный способ создать аккаунт. Автопривязки по email нет: если аккаунт с таким email
-     * уже есть, Google к нему привязывается только явно, из залогиненной сессии (ACCOUNT_LINK_REQUIRED).
-     * Email в Google должен быть подтверждён: он становится логином для входа по паролю.
-     */
+    /** Вход через привязанный Google. Аккаунт здесь не создаётся: для нового Google-аккаунта — REGISTRATION_REQUIRED. */
     @Transactional
     fun loginWithGoogle(idToken: String): AuthResultModel {
         val google = googleIdTokenVerifier.verify(idToken)
         val linked = userIdentityRepository.findByProviderAndSubject(IdentityProvider.GOOGLE, google.subject)
-        if (linked != null) {
-            return startSession(userRepository.findById(linked.userId) ?: throw AuthErrors.userNotFound())
+            ?: throw AuthErrors.registrationRequired()
+        return startSession(userRepository.findById(linked.userId) ?: throw AuthErrors.userNotFound())
+    }
+
+    /**
+     * Регистрация через Google — единственный способ создать аккаунт (подтверждать личность почтой не нужно).
+     * Логин задаётся здесь один раз и не меняется, ник сначала равен логину. Если передан [password], сразу
+     * добавляется вход по логину и паролю. Параллельная регистрация того же логина или того же Google-аккаунта
+     * проходит предпроверки и упирается в уникальные индексы — тогда отвечаем теми же кодами, что и без гонки.
+     */
+    @Transactional
+    fun registerWithGoogle(idToken: String, login: String, password: String?): AuthResultModel {
+        val google = googleIdTokenVerifier.verify(idToken)
+        if (userIdentityRepository.findByProviderAndSubject(IdentityProvider.GOOGLE, google.subject) != null) {
+            throw AuthErrors.accountAlreadyExists()
         }
-        if (!google.emailVerified) {
-            throw AuthErrors.googleEmailNotVerified()
-        }
-        if (userRepository.findByEmail(google.email) != null) {
-            throw AuthErrors.accountLinkRequired()
+        if (userRepository.findByLogin(login) != null) {
+            throw AuthErrors.loginTaken()
         }
         val now = clock.instant()
-        // Формы регистрации нет: ник генерируется, пользователь сменит его в профиле.
-        val user = userRepository.insert(google.email, nickname = Nicknames.generate(), avatar = UserAvatar.CAT, now = now)
+        val user = try {
+            userRepository.insert(login, nickname = login, avatar = UserAvatar.CAT, now = now).also {
+                userIdentityRepository.insert(it.id, IdentityProvider.GOOGLE, google.subject, passwordHash = null, now = now)
+                if (password != null) {
+                    userIdentityRepository.insert(it.id, IdentityProvider.PASSWORD, login, passwordEncoder.encode(password), now)
+                }
+            }
+        } catch (ex: Exception) {
+            throw translateRegistrationRace(ex)
+        }
+        // Событие — после всех вставок: при гонке регистрация откатывается, и снапшот публиковать нечего.
         userProfilePublisher.publish(user)
-        userIdentityRepository.insert(user.id, IdentityProvider.GOOGLE, google.subject, passwordHash = null, now = now)
         return startSession(user)
+    }
+
+    /**
+     * Гонка за уникальный индекс → код того же смысла, что у предпроверки; прочие ошибки — как есть. Ловится
+     * [Exception]: `ExposedSQLException` наследует checked [java.sql.SQLException], а не [RuntimeException].
+     */
+    private fun translateRegistrationRace(ex: Exception): Exception = when {
+        UniqueViolations.isUniqueViolationOf(ex, USER_LOGIN_CONSTRAINT) -> AuthErrors.loginTaken()
+        UniqueViolations.isUniqueViolationOf(ex, IDENTITY_SUBJECT_CONSTRAINT) -> AuthErrors.accountAlreadyExists()
+        else -> ex
     }
 
     /**
@@ -84,4 +108,10 @@ class LoginService(
 
     private fun startSession(user: UserModel) =
         AuthResultModel(userService.describe(user), tokenService.issue(user.id))
+
+    companion object {
+        /** Уникальные ограничения из миграций user-auth (имена уникальны в БД). */
+        private const val USER_LOGIN_CONSTRAINT = "user_login_uq"
+        private const val IDENTITY_SUBJECT_CONSTRAINT = "user_identity_provider_subject_uq"
+    }
 }

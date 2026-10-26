@@ -5,7 +5,8 @@ import java.util.UUID
 
 data class UserModel(
     val id: UUID,
-    val email: String,
+    /** Уникален и не меняется. */
+    val login: String,
     /** Не уникален, игроки различаются по id. */
     val nickname: String,
     val avatar: UserAvatar,

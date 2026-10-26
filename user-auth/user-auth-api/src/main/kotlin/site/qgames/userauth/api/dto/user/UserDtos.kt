@@ -7,7 +7,8 @@ import java.util.UUID
 
 data class UserResponse(
     val id: UUID,
-    val email: String,
+    /** Уникален и не меняется: задаётся при регистрации. */
+    val login: String,
     /** Отображаемое имя, не уникально. */
     val nickname: String,
     val avatar: Avatar,
@@ -26,24 +27,33 @@ enum class Avatar {
 }
 
 data class SetPasswordRequest(
-    @field:NotBlank @field:Size(min = 8, max = 128)
+    @field:NotBlank @field:Size(min = PasswordRules.MIN_LENGTH, max = PasswordRules.MAX_LENGTH)
     val password: String,
 )
 
 data class ChangePasswordRequest(
     @field:NotBlank
     val currentPassword: String,
-    @field:NotBlank @field:Size(min = 8, max = 128)
+    @field:NotBlank @field:Size(min = PasswordRules.MIN_LENGTH, max = PasswordRules.MAX_LENGTH)
     val newPassword: String,
 )
 
-/** Меняется только переданное; хотя бы одно поле обязательно. */
+/** Меняется только переданное; хотя бы одно поле обязательно. Логин не меняется. */
 data class UpdateProfileRequest(
     @field:Size(min = NicknameRules.MIN_LENGTH, max = NicknameRules.MAX_LENGTH)
     @field:Pattern(regexp = NicknameRules.PATTERN, message = NicknameRules.PATTERN_MESSAGE)
     val nickname: String? = null,
     val avatar: Avatar? = null,
 )
+
+/** Логин уникален и не меняется; со временем станет адресом страницы пользователя, поэтому только URL-безопасные символы. */
+object LoginRules {
+    const val MIN_LENGTH = 3
+    const val MAX_LENGTH = 32
+
+    const val PATTERN = "^[a-z0-9_-]+$"
+    const val PATTERN_MESSAGE = "must contain only lowercase latin letters, digits, '_' and '-'"
+}
 
 /** Ник не уникален: игроки различаются по id. */
 object NicknameRules {
@@ -53,4 +63,9 @@ object NicknameRules {
     /** Без пробелов по краям и без управляющих символов. */
     const val PATTERN = "^[^\\s\\p{Cc}]([^\\p{Cc}]*[^\\s\\p{Cc}])?$"
     const val PATTERN_MESSAGE = "must not start or end with whitespace or contain control characters"
+}
+
+object PasswordRules {
+    const val MIN_LENGTH = 8
+    const val MAX_LENGTH = 128
 }

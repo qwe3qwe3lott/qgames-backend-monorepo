@@ -30,7 +30,7 @@ interface UserApi {
 
     @Operation(
         summary = "Данные текущего пользователя",
-        description = "Email, ник, аватар и привязанные способы входа. Подходит, чтобы проверить, " +
+        description = "Логин, ник, аватар и привязанные способы входа. Подходит, чтобы проверить, " +
             "залогинен ли пользователь.",
     )
     @ApiResponses(
@@ -62,7 +62,7 @@ interface UserApi {
 
     @Operation(
         summary = "Добавить вход по паролю",
-        description = "Для аккаунта без пароля. После этого можно входить по email аккаунта и паролю.",
+        description = "Для аккаунта без пароля. После этого можно входить по логину аккаунта и паролю.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Пароль добавлен, возвращены обновлённые данные пользователя"),
@@ -94,7 +94,7 @@ interface UserApi {
 
     @Operation(
         summary = "Привязать Google-аккаунт",
-        description = "Явная привязка Google к текущему аккаунту. Email Google-аккаунта может отличаться от email аккаунта.",
+        description = "Явная привязка Google к текущему аккаунту: после неё можно входить через этот Google-аккаунт.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Google привязан, возвращены обновлённые данные пользователя"),

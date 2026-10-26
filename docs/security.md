@@ -18,7 +18,9 @@
   - логин сравнивается точно, без lowercase и trim. При неизвестном логине проверяется dummy-хеш, чтобы время ответа не выдавало существующие логины.
 - **Первый админ:** регистрации нет. При старте приложения `AdminBootstrapService` создаёт админа из `ADMIN_BOOTSTRAP_LOGIN` / `ADMIN_BOOTSTRAP_PASSWORD`, только если таблица `admin` пуста.
   - Проверка «таблица пуста» и вставка — в одной пишущей транзакции (`AdminExposedRepository.insertIfNoAdmins`). Если админ создан, пишется лог WARN.
-  - Значений по умолчанию в `application.yml` нет: без env бутстрап выключен, а если задано только одно из двух, приложение не стартует. docker-compose задаёт `admin` / `admin`.
+  - Значений по умолчанию в `application.yml` нет: без env бутстрап выключен, а если задано только одно из двух, приложение не стартует. Локально `admin` / `admin` задаёт профиль `local` (`application-local.yml`).
+- **Тестовые игроки (только профиль `local`):** при старте `DevUsersBootstrapService` создаёт игроков из `qgames.auth.dev-users` (`login-prefix`, `count`, `password`): логин и ник `<prefix><n>`, способ входа — пароль. Создаются только отсутствующие по логину, существующие (в том числе со сменённым паролем) не меняются; событие `UserProfileChanged` публикуется, как при обычном создании.
+  - В `application.yml` настроек нет, `count` по умолчанию 0 — бутстрап выключен. `count > 0` без префикса или пароля — ошибка конфигурации, приложение не стартует.
 - **Куки ставят и читают auth-контроллеры модулей** (`cookie/AuthCookies` в user-auth и admin-auth): `HttpOnly; Secure; SameSite=Lax`. Токены в теле ответов не отдаются.
   - Имена и пути — константы контракта `AuthCookieNames` в `<m>-api`: портал — `access_token` (`Path=/`) и `refresh_token` (`Path=/api/auth`); админка — `admin_access_token` (`Path=/api/admin`) и `admin_refresh_token` (`Path=/api/admin/auth`). Имена разные: оба фронта ходят в одно приложение, и одноимённые куки перетёрли бы друг друга. `secure`/`sameSite` — свойства модулей (`qgames.auth.cookies`, `qgames.admin-auth.cookies`, env `COOKIES_SECURE`).
   - refresh без куки или с отклонённым токеном (401) удаляет обе куки; logout отзывает сессию по куке и всегда удаляет обе куки; смена пароля выдаёт новую сессию в куках.
@@ -32,13 +34,16 @@
   Перенос фронта на другой сайт (не поддомен) — пересмотр модели CSRF, только по согласованию.
 
 - **Пароли:** Argon2id (`Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8`), соль внутри хеша.
-- **Регистрации по email нет, писем user-auth не шлёт.** Аккаунт создаётся только входом через Google. Пароль добавляется в профиле (`POST /api/users/me/login-methods/password`), после этого можно входить по email аккаунта (это email Google-аккаунта, которым он создан) и паролю. Сброса пароля нет: забывший пароль входит через Google и меняет его.
-- **Google:** фронт получает ID token через Google Identity Services и шлёт `POST /api/auth/google`; проверяем подпись по JWKS Google, `iss`, `aud` (`GOOGLE_CLIENT_IDS`).
+- **Регистрация — только через внешнего провайдера** (сейчас Google, позже VK и др.): личность подтверждает провайдер, писем user-auth не шлёт, email не хранит. На шаге регистрации игрок задаёт логин и, по желанию, пароль.
+- **Логин:** `^[a-z0-9_-]{3,32}$` (`LoginRules`), **уникален** (`user_login_uq`) и **не меняется** — позже станет адресом страницы пользователя. При входе по паролю ввод обрезается и приводится к нижнему регистру. Субъект способа входа PASSWORD — логин.
+- **Вход по паролю** (`POST /api/auth/login {login, password}`): пароль задаётся при регистрации или позже в профиле (`POST /api/users/me/login-methods/password`). Сброса пароля нет: забывший пароль входит через Google и меняет его.
+- **Google:** фронт получает ID token через Google Identity Services; проверяем подпись по JWKS Google, `iss`, `aud` (`GOOGLE_CLIENT_IDS`), из claims нужен только `sub`.
 - **Профиль игрока:**
-  - ник (3–32 символа, без пробелов по краям, **не уникален** — игроки различаются по id) и аватар из enum `Avatar { CAT, DOG }`, набор аватаров определён на фронте;
-  - новому Google-аккаунту генерируется ник `player-xxxxxx` и аватар `CAT`;
+  - логин (см. выше), ник (3–32 символа, без пробелов по краям, **не уникален** — игроки различаются по id) и аватар из enum `Avatar { CAT, DOG }`, набор аватаров определён на фронте;
+  - при регистрации ник равен логину, аватар — `CAT`;
   - меняются через `PATCH /api/users/me/profile` (только переданные поля);
   - создание аккаунта и каждое изменение публикуются событием модуля `UserProfileChanged` (CLAUDE.md §4 «События модулей»); правки — «последняя запись побеждает».
 - **Способы входа:** `user_identity(provider, subject)`, к одному аккаунту можно привязать несколько. Привязка **только явная** (из залогиненной сессии, `/api/users/me/login-methods/*`), автопривязки нет.
-- **Вход через Google** (`POST /api/auth/google`): Google-аккаунт привязан (по `subject`) — сессия его владельца; иначе email не подтверждён в Google — 400 `GOOGLE_EMAIL_NOT_VERIFIED` (email — логин для входа по паролю); иначе аккаунт с таким email уже есть — 409 `ACCOUNT_LINK_REQUIRED` (защитный случай, email в БД уникален); иначе — новый аккаунт.
+- **Вход через Google** (`POST /api/auth/google/login`): Google-аккаунт привязан (по `subject`) — сессия его владельца; иначе 404 `REGISTRATION_REQUIRED`, аккаунт не создаётся.
+- **Регистрация через Google** (`POST /api/auth/google/register {idToken, login, password?}`, 201): Google-аккаунт уже привязан — 409 `ACCOUNT_ALREADY_EXISTS`; логин занят — 409 `LOGIN_TAKEN`; иначе аккаунт со способом входа GOOGLE (и PASSWORD, если передан пароль) и сессия. Гонка двух регистраций проходит предпроверки и упирается в уникальные индексы; `LoginService` переводит нарушение по имени индекса в те же коды: `user_login_uq` → `LOGIN_TAKEN`, `user_identity_provider_subject_uq` → `ACCOUNT_ALREADY_EXISTS` (`UniqueViolations` из `libs/common-exception`). Общего `CONFLICT` ручка не отдаёт. ID token Google живёт около часа: фронт держит его между двумя запросами только в памяти.
 - Ключи подписи — из конфигурации/секретов, никогда не генерируются при старте. `docker/dev-keys` — только для локальной разработки: `jwt-*.pem` у user-auth (env `JWT_*`), `admin-jwt-*.pem` (kid `admin-dev-key-1`) у admin-auth (env `ADMIN_JWT_*`).

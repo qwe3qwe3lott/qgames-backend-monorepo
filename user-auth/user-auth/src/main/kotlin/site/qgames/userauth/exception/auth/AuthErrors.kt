@@ -12,7 +12,7 @@ import site.qgames.common.exception.exception.UnauthorizedException
 object AuthErrors {
 
     fun invalidCredentials() =
-        UnauthorizedException("INVALID_CREDENTIALS", "Invalid email or password")
+        UnauthorizedException("INVALID_CREDENTIALS", "Invalid login or password")
 
     fun invalidRefreshToken() =
         UnauthorizedException("INVALID_REFRESH_TOKEN", "Refresh token is invalid or expired")
@@ -23,11 +23,14 @@ object AuthErrors {
     fun invalidGoogleToken(cause: Throwable? = null) =
         UnauthorizedException("INVALID_GOOGLE_TOKEN", "Google ID token is invalid", cause = cause)
 
-    fun googleEmailNotVerified() =
-        ClientException("GOOGLE_EMAIL_NOT_VERIFIED", "Google account email is not verified")
+    fun registrationRequired() =
+        NotFoundException("REGISTRATION_REQUIRED", "No account is linked to this Google account, registration is required")
 
-    fun accountLinkRequired() =
-        ConflictException("ACCOUNT_LINK_REQUIRED", "Account with this email exists, sign in and link Google explicitly")
+    fun accountAlreadyExists() =
+        ConflictException("ACCOUNT_ALREADY_EXISTS", "This Google account is already registered, sign in instead")
+
+    fun loginTaken() =
+        ConflictException("LOGIN_TAKEN", "Login is already taken")
 
     fun loginMethodAlreadyLinked() =
         ConflictException("LOGIN_METHOD_ALREADY_LINKED", "This login method is already linked to the account")

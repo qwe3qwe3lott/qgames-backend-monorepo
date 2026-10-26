@@ -10,6 +10,7 @@ import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.request
 import site.qgames.BaseIntegrationTest
 import site.qgames.userauth.api.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.api.dto.auth.GoogleRegisterRequest
 import site.qgames.userauth.api.dto.auth.LoginRequest
 import site.qgames.userauth.api.dto.user.ChangePasswordRequest
 import site.qgames.userauth.api.dto.user.SetPasswordRequest
@@ -74,11 +75,20 @@ class RequestValidationScenariosTest : BaseIntegrationTest() {
 
         @JvmStatic
         fun invalidRequests(): Stream<Arguments> = Stream.of(
-            arguments("login with malformed email", HttpMethod.POST, "/api/auth/login", json(LoginRequest("not-an-email", "correct-horse-1")), null, "email"),
-            arguments("login with blank password", HttpMethod.POST, "/api/auth/login", json(LoginRequest(TestData.PasswordOnly.EMAIL, "")), null, "password"),
-            arguments("login without password", HttpMethod.POST, "/api/auth/login", """{"email": "player@example.com"}""", null, null),
-            arguments("login without email", HttpMethod.POST, "/api/auth/login", """{"password": "correct-horse-1"}""", null, null),
-            arguments("google login with blank token", HttpMethod.POST, "/api/auth/google", json(GoogleIdTokenRequest("")), null, "idToken"),
+            arguments("login with blank login", HttpMethod.POST, "/api/auth/login", json(LoginRequest(" ", "correct-horse-1")), null, "login"),
+            arguments("login with blank password", HttpMethod.POST, "/api/auth/login", json(LoginRequest(TestData.PasswordOnly.LOGIN, "")), null, "password"),
+            arguments("login without password", HttpMethod.POST, "/api/auth/login", """{"login": "player"}""", null, null),
+            arguments("login without login", HttpMethod.POST, "/api/auth/login", """{"password": "correct-horse-1"}""", null, null),
+            arguments("google login with blank token", HttpMethod.POST, "/api/auth/google/login", json(GoogleIdTokenRequest("")), null, "idToken"),
+            arguments(
+                "google registration with invalid login", HttpMethod.POST, "/api/auth/google/register",
+                json(GoogleRegisterRequest("token", "Bad Login")), null, "login",
+            ),
+            arguments(
+                "google registration with short password", HttpMethod.POST, "/api/auth/google/register",
+                json(GoogleRegisterRequest("token", "new-player", "short")), null, "password",
+            ),
+            arguments("google registration without login", HttpMethod.POST, "/api/auth/google/register", """{"idToken": "token"}""", null, null),
             arguments("new password too short", HttpMethod.POST, PASSWORD, json(SetPasswordRequest("short")), GOOGLE_ONLY, "password"),
             arguments("set password without password", HttpMethod.POST, PASSWORD, "{}", GOOGLE_ONLY, null),
             arguments("changed password too short", HttpMethod.PUT, PASSWORD, json(ChangePasswordRequest(TestData.PASSWORD, "short")), PLAYER, "newPassword"),

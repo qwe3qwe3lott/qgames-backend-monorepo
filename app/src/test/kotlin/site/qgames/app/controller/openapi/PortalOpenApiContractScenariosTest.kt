@@ -315,20 +315,28 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         }
     }
 
-    /** Регистрации по email нет: аккаунт создаёт только вход через Google, подтверждения email тоже нет. */
+    /**
+     * Регистрация только через внешнего провайдера (Google) с выбором логина: регистрации и подтверждения по email нет,
+     * email в профиле нет, есть неизменяемый логин.
+     */
     @Test
-    fun `email registration and verification are gone`() {
+    fun `registration goes only through google and email is gone`() {
         val docs = apiDocs()
 
         assertThat(docs.path("paths").propertyNames().toList())
-            .contains("/api/auth/login", "/api/auth/google")
-            .doesNotContain("/api/auth/register", "/api/auth/verify-email", "/api/auth/resend-code")
+            .contains("/api/auth/login", "/api/auth/google/login", "/api/auth/google/register")
+            .doesNotContain("/api/auth/google", "/api/auth/register", "/api/auth/verify-email", "/api/auth/resend-code")
+        val userProperties = docs.path("components").path("schemas").path("UserResponse").path("properties")
+        assertThat(userProperties.has("login")).isTrue()
+        assertThat(userProperties.has("email")).isFalse()
+        assertThat(docs.path("components").path("schemas").path("LoginRequest").path("properties").has("email")).isFalse()
         assertThat(docs.path("components").path("schemas").propertyNames().toList())
             .doesNotContain("RegisterRequest", "RegistrationResponse", "VerifyEmailRequest", "ResendCodeRequest")
         assertThat(docs.path("components").path("schemas").path("UserResponse").path("properties").has("emailVerified")).isFalse()
         assertThat(docs.path("paths").path("/api/auth/login").path("post").path("responses").has("403")).isFalse()
         assertThat(docs.toString()).doesNotContain(
-            "(EMAIL_NOT_VERIFIED)", "EMAIL_ALREADY_REGISTERED", "EMAIL_ALREADY_VERIFIED", "INVALID_VERIFICATION_CODE",
+            "(EMAIL_NOT_VERIFIED)", "GOOGLE_EMAIL_NOT_VERIFIED", "ACCOUNT_LINK_REQUIRED", "EMAIL_ALREADY_REGISTERED",
+            "EMAIL_ALREADY_VERIFIED", "INVALID_VERIFICATION_CODE",
             "VERIFICATION_CODE_EXPIRED", "TOO_MANY_VERIFICATION_ATTEMPTS", "RESEND_COOLDOWN",
         )
     }

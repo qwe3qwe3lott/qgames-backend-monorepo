@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.RestController
 import site.qgames.common.exception.exception.QgamesException
 import site.qgames.common.exception.exception.UnauthorizedException
 import site.qgames.userauth.api.dto.auth.GoogleIdTokenRequest
+import site.qgames.userauth.api.dto.auth.GoogleRegisterRequest
 import site.qgames.userauth.api.dto.auth.LoginRequest
 import site.qgames.userauth.api.dto.user.UserResponse
 import site.qgames.userauth.api.web.AuthApi
@@ -30,10 +31,13 @@ class AuthController(
 ) : AuthApi {
 
     override fun login(request: LoginRequest): UserResponse =
-        startSession(loginService.loginWithPassword(request.email, request.password))
+        startSession(loginService.loginWithPassword(request.login, request.password))
 
     override fun loginWithGoogle(request: GoogleIdTokenRequest): UserResponse =
         startSession(loginService.loginWithGoogle(request.idToken))
+
+    override fun registerWithGoogle(request: GoogleRegisterRequest): UserResponse =
+        startSession(loginService.registerWithGoogle(request.idToken, request.login, request.password))
 
     /** Без куки или с отклонённым токеном (401) обе куки удаляются. */
     override fun refresh(): UserResponse {

@@ -26,19 +26,19 @@ class   LoginMethodsScenariosTest : UserAuthIntegrationTest() {
             .body<UserResponse>()
 
         assertThat(updated.loginMethods).containsExactly(LoginMethod.PASSWORD, LoginMethod.GOOGLE)
-        val byPassword = login(TestData.GoogleOnly.EMAIL, "brand-new-password").andExpect { status { isOk() } }.session()
+        val byPassword = login(TestData.GoogleOnly.LOGIN, "brand-new-password").andExpect { status { isOk() } }.session()
         assertThat(byPassword.user.id).isEqualTo(TestData.GoogleOnly.ID)
     }
 
     @Test
-    fun `password user links google with a different email and can sign in with it`() {
-        val idToken = GoogleIdTokens.idToken("google-new", "another.address@gmail.com")
+    fun `password user links google and can sign in with it`() {
+        val idToken = GoogleIdTokens.idToken("google-new")
 
         postJson(GOOGLE_PATH, GoogleIdTokenRequest(idToken), TestData.PasswordOnly.ID).andExpect { status { isOk() } }
 
         val byGoogle = loginWithGoogle(idToken).andExpect { status { isOk() } }.session()
         assertThat(byGoogle.user.id).isEqualTo(TestData.PasswordOnly.ID)
-        assertThat(byGoogle.user.email).isEqualTo(TestData.PasswordOnly.EMAIL)
+        assertThat(byGoogle.user.login).isEqualTo(TestData.PasswordOnly.LOGIN)
         assertThat(byGoogle.user.loginMethods).containsExactly(LoginMethod.PASSWORD, LoginMethod.GOOGLE)
     }
 
@@ -83,13 +83,13 @@ class   LoginMethodsScenariosTest : UserAuthIntegrationTest() {
             ),
             arguments(
                 "another google account is already linked",
-                TestData.PasswordAndGoogle.ID, GOOGLE_PATH, GoogleIdTokenRequest(GoogleIdTokens.idToken("google-new", "second@gmail.com")),
+                TestData.PasswordAndGoogle.ID, GOOGLE_PATH, GoogleIdTokenRequest(GoogleIdTokens.idToken("google-new")),
                 "LOGIN_METHOD_ALREADY_LINKED",
             ),
             arguments(
                 "google account belongs to another user",
                 TestData.PasswordOnly.ID, GOOGLE_PATH,
-                GoogleIdTokenRequest(GoogleIdTokens.idToken(TestData.GoogleOnly.GOOGLE_SUB, TestData.GoogleOnly.EMAIL)),
+                GoogleIdTokenRequest(GoogleIdTokens.idToken(TestData.GoogleOnly.GOOGLE_SUB)),
                 "GOOGLE_ACCOUNT_ALREADY_LINKED",
             ),
         )

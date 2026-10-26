@@ -4,7 +4,7 @@ databaseChangeLog:
       author: A Kozlov
       runInTransaction: true
       comment: >-
-        Способы входа: PASSWORD (subject — email) и GOOGLE (subject — claim sub). Способ входа привязан к одному
+        Способы входа: PASSWORD (subject — логин пользователя) и GOOGLE (subject — claim sub). Способ входа привязан к одному
         аккаунту, у аккаунта — не больше одного способа каждого вида.
       changes:
         - createTable:

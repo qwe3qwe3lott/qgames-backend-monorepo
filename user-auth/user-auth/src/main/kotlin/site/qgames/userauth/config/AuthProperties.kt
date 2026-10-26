@@ -12,6 +12,7 @@ data class AuthProperties(
     val refreshReuseGrace: Duration,
     val google: Google,
     val cookies: Cookies = Cookies(),
+    val devUsers: DevUsers = DevUsers(),
 ) {
     data class Jwt(
         val issuer: String,
@@ -35,5 +36,15 @@ data class AuthProperties(
         val clientIds: List<String> = emptyList(),
         val jwkSetUri: String,
         val issuers: List<String>,
+    )
+
+    /**
+     * Тестовые игроки локального стенда (задаёт профиль local), см. DevUsersBootstrapService. count = 0 выключает
+     * бутстрап.
+     */
+    data class DevUsers(
+        val loginPrefix: String? = null,
+        val count: Int = 0,
+        val password: String? = null,
     )
 }

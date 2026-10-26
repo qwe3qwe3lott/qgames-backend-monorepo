@@ -19,16 +19,16 @@ import java.util.UUID
 @Transactional
 class UserExposedRepository(private val userRowMapper: UserRowMapper) {
 
-    fun insert(email: String, nickname: String, avatar: UserAvatar, now: Instant): UserModel {
+    fun insert(login: String, nickname: String, avatar: UserAvatar, now: Instant): UserModel {
         val id = newId()
         UserTable.insert {
             it[UserTable.id] = id
-            it[UserTable.email] = email
+            it[UserTable.login] = login
             it[UserTable.nickname] = nickname
             it[UserTable.avatar] = avatar.name
             it[UserTable.createdAt] = now
         }
-        return UserModel(id = id, email = email, nickname = nickname, avatar = avatar, createdAt = now)
+        return UserModel(id = id, login = login, nickname = nickname, avatar = avatar, createdAt = now)
     }
 
     fun updateProfile(id: UUID, nickname: String, avatar: UserAvatar): Int =
@@ -40,6 +40,6 @@ class UserExposedRepository(private val userRowMapper: UserRowMapper) {
     fun findById(id: UUID): UserModel? =
         UserTable.selectAll().where { UserTable.id eq id }.singleOrNull()?.let(userRowMapper::toUser)
 
-    fun findByEmail(email: String): UserModel? =
-        UserTable.selectAll().where { UserTable.email eq email }.singleOrNull()?.let(userRowMapper::toUser)
+    fun findByLogin(login: String): UserModel? =
+        UserTable.selectAll().where { UserTable.login eq login }.singleOrNull()?.let(userRowMapper::toUser)
 }

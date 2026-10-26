@@ -1,0 +1,15 @@
+# Профиль local — локальный стенд (docker-compose включает его через SPRING_PROFILES_ACTIVE).
+# Накладывается поверх application.yml: здесь только переопределения и добавления, основной конфиг не дублируется.
+qgames:
+  auth:
+    # Тестовые игроки: логин и ник qwe3qwe1..qwe3qwe10, общий пароль; см. DevUsersBootstrapService.
+    dev-users:
+      login-prefix: qwe3qwe
+      count: 10
+      password: qwe3qwe3
+
+  admin-auth:
+    # Первый администратор (создаётся, только если администраторов ещё нет).
+    bootstrap:
+      login: admin
+      password: admin

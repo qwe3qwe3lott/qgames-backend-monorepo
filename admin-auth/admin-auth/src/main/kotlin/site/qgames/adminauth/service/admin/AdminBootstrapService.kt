@@ -44,7 +44,7 @@ class AdminBootstrapService(
         }
         val created = adminRepository.insertIfNoAdmins(configuredLogin, passwordEncoder.encode(configuredPassword)!!, clock.instant())
         if (created) {
-            log.warn("No admins found, created the first admin '{}' from ADMIN_BOOTSTRAP_LOGIN/ADMIN_BOOTSTRAP_PASSWORD", configuredLogin)
+            log.warn("No admins found, created the first admin '{}' from qgames.admin-auth.bootstrap", configuredLogin)
         }
         return created
     }

@@ -34,8 +34,6 @@ object GoogleIdTokens {
 
     fun idToken(
         subject: String,
-        email: String,
-        emailVerified: Boolean = true,
         audience: String = CLIENT_ID,
         issuer: String = ISSUER,
         expiresAt: Instant = Instant.now().plus(Duration.ofHours(1)),
@@ -47,8 +45,6 @@ object GoogleIdTokens {
             .audience(audience)
             .issueTime(Date.from(expiresAt.minus(Duration.ofHours(1))))
             .expirationTime(Date.from(expiresAt))
-            .claim("email", email)
-            .claim("email_verified", emailVerified)
             .build()
         val key = if (signedByForeignKey) foreignKey else googleKey
         val header = JWSHeader.Builder(JWSAlgorithm.RS256).keyID(key.keyID).type(JOSEObjectType.JWT).build()

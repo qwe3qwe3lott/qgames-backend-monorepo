@@ -48,13 +48,7 @@ class GoogleIdTokenVerifier(properties: AuthProperties) {
             log.warn("Google ID token rejected: {}", reason(ex))
             throw AuthErrors.invalidGoogleToken(ex)
         }
-        val subject = jwt.subject ?: rejectMissingClaim(JwtClaimNames.SUB)
-        val email = jwt.getClaimAsString("email") ?: rejectMissingClaim("email")
-        return GoogleIdentity(
-            subject = subject,
-            email = email.lowercase(),
-            emailVerified = jwt.getClaimAsString("email_verified").toBoolean(),
-        )
+        return GoogleIdentity(subject = jwt.subject ?: rejectMissingClaim(JwtClaimNames.SUB))
     }
 
     /** У [JwtValidationException] сообщение — только первая ошибка, поэтому перечисляем все. */
@@ -75,8 +69,7 @@ class GoogleIdTokenVerifier(properties: AuthProperties) {
     }
 }
 
+/** Нужен только claim `sub`: email не хранится, аккаунт привязывается к Google-аккаунту по нему. */
 data class GoogleIdentity(
     val subject: String,
-    val email: String,
-    val emailVerified: Boolean,
 )

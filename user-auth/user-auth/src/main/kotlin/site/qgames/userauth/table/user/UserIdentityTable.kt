@@ -10,7 +10,7 @@ object UserIdentityTable : Table("user_identity") {
     val userId = javaUUID("user_id")
     /** Имя enum IdentityProvider. */
     val provider = varchar("provider", 32)
-    /** PASSWORD — email, GOOGLE — claim `sub` Google ID token. */
+    /** PASSWORD — логин пользователя (не меняется), GOOGLE — claim `sub` Google ID token. */
     val subject = varchar("subject", 320)
     val passwordHash = varchar("password_hash", 255).nullable()
     val createdAt = timestamp("created_at")

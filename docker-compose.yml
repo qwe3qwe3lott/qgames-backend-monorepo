@@ -70,9 +70,9 @@ services:
       ADMIN_JWT_PRIVATE_KEY_LOCATION: file:/keys/admin-jwt-private.pem
       ADMIN_JWT_PUBLIC_KEY_LOCATION: file:/keys/admin-jwt-public.pem
       GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:-}
-      # Первый администратор: создаётся при старте, только если администраторов ещё нет. Только для локального стенда.
-      ADMIN_BOOTSTRAP_LOGIN: admin
-      ADMIN_BOOTSTRAP_PASSWORD: admin
+      # Профиль локального стенда (app/src/main/resources/application-local.yml): первый администратор admin/admin
+      # и тестовые игроки qwe3qwe1..10.
+      SPRING_PROFILES_ACTIVE: local
       API_DOCS_ENABLED: ${API_DOCS_ENABLED:-true}
     # Бюджет VPS 1 ГБ (CLAUDE.md §10); heap и прочие области JVM считаются от лимита (флаги в docker/app.Dockerfile).
     # memswap_limit = mem_limit: без свопа, при нехватке — OOM-kill, а не тихая деградация.

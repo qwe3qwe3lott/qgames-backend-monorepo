@@ -39,7 +39,7 @@ class UserService(
         if (userIdentityRepository.existsByUserIdAndProvider(userId, IdentityProvider.PASSWORD)) {
             throw AuthErrors.loginMethodAlreadyLinked()
         }
-        userIdentityRepository.insert(userId, IdentityProvider.PASSWORD, user.email, passwordEncoder.encode(password), clock.instant())
+        userIdentityRepository.insert(userId, IdentityProvider.PASSWORD, user.login, passwordEncoder.encode(password), clock.instant())
         return describe(user)
     }
 

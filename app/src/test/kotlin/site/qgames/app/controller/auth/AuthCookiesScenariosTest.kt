@@ -39,7 +39,7 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
     ) {
         PORTAL(
             "/api/auth", "access_token", "refresh_token", "/", Duration.ofMinutes(15), Duration.ofDays(30),
-            LoginRequest(UserTestData.PasswordOnly.EMAIL, UserTestData.PASSWORD),
+            LoginRequest(UserTestData.PasswordOnly.LOGIN, UserTestData.PASSWORD),
         ),
         ADMIN(
             "/api/admin/auth", "admin_access_token", "admin_refresh_token", "/api/admin", Duration.ofMinutes(5), Duration.ofMinutes(15),
@@ -144,7 +144,7 @@ class AuthCookiesScenariosTest : BaseIntegrationTest() {
     @MethodSource("sides")
     fun `rejected login starts no session`(side: Side) {
         val body = when (side) {
-            Side.PORTAL -> LoginRequest(UserTestData.PasswordOnly.EMAIL, "wrong-password")
+            Side.PORTAL -> LoginRequest(UserTestData.PasswordOnly.LOGIN, "wrong-password")
             Side.ADMIN -> AdminLoginRequest(AdminTestData.Root.LOGIN, "wrong-password")
         }
         val result = mockMvc.post("${side.authPath}/login") {

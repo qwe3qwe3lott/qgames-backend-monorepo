@@ -11,9 +11,9 @@ class UserRepository(
     private val userExposedRepository: UserExposedRepository,
 ) {
 
-    /** Email уникален: параллельная вставка того же email — нарушение уникальности (409). */
-    fun insert(email: String, nickname: String, avatar: UserAvatar, now: Instant): UserModel =
-        userExposedRepository.insert(email, nickname, avatar, now)
+    /** Логин уникален: параллельная вставка того же логина — нарушение уникальности (409 CONFLICT). */
+    fun insert(login: String, nickname: String, avatar: UserAvatar, now: Instant): UserModel =
+        userExposedRepository.insert(login, nickname, avatar, now)
 
     /** Сохраняет ник и аватар профиля: последняя запись побеждает. */
     fun updateProfile(user: UserModel): UserModel {
@@ -23,5 +23,5 @@ class UserRepository(
 
     fun findById(id: UUID): UserModel? = userExposedRepository.findById(id)
 
-    fun findByEmail(email: String): UserModel? = userExposedRepository.findByEmail(email)
+    fun findByLogin(login: String): UserModel? = userExposedRepository.findByLogin(login)
 }
