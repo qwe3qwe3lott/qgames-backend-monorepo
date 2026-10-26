@@ -34,15 +34,15 @@ import tools.jackson.databind.JsonNode
 import java.util.UUID
 
 /**
- * Шашки в сервисе game: каталог (скрыты, доступны по ссылке), настройки варианта, партия через общую ручку хода и поток
+ * Шашки в сервисе game: каталог, настройки варианта, партия через общую ручку хода и поток
  * партии — снапшот разбирается в схему шашек, итог приходит событием result-set.
  */
 class CheckersGameScenariosTest : GameIntegrationTest() {
 
     @Test
-    fun `checkers are hidden from the catalog but their rules are available by code`() {
+    fun `checkers are in the catalog and their rules are available by code`() {
         val games = call(HttpMethod.GET, "/api/games", null).andExpect { status { isOk() } }.body<GameListResponse>().games
-        assertThat(games.map { it.code }).doesNotContain(GameCode.CHECKERS)
+        assertThat(games.map { it.code }).contains(GameCode.CHECKERS)
 
         val details = call(HttpMethod.GET, "/api/games/checkers", null).andExpect { status { isOk() } }.body<GameDetailsResponse>()
 

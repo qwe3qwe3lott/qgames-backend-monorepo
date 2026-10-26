@@ -27,7 +27,7 @@ object TestData {
     val NICKNAMES = mapOf(ALICE to "Alice", BOB to "Bob", CAROL to "Carol", DAVE to "Dave", EVE to "Eve")
 
     /**
-     * Каталог игр (таблица game), как в DML-миграциях. «Игра в ничто» — PUBLISHED, шашки — HIDDEN, Каркассон —
+     * Каталог игр (таблица game), как в DML-миграциях. «Игра в ничто» и шашки — PUBLISHED, Каркассон —
      * NOT_PUBLISHED без правил.
      */
     const val NOTHING_TITLE = "Игра в ничто"

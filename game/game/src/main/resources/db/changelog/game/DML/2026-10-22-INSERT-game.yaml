@@ -3,7 +3,6 @@ databaseChangeLog:
       id: 2026-10-22-INSERT-game
       author: A Kozlov
       runInTransaction: true
-      comment: Шашки скрыты из каталога (HIDDEN) до приёмки, доступны по прямой ссылке.
       changes:
         - insert:
             tableName: game
@@ -15,7 +14,7 @@ databaseChangeLog:
                   name: description
                   value: "Шашки на двоих: вариант правил выбирается в настройках комнаты. Сейчас доступны русские шашки."
               - column: { name: sort_order, valueNumeric: 15 }
-              - column: { name: publish_status, value: HIDDEN }
+              - column: { name: publish_status, value: PUBLISHED }
       rollback:
         - delete:
             tableName: game

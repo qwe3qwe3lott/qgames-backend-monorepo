@@ -17,6 +17,8 @@ import site.qgames.game.api.dto.room.NothingSettingsLimitsDto
 import site.qgames.game.api.dto.room.TimeControlMode
 import site.qgames.game.support.TestData.CARCASSONNE_DESCRIPTION
 import site.qgames.game.support.TestData.CARCASSONNE_TITLE
+import site.qgames.game.support.TestData.CHECKERS_DESCRIPTION
+import site.qgames.game.support.TestData.CHECKERS_TITLE
 import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
 import site.qgames.game.support.TestData.NOTHING_DESCRIPTION
 import site.qgames.game.support.TestData.NOTHING_TITLE
@@ -42,12 +44,13 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
 
         val games = call(HttpMethod.GET, "/api/games", null).andExpect { status { isOk() } }.body<GameListResponse>().games
 
-        // Каркассон не опубликован и в каталог не попадает.
+        // Шашки опубликованы и стоят после «ничто» (sort_order), Каркассон не опубликован и в каталог не попадает.
+        val checkers = GameSummaryDto(GameCode.CHECKERS, CHECKERS_TITLE, CHECKERS_DESCRIPTION)
         if (listed) {
             val nothing = GameSummaryDto(GameCode.NOTHING, NOTHING_TITLE, NOTHING_DESCRIPTION)
-            assertThat(games).containsExactly(nothing)
+            assertThat(games).containsExactly(nothing, checkers)
         } else {
-            assertThat(games).isEmpty()
+            assertThat(games).containsExactly(checkers)
         }
     }
 
