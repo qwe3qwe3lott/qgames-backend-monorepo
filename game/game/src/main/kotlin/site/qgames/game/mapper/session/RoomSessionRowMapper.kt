@@ -24,7 +24,6 @@ class RoomSessionRowMapper(
             roomId = row[RoomSessionTable.roomId],
             gameCode = GameCode.fromCode(gameCode) ?: error("Unknown game code '$gameCode'"),
             status = RoomSessionStatus.valueOf(row[RoomSessionTable.status]),
-            stateSchemaVersion = row[RoomSessionTable.stateSchemaVersion],
             seed = row[RoomSessionTable.seed],
             lastSeq = row[RoomSessionTable.lastSeq],
             timeControl = RoomTimeControlModel(

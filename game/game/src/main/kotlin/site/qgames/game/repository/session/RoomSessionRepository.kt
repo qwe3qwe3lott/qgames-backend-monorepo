@@ -21,7 +21,6 @@ class RoomSessionRepository(
     fun insert(
         roomId: UUID,
         gameCode: GameCode,
-        stateSchemaVersion: Int,
         seed: Long,
         timeControl: RoomTimeControlModel,
         gameSettings: String,
@@ -33,7 +32,6 @@ class RoomSessionRepository(
             roomId = roomId,
             gameCode = gameCode,
             status = RoomSessionStatus.IN_PROGRESS,
-            stateSchemaVersion = stateSchemaVersion,
             seed = seed,
             lastSeq = 0,
             timeControl = timeControl,

@@ -11,7 +11,6 @@ object RoomSessionTable : Table("room_session") {
     val roomId = javaUUID("room_id")
     val gameCode = varchar("game_code", 32)
     val status = varchar("status", 16)
-    val stateSchemaVersion = integer("state_schema_version")
     val seed = long("seed")
     val lastSeq = long("last_seq")
     val timeControlMode = varchar("time_control_mode", 16)

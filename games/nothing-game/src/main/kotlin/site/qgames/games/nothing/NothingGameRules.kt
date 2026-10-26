@@ -32,7 +32,6 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
     override val gameStateClass = NothingGameState::class.java
     override val moveClass = NothingMove::class.java
     override val settingsClass = NothingSettings::class.java
-    override val stateSchemaVersion = 4
 
     override val timeControl = TimeControlRules(
         modes = setOf(TimeControlMode.NONE, TimeControlMode.PER_MOVE),

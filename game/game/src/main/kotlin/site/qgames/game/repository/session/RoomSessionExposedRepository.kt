@@ -33,7 +33,6 @@ class RoomSessionExposedRepository(private val roomSessionRowMapper: RoomSession
             it[roomId] = session.roomId
             it[gameCode] = session.gameCode.code
             it[status] = session.status.name
-            it[stateSchemaVersion] = session.stateSchemaVersion
             it[seed] = session.seed
             it[lastSeq] = session.lastSeq
             it[timeControlMode] = session.timeControl.mode.name

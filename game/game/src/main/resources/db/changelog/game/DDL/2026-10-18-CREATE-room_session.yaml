@@ -4,9 +4,9 @@ databaseChangeLog:
       author: A Kozlov
       runInTransaction: true
       comment: >-
-        Партия любой игры. Состояние не хранится: это свёртка журнала room_session_event (формат событий задаёт модуль игры
-        и state_schema_version). last_seq — seq последнего события журнала, новые события пишутся с last_seq + 1 под
-        блокировкой комнаты. time_control_mode, move_seconds и game_settings — снимок настроек комнаты на момент старта.
+        Партия любой игры. Состояние не хранится: это свёртка журнала room_session_event (формат событий задаёт модуль игры).
+        last_seq — seq последнего события журнала, новые события пишутся с last_seq + 1 под блокировкой комнаты.
+        time_control_mode, move_seconds и game_settings — снимок настроек комнаты на момент старта.
         move_deadline — проекция таймера для MoveTimeoutJob: дедлайн идущего таймера; NULL — без таймера, на паузе или
         партия закончена или отменена.
       changes:
@@ -39,11 +39,6 @@ databaseChangeLog:
               - column:
                   name: status
                   type: varchar(16)
-                  constraints:
-                    nullable: false
-              - column:
-                  name: state_schema_version
-                  type: integer
                   constraints:
                     nullable: false
               - column:

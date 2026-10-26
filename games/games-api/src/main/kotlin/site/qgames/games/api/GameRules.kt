@@ -22,7 +22,6 @@ import java.util.UUID
  * `result`) и
  * не совпадают с ними по именам; события игры адресуют их путями от `state` (например, `PATCH ["state"] {moves}`).
  * [G], ход [M] и настройки [C] — простые data-классы без вычисляемых свойств: сервис game пишет их в журнал как JSON.
- * При несовместимом изменении формата событий увеличивается [stateSchemaVersion].
  *
  * Игроки партии закреплены до её конца: игрок, закрывший поток комнаты, остаётся игроком, а партия о его отсутствии
  * не знает (время идёт, ходы по таймауту — как обычно). Хука на отсутствие игрока пока нет.
@@ -41,7 +40,6 @@ interface GameRules<G : Any, M : Any, C : Any> {
     val gameStateClass: Class<G>
     val moveClass: Class<M>
     val settingsClass: Class<C>
-    val stateSchemaVersion: Int
 
     /** Какие режимы времени поддерживает игра, их границы и режим по умолчанию. */
     val timeControl: TimeControlRules

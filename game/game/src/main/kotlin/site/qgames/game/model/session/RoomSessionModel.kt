@@ -11,7 +11,6 @@ data class RoomSessionModel(
     val roomId: UUID,
     val gameCode: GameCode,
     val status: RoomSessionStatus,
-    val stateSchemaVersion: Int,
     val seed: Long,
     /** seq последнего события журнала. */
     val lastSeq: Long,

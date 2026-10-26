@@ -78,7 +78,6 @@ class RoomSessionService(
         val session = roomSessionRepository.insert(
             roomId = roomId,
             gameCode = room.gameCode,
-            stateSchemaVersion = rules.stateSchemaVersion,
             seed = seed,
             timeControl = room.timeControl,
             gameSettings = room.gameSettings,

@@ -44,7 +44,6 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
     override val moveClass = CheckersMove::class.java
     override val settingsClass = CheckersSettings::class.java
     override val playerClass = CheckersPlayer::class.java
-    override val stateSchemaVersion = 1
 
     override val timeControl = TimeControlRules(
         modes = setOf(TimeControlMode.NONE, TimeControlMode.PER_MOVE),
