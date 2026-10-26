@@ -1,7 +1,7 @@
 package site.qgames.game.model.session
 
-import site.qgames.games.api.session.ViewerKey
 import java.time.Instant
+import site.qgames.games.core.ViewerKey
 
 /**
  * Документ партии `{status, meta, state}` для одного зрителя после события [seq]: свёртка его маскированных событий

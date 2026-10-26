@@ -13,7 +13,7 @@ include(":libs:common-web")
 include(":libs:common-test")
 
 // Правила игр: чистый Kotlin без инфраструктуры (см. CLAUDE.md)
-include(":games:games-api")
+include(":games:game-core")
 include(":games:nothing-game")
 include(":games:checkers-game")
 

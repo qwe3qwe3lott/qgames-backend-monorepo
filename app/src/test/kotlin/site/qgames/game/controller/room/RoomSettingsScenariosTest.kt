@@ -1,7 +1,11 @@
 package site.qgames.game.controller.room
 
 import io.mockk.every
+import java.util.UUID
+import java.util.stream.Stream
 import org.assertj.core.api.Assertions.assertThat
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -9,8 +13,8 @@ import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.http.HttpStatus
 import site.qgames.game.GameIntegrationTest
-import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.game.GameCode
+import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.NothingSettingsDto
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
@@ -20,13 +24,9 @@ import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.EVE
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.TimeControlRules
-import java.util.UUID
-import java.util.stream.Stream
-import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.jdbc.selectAll
 import site.qgames.game.table.room.RoomTable
+import site.qgames.games.core.TimeControl
+import site.qgames.games.core.TimeControlRules
 
 /**
  * Настройки комнаты: задаются при создании (POST /api/games/{gameCode}/rooms) и меняются владельцем между партиями

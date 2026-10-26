@@ -245,7 +245,7 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(strings(schema.path("required"))).containsExactlyInAnyOrder(*required.split('|').toTypedArray())
     }
 
-    /** Платформа партии: итог (модуль result), правила хода в meta, поля игры у игрока, схема параметров хода шашек. */
+    /** Платформа партии: итог (блок core result), правила хода в meta, поля игры у игрока, схема параметров хода шашек. */
     @Test
     fun `session result, move rules and checkers schemas are in the contract`() {
         val schemas = apiDocs().path("components").path("schemas")

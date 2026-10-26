@@ -1,28 +1,28 @@
 package site.qgames.game.controller.room
 
+import java.util.UUID
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import site.qgames.common.web.context.RequestUserContext
-import site.qgames.game.exception.room.RoomErrors
-import site.qgames.game.api.web.GameRoomApi
 import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.session.SessionStreamEventTypes
+import site.qgames.game.api.web.GameRoomApi
+import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.mapper.room.RoomResponseMapper
-import site.qgames.game.mapper.session.SessionEventResponseMapper
 import site.qgames.game.mapper.room.RoomSettingsResponseMapper
+import site.qgames.game.mapper.session.SessionEventResponseMapper
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.service.room.RoomService
 import site.qgames.game.service.session.RoomSessionService
 import site.qgames.game.service.session.SessionStreamService
 import site.qgames.game.stream.common.SseResponses
 import site.qgames.game.stream.session.SessionStreamRegistry
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.SessionStatus
-import java.util.UUID
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.SessionStatus
 
 @RestController
 class GameRoomController(

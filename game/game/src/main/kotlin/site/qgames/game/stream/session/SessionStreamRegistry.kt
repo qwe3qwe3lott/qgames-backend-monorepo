@@ -1,12 +1,12 @@
 package site.qgames.game.stream.session
 
+import java.util.UUID
 import org.slf4j.LoggerFactory
 import org.springframework.context.SmartLifecycle
 import org.springframework.stereotype.Component
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import site.qgames.game.stream.common.StreamIndex
-import site.qgames.games.api.session.ViewerKey
-import java.util.UUID
+import site.qgames.games.core.ViewerKey
 
 /**
  * Открытые потоки партий: sessionId → подписчики. Как и реестр потоков комнат, привязан к соединениям; события

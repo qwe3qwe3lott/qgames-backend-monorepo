@@ -1,7 +1,7 @@
 package site.qgames.game.mapper.session
 
 import org.springframework.stereotype.Component
-import site.qgames.games.api.session.SessionCodec
+import site.qgames.games.core.SessionCodec
 import tools.jackson.databind.json.JsonMapper
 
 /**

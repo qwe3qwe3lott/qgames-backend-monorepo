@@ -1,31 +1,31 @@
 package site.qgames.games.checkers
 
+import java.time.Instant
+import java.util.UUID
+import java.util.stream.Stream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
-import site.qgames.games.api.GameRules
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.core.MoveOption
-import site.qgames.games.api.result.ResultOutcome
-import site.qgames.games.api.result.ResultState
-import site.qgames.games.api.session.MoveOutcome
-import site.qgames.games.api.session.PathSegment
-import site.qgames.games.api.session.SessionDocument
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEventMethod
-import site.qgames.games.api.session.SessionEvents
-import site.qgames.games.api.session.SessionStatus
-import site.qgames.games.api.session.ViewerKey
-import site.qgames.games.api.turns.TurnsState
 import site.qgames.games.checkers.CheckersColor.BLACK
 import site.qgames.games.checkers.CheckersColor.WHITE
-import java.time.Instant
-import java.util.UUID
-import java.util.stream.Stream
+import site.qgames.games.core.GameRules
+import site.qgames.games.core.MoveOption
+import site.qgames.games.core.MoveOutcome
+import site.qgames.games.core.PathSegment
+import site.qgames.games.core.ResultOutcome
+import site.qgames.games.core.ResultState
+import site.qgames.games.core.SessionDocument
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.SessionEvent
+import site.qgames.games.core.SessionEventMethod
+import site.qgames.games.core.SessionEvents
+import site.qgames.games.core.SessionStatus
+import site.qgames.games.core.TimeControl
+import site.qgames.games.core.TurnsState
+import site.qgames.games.core.ViewerKey
 
 /**
  * Партия шашек на платформе: генерация и проверка ходов по флагам правил, события, окончания и маскировка — чистые
@@ -515,11 +515,11 @@ class CheckersSessionScenariosTest {
         val journal = position(listOf(w("w1", 3, 3), b("b1", 4, 4)))
         val finished = fold(journal + accepted(journal, white, 3 to 3, 5 to 5)).session
         @Suppress("UNCHECKED_CAST")
-        val state = finished.state as site.qgames.games.api.session.SessionState<CheckersGameState>
+        val state = finished.state as site.qgames.games.core.SessionState<CheckersGameState>
 
         val decision = checkers.decide(state, RUSSIAN, white, CheckersMove("RESIGN"))
 
-        assertThat(decision).isEqualTo(site.qgames.games.api.Decision.Rejected("GAME_FINISHED", "The game is already finished"))
+        assertThat(decision).isEqualTo(site.qgames.games.core.Decision.Rejected("GAME_FINISHED", "The game is already finished"))
     }
 
     /** Скрытой информации нет: маскируются только чужие варианты ходов; свёртка маскированных = маска полной свёртки. */

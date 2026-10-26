@@ -1,10 +1,10 @@
 package site.qgames.game.repository.session
 
-import org.springframework.stereotype.Repository
-import site.qgames.game.model.session.RoomSessionEventModel
-import site.qgames.games.api.session.SessionEvent
 import java.time.Instant
 import java.util.UUID
+import org.springframework.stereotype.Repository
+import site.qgames.game.model.session.RoomSessionEventModel
+import site.qgames.games.core.SessionEvent
 
 /** Журнал событий партии: только дописывается. */
 @Repository

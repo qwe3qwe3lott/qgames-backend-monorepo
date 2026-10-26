@@ -1,6 +1,6 @@
 package site.qgames.games.checkers
 
-import site.qgames.games.api.session.SessionCodec
+import site.qgames.games.core.SessionCodec
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 

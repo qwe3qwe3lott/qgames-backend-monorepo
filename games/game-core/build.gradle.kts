@@ -1,4 +1,4 @@
-// SPI правил игры: чистый Kotlin, без Spring, БД и IO.
+// Core игр: модель игры (GameRules, SessionEngine) и общие механики партии; чистый Kotlin, без Spring, БД и IO.
 plugins {
     id("qgames.kotlin-library")
 }

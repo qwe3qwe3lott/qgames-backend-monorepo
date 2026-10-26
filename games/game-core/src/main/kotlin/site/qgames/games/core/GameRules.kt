@@ -1,10 +1,5 @@
-package site.qgames.games.api
+package site.qgames.games.core
 
-import site.qgames.games.api.core.MoveOption
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionState
-import site.qgames.games.api.session.ViewerKey
-import site.qgames.games.api.turns.TurnsState
 import java.util.UUID
 
 /**
@@ -13,14 +8,15 @@ import java.util.UUID
  *
  * Партия — журнал событий ([SessionEvent]): каждое событие — одна операция над документом партии `{status, meta, state}`
  * (PUT, PATCH, DELETE или INFO по пути). Состояние не хранится, а собирается свёрткой журнала одним общим применителем
- * ([site.qgames.games.api.session.SessionPatch]); своих редьюсеров у игры нет. Платформа
- * ([site.qgames.games.api.session.SessionEngine]) подключает к игре модули core (игроки и их варианты ходов), turns
- * (очерёдность и раунды) и timer (таймер хода, в том числе пауза) и сама добавляет их события. Игра решает, какие
- * события происходят в ответ на ход ([decide]) и на истечение времени ([onTimeout]), и задаёт их коды.
+ * ([SessionPatch]); своих редьюсеров у игры нет. Каждая игра — надстройка над core: платформа ([SessionEngine]) ведёт
+ * общие блоки состояния — игроков и их варианты ходов ([Players]), очерёдность и раунды ([Turns]), часы с паузой
+ * ([Timer]) и итог ([Result]) — и сама добавляет их события; механику, которая игре не нужна (например, часы), игра
+ * просто не задействует. Игра решает, какие события происходят в ответ на ход ([decide]) и на истечение времени
+ * ([onTimeout]), и задаёт их коды.
  *
- * Поля игровой части состояния [G] лежат в документе в `state` рядом с блоками модулей (`players`, `timer`, `turns`,
- * `result`) и
- * не совпадают с ними по именам; события игры адресуют их путями от `state` (например, `PATCH ["state"] {moves}`).
+ * Поля игровой части состояния [G] лежат в документе в `state` рядом с блоками core (`players`, `timer`, `turns`,
+ * `result`) и не совпадают с ними по именам; события игры адресуют их путями от `state` (например,
+ * `PATCH ["state"] {moves}`).
  * [G], ход [M] и настройки [C] — простые data-классы без вычисляемых свойств: сервис game пишет их в журнал как JSON.
  *
  * Игроки партии закреплены до её конца: игрок, закрывший поток комнаты, остаётся игроком, а партия о его отсутствии
@@ -51,7 +47,7 @@ interface GameRules<G : Any, M : Any, C : Any> {
     val settingsLimits: Any
 
     /**
-     * Класс полей игры у игрока ([site.qgames.games.api.core.PlayerState.game]): в документе они лежат прямо в объекте
+     * Класс полей игры у игрока ([site.qgames.games.core.PlayerState.game]): в документе они лежат прямо в объекте
      * игрока `state.players[]` рядом с `id` и `moveOptions` и не называются так же. null — своих полей у игрока нет.
      */
     val playerClass: Class<*>? get() = null
@@ -72,11 +68,10 @@ interface GameRules<G : Any, M : Any, C : Any> {
     fun start(players: List<UUID>, seed: Long, settings: C): GameStart<G>
 
     /**
-     * Ход игрока [playerId] в полном состоянии [state]: события игры (и модулей, которыми игра управляет сама, —
+     * Ход игрока [playerId] в полном состоянии [state]: события игры (и core, которыми игра управляет сама, —
      * например `turn-changed`) или отказ. Конец партии — событие `session-finished` в списке
-     * ([site.qgames.games.api.session.SessionEvents.finished]); итог партии (`result-set`,
-     * [site.qgames.games.api.result.ResultModule]) — только в том же наборе событий. Коды событий игры не совпадают с
-     * кодами платформы и модулей. [settings] — настройки игры, закреплённые за партией при старте.
+     * ([SessionEvents.finished]); итог партии (`result-set`, [Result]) — только в том же наборе событий. Коды событий
+     * игры не совпадают с кодами платформы и core. [settings] — настройки игры, закреплённые за партией при старте.
      */
     fun decide(state: SessionState<G>, settings: C, playerId: UUID, move: M): Decision
 
@@ -96,7 +91,7 @@ interface GameRules<G : Any, M : Any, C : Any> {
     fun maskGame(game: G, viewer: ViewerKey): G = game
 }
 
-/** Начало партии: игровая часть состояния, очерёдность (модуль turns) и поля игры у игроков. */
+/** Начало партии: игровая часть состояния, очерёдность ([Turns]) и поля игры у игроков. */
 data class GameStart<G : Any>(
     val game: G,
     val turns: TurnsState,

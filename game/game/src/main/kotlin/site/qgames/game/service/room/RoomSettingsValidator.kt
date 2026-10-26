@@ -7,7 +7,7 @@ import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.service.game.GameRegistry
 
 /**
- * Проверяет настройки комнаты по правилам игры: шахматные часы — по [site.qgames.games.api.TimeControlRules] (можно ли
+ * Проверяет настройки комнаты по правилам игры: шахматные часы — по [site.qgames.games.core.TimeControlRules] (можно ли
  * без таймера, границы запаса и добавки), настройки игры — правилами модуля игры. Ошибки отдаются по полям в формате
  * `@Valid` (400 VALIDATION_ERROR, `errors`).
  */

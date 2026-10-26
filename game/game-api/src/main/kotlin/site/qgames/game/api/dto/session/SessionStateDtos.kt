@@ -36,7 +36,7 @@ enum class SessionResultOutcome {
     DRAW,
 }
 
-/** Итог партии (модуль result): ставится вместе с концом партии по правилам; у идущей и отменённой партии — null. */
+/** Итог партии: ставится вместе с концом партии по правилам; у идущей и отменённой партии — null. */
 data class SessionResultDto(
     val outcome: SessionResultOutcome,
     /** Победители; у ничьей — пустой список. */
@@ -55,7 +55,7 @@ data class SessionGameDto(
     val rules: RoomSettingsDto,
 )
 
-/** Игрок партии (модуль core): элемент массива `state.players`, адресуется по id. */
+/** Игрок партии (поля core): элемент массива `state.players`, адресуется по id. */
 data class SessionPlayerDto(
     val id: UUID,
     /** Что игрок может сделать сейчас. Видит только сам игрок, остальным — пустой список. */
@@ -70,7 +70,7 @@ data class MoveOptionDto(
     val data: Map<String, Any?>? = null,
 )
 
-/** Очерёдность (модуль turns). */
+/** Очерёдность. */
 data class SessionTurnsDto(
     /** Чей сейчас ход; null — ход ничей или партия закончилась. */
     val currentPlayerId: UUID?,
@@ -88,7 +88,7 @@ enum class SessionTimerStatus {
     STOPPED,
 }
 
-/** Шахматные часы партии (модуль timer). Пауза — состояние таймера. */
+/** Шахматные часы партии. Пауза — состояние таймера. */
 data class SessionTimerDto(
     val status: SessionTimerStatus,
     /**
@@ -109,11 +109,11 @@ data class PlayerClockDto(
 )
 
 /**
- * Состояние партии конкретной игры: блоки модулей (players, timer, turns) и поля игры. Игра — meta.game.code
+ * Состояние партии конкретной игры: блоки core (players, timer, turns, result) и поля игры. Игра — meta.game.code
  * снапшота; клиент сужает тип по нему и проверяет этой схемой состояние после применения каждого события.
  */
 @Schema(
-    description = "Состояние партии конкретной игры: блоки модулей (players, timer, turns, result) и поля игры. " +
+    description = "Состояние партии конкретной игры: блоки core (players, timer, turns, result) и поля игры. " +
         "Игра — meta.game.code снапшота; этой схемой клиент проверяет состояние после каждого события",
     oneOf = [NothingSessionStateDto::class, CheckersSessionStateDto::class],
 )
@@ -169,7 +169,7 @@ data class CheckersMoveRulesDto(
     val removeCapturedAfterMove: Boolean,
 ) : SessionMoveRulesDto
 
-/** Игрок партии шашек: поля модуля core и цвет. */
+/** Игрок партии шашек: поля core и цвет. */
 data class CheckersPlayerDto(
     val id: UUID,
     /** Что игрок может сделать сейчас (MOVE, RESIGN). Видит только сам игрок, остальным — пустой список. */

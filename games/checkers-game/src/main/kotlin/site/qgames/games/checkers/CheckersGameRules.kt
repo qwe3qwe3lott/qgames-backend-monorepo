@@ -1,28 +1,28 @@
 package site.qgames.games.checkers
 
-import site.qgames.games.api.Decision
-import site.qgames.games.api.GameRules
-import site.qgames.games.api.GameStart
-import site.qgames.games.api.SettingsViolation
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.TimeControlRules
-import site.qgames.games.api.core.MoveOption
-import site.qgames.games.api.core.PlayerState
-import site.qgames.games.api.result.ResultModule
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEvents
-import site.qgames.games.api.session.SessionState
-import site.qgames.games.api.turns.TurnsModule
 import java.util.UUID
 import kotlin.random.Random
+import site.qgames.games.core.Decision
+import site.qgames.games.core.GameRules
+import site.qgames.games.core.GameStart
+import site.qgames.games.core.MoveOption
+import site.qgames.games.core.PlayerState
+import site.qgames.games.core.Result
+import site.qgames.games.core.SessionEvent
+import site.qgames.games.core.SessionEvents
+import site.qgames.games.core.SessionState
+import site.qgames.games.core.SettingsViolation
+import site.qgames.games.core.TimeControl
+import site.qgames.games.core.TimeControlRules
+import site.qgames.games.core.Turns
 
 /**
  * Шашки. Вариант правил — настройка комнаты ([CheckersSettings.variant]); ходы генерируются и проверяются только по
  * флагам [CheckersMoveRules] варианта ([CheckersBoard]), они же уходят клиенту в `meta.moveRules`.
  *
- * Модули: core (варианты ходов: MOVE и RESIGN у того, чей ход, и ACCEPT_DRAW, если соперник предложил ничью; RESIGN у
- * соперника; цвет игрока — поле игры в `players[]`), turns (ход переходит к сопернику, раундов нет), timer (шахматные
- * часы; время вышло — поражение), result. Скрытой информации нет, маски не нужны.
+ * Core: варианты ходов (MOVE и RESIGN у того, чей ход, и ACCEPT_DRAW, если соперник предложил ничью; RESIGN у
+ * соперника; цвет игрока — поле игры в `players[]`), очерёдность (ход переходит к сопернику, раундов нет), часы
+ * (время вышло — поражение), итог. Скрытой информации нет, маски не нужны.
  *
  * Ход MOVE — полный путь шашки `{path: [[x, y], …], offerDraw?}` с начальной клеткой; события: `piece-moved`
  * (`PATCH ["state", "pieces", {id}] {square}`), `piece-captured` (`DELETE` на каждую сбитую), `piece-crowned`
@@ -84,7 +84,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
                 positionHistory = listOf(CheckersDraws.positionKey(moveRules.firstColor, pieces)),
                 drawOfferedBy = null,
             ),
-            turns = TurnsModule.initial(players, rounds = null, first = first),
+            turns = Turns.initial(players, rounds = null, first = first),
             players = colors.mapValues { CheckersPlayer(it.value) },
         )
     }
@@ -109,7 +109,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
         return Decision.Accepted(
             listOf(
                 SessionEvents.info(DRAW_ACCEPTED, mapOf(PLAYER_ID to playerId)),
-                ResultModule.draw(REASON_DRAW_AGREED),
+                Result.draw(REASON_DRAW_AGREED),
                 SessionEvents.finished(),
             ),
         )
@@ -182,17 +182,17 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
                 positionHistory.count { it == key } >= CheckersDraws.REPETITIONS -> addAll(draw(REASON_REPETITION))
                 CheckersDraws.endgame(variant, pieces, color, materialMoves) -> addAll(draw(REASON_ENDGAME_RULE))
                 quietMoves >= drawQuietMoves(variant) -> addAll(draw(REASON_DRAW_RULE))
-                else -> add(TurnsModule.changed(state.turns.copy(currentPlayerId = opponent)))
+                else -> add(Turns.changed(state.turns.copy(currentPlayerId = opponent)))
             }
         }
         return Decision.Accepted(events)
     }
 
     /** Итог-победа [winnerId] и конец партии. */
-    private fun win(winnerId: UUID, reason: String) = listOf(ResultModule.win(winnerId, reason), SessionEvents.finished())
+    private fun win(winnerId: UUID, reason: String) = listOf(Result.win(winnerId, reason), SessionEvents.finished())
 
     /** Итог-ничья и конец партии. */
-    private fun draw(reason: String) = listOf(ResultModule.draw(reason), SessionEvents.finished())
+    private fun draw(reason: String) = listOf(Result.draw(reason), SessionEvents.finished())
 
     private fun illegal(message: String) = Decision.Rejected(ILLEGAL_MOVE, message)
 

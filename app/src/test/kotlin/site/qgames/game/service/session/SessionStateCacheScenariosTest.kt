@@ -1,6 +1,8 @@
 package site.qgames.game.service.session
 
 import io.mockk.verify
+import java.util.UUID
+import java.util.stream.Stream
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
@@ -15,10 +17,8 @@ import site.qgames.game.model.session.SessionStateModel
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.ViewerKey
-import java.util.UUID
-import java.util.stream.Stream
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.ViewerKey
 
 /**
  * Сборка состояния партии из журнала через кеш состояний зрителей: промах — свёртка с нуля, попадание на seq K —

@@ -1,5 +1,7 @@
 package site.qgames.game.repository.session
 
+import java.time.Instant
+import java.util.UUID
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.between
@@ -12,9 +14,7 @@ import site.qgames.game.mapper.session.RoomSessionRowMapper
 import site.qgames.game.mapper.session.SessionEventJsonMapper
 import site.qgames.game.model.session.RoomSessionEventModel
 import site.qgames.game.table.session.RoomSessionEventTable
-import site.qgames.games.api.session.SessionEvent
-import java.time.Instant
-import java.util.UUID
+import site.qgames.games.core.SessionEvent
 
 /** Таблица `room_session_event` — журнал партии (Exposed). Используется только из [RoomSessionEventRepository]. */
 @Repository

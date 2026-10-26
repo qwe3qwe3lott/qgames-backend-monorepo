@@ -153,7 +153,7 @@ interface GameRoomApi {
             "Первое сообщение — snapshot: документ партии для этого зрителя `{seq, status, serverTime, meta, state}`; " +
             "так же после каждого переподключения. meta.game — код игры и правила партии, закреплённые при старте; по " +
             "meta.game.code клиент выбирает схему состояния (NothingSessionStateDto, CheckersSessionStateDto) и правил " +
-            "хода meta.moveRules (CheckersMoveRulesDto; null — у игры их нет). state — блоки модулей (players с " +
+            "хода meta.moveRules (CheckersMoveRulesDto; null — у игры их нет). state — блоки core (players с " +
             "moveOptions и полями игры, timer, turns, result — итог партии) и поля игры.\n\n" +
             "Дальше — события журнала партии `{seq, at, method, code, data}` (SessionPatchEvent), тип сообщения — " +
             "method в нижнем регистре (put, patch, delete, info). seq непрерывен и продолжает seq снапшота: дыра " +

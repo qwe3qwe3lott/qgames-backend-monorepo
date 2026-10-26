@@ -1,5 +1,8 @@
 package site.qgames.game.service.session
 
+import java.security.SecureRandom
+import java.time.Clock
+import java.util.UUID
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -20,16 +23,13 @@ import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.game.service.game.GameService
 import site.qgames.game.service.room.RoomDetailsService
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.session.MoveOutcome
-import site.qgames.games.api.session.SessionDocument
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.SessionStatus
-import site.qgames.games.api.session.TimerOutcome
+import site.qgames.games.core.MoveOutcome
+import site.qgames.games.core.SessionDocument
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.SessionStatus
+import site.qgames.games.core.TimeControl
+import site.qgames.games.core.TimerOutcome
 import tools.jackson.databind.json.JsonMapper
-import java.security.SecureRandom
-import java.time.Clock
-import java.util.UUID
 
 /**
  * Партии в комнате. Партия — журнал событий ([SessionJournalService]); правила конкретной игры и модули — в

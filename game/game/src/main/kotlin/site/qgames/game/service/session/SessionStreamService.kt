@@ -1,5 +1,7 @@
 package site.qgames.game.service.session
 
+import java.time.Clock
+import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import site.qgames.game.exception.room.RoomErrors
@@ -15,12 +17,10 @@ import site.qgames.game.repository.session.RoomSessionEventRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.game.service.game.GameService
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionStatus
-import site.qgames.games.api.session.ViewerKey
-import java.time.Clock
-import java.util.UUID
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.SessionEvent
+import site.qgames.games.core.SessionStatus
+import site.qgames.games.core.ViewerKey
 
 /**
  * Поток партии: доступ, снапшот зрителя и события журнала для раздачи. Без блокировок: снапшот собирается по

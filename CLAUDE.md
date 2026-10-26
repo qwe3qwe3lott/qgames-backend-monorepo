@@ -50,7 +50,7 @@ libs/                          общие ИНФРАСТРУКТУРНЫЕ мо�
   common-web                   RequestUserContext, OpenAPI-кастомизация (тянет common-exception через api)
   common-test                  Testcontainers (singleton PostgreSQL), WireMock
 games/                         ПРАВИЛА ИГР (бизнес-логика, но без инфраструктуры)
-  games-api                    модель игры (GameRules, SessionEngine) и модули-механики core/turns/timer/result
+  game-core                    core игр: модель игры (GameRules, SessionEngine) и общие блоки — игроки, очередь, часы, итог
   nothing-game                 «игра в ничто» — тестовая игра для проверки движка
   checkers-game                шашки (вариант правил — настройка комнаты: русские, международные, английские)
   <игра>                       правила конкретной игры (например, games/carcassonne)
@@ -61,7 +61,7 @@ docker/                        Dockerfile приложения, dev-ключи
 
 ### Модули игр (`games/`)
 
-Модуль игры — **чистый Kotlin**: без Spring, БД, сети и прочего IO, зависит только от `games/games-api`. Модель игры (журнал событий-патчей, `GameRules`, модули-механики), коды событий игр и чек-лист новой игры — в **`docs/games.md`**: читать, когда трогаешь `games/*`, движок партий или добавляешь игру.
+Модуль игры — **чистый Kotlin**: без Spring, БД, сети и прочего IO, зависит только от `games/game-core`. Модель игры (журнал событий-патчей, `GameRules`, блоки core), коды событий игр и чек-лист новой игры — в **`docs/games.md`**: читать, когда трогаешь `games/*`, движок партий или добавляешь игру.
 
 ### Модули приложения: `<m>` и `<m>-api`
 

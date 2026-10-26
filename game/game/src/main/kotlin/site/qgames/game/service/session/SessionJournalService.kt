@@ -1,5 +1,6 @@
 package site.qgames.game.service.session
 
+import java.time.Instant
 import org.springframework.stereotype.Service
 import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.RoomSessionStatus
@@ -8,13 +9,12 @@ import site.qgames.game.publisher.session.SessionEventPublisher
 import site.qgames.game.repository.session.RoomSessionEventRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
-import site.qgames.games.api.session.SessionDocument
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionStatus
-import site.qgames.games.api.session.ViewerKey
-import site.qgames.games.api.timer.TimerModule
-import java.time.Instant
+import site.qgames.games.core.SessionDocument
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.SessionEvent
+import site.qgames.games.core.SessionStatus
+import site.qgames.games.core.Timer
+import site.qgames.games.core.ViewerKey
 
 /**
  * Запись изменений партии в журнал. Вызывается под блокировкой комнаты: полный документ на last_seq ([full]) →
@@ -52,7 +52,7 @@ class SessionJournalService(
             id = session.id,
             lastSeq = toSeq,
             status = RoomSessionStatus.valueOf(status.name),
-            moveDeadline = if (inProgress) TimerModule.runningDeadline(after.session.state.timer) else null,
+            moveDeadline = if (inProgress) Timer.runningDeadline(after.session.state.timer) else null,
             finishedAt = if (inProgress) null else now,
         )
         sessionEventPublisher.publish(session.id, fromSeq, toSeq)

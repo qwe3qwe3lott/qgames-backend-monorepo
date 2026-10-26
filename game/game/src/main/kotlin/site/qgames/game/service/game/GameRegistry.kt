@@ -2,7 +2,7 @@ package site.qgames.game.service.game
 
 import org.springframework.stereotype.Component
 import site.qgames.game.model.game.GameCode
-import site.qgames.games.api.GameRules
+import site.qgames.games.core.GameRules
 
 /**
  * Правила подключённых игр по коду. Модуль правил есть не у каждой игры каталога: неопубликованной игре (NOT_PUBLISHED)

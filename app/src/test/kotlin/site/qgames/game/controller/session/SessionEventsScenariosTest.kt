@@ -2,7 +2,15 @@ package site.qgames.game.controller.session
 
 import io.mockk.every
 import io.mockk.verify
+import java.time.Instant
+import java.util.UUID
+import java.util.stream.Stream
+import kotlin.concurrent.thread
 import org.assertj.core.api.Assertions.assertThat
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -18,8 +26,8 @@ import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.SessionStatus
 import site.qgames.game.api.dto.session.MoveOptionDto
 import site.qgames.game.api.dto.session.NothingSessionStateDto
-import site.qgames.game.api.dto.session.SessionPlayerDto
 import site.qgames.game.api.dto.session.SessionPatchStreamEvent
+import site.qgames.game.api.dto.session.SessionPlayerDto
 import site.qgames.game.api.dto.session.SessionStreamEvent
 import site.qgames.game.api.dto.session.SessionTimerStatus
 import site.qgames.game.api.dto.session.SessionTurnsDto
@@ -31,18 +39,10 @@ import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.game.support.TestData.EVE
-import site.qgames.games.api.session.SessionPatch
-import site.qgames.games.api.session.ViewerKey
-import tools.jackson.databind.JsonNode
-import java.util.UUID
-import java.util.stream.Stream
-import kotlin.concurrent.thread
-import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.and
-import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.update
 import site.qgames.game.table.session.RoomSessionTable
-import java.time.Instant
+import site.qgames.games.core.SessionPatch
+import site.qgames.games.core.ViewerKey
+import tools.jackson.databind.JsonNode
 
 /**
  * Поток партии (SSE): первым — снапшот зрителя на seq, дальше события журнала с непрерывным seq, замаскированные под

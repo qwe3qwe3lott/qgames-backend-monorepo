@@ -1,17 +1,12 @@
-package site.qgames.games.api.core
+package site.qgames.games.core
 
-import site.qgames.games.api.session.PathSegment
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEvents
-import site.qgames.games.api.session.SessionState
-import site.qgames.games.api.session.ViewerKey
 import java.util.UUID
 
 /**
- * Игрок партии (модуль core). Другие модули и игра дописывают сюда свои атрибуты игрока (например, цвет в шашках).
+ * Игрок партии. Игра дописывает сюда свои атрибуты игрока (например, цвет в шашках).
  *
  * Поля игры ([game], объект класса GameRules.playerClass) в документе лежат прямо в объекте игрока рядом с полями
- * модуля (`{id, moveOptions, color}`), а не вложенным объектом, и не совпадают с ними по именам ([FIELDS]). Документ
+ * core (`{id, moveOptions, color}`), а не вложенным объектом, и не совпадают с ними по именам ([FIELDS]). Документ
  * собирает и читает SessionEngine; сам [PlayerState] в JSON напрямую не переводится.
  */
 data class PlayerState(
@@ -22,7 +17,7 @@ data class PlayerState(
     val game: Any? = null,
 ) {
     companion object {
-        /** Поля модуля core в объекте игрока: поля игры не могут называться так же. */
+        /** Поля core в объекте игрока: поля игры не могут называться так же. */
         val FIELDS = setOf("id", "moveOptions")
     }
 }
@@ -34,11 +29,10 @@ data class MoveOption(
 )
 
 /**
- * Модуль core: игроки (`state.players`) и их варианты ходов. Варианты считает игра, а модуль после каждого изменения
- * выдаёт `move-options-changed` (`PUT ["state", "players", {id}, "moveOptions"]`) тем игрокам, у которых набор
+ * Игроки (`state.players`) и их варианты ходов. Варианты считает игра, а платформа после каждого изменения выдаёт `move-options-changed` (`PUT ["state", "players", {id}, "moveOptions"]`) тем игрокам, у которых набор
  * изменился. Варианты хода видит только сам игрок, остальным значение маскируется в `[]`.
  */
-object CoreModule {
+object Players {
 
     /** Варианты ходов игрока изменились. */
     const val MOVE_OPTIONS_CHANGED = "move-options-changed"
@@ -49,7 +43,7 @@ object CoreModule {
     private const val MOVE_OPTIONS = "moveOptions"
 
     /** Игроки новой партии в порядке мест; [game] — поля игры у игрока (у игры без полей игрока — пусто). */
-    fun initialPlayers(players: List<UUID>, game: Map<UUID, Any> = emptyMap()): List<PlayerState> =
+    fun initial(players: List<UUID>, game: Map<UUID, Any> = emptyMap()): List<PlayerState> =
         players.map { PlayerState(it, emptyList(), game[it]) }
 
     /** События `move-options-changed` для игроков, у которых варианты ходов в [state] отличаются от [options]. */
@@ -66,7 +60,7 @@ object CoreModule {
             options,
         )
 
-    /** Маска события модуля для [viewer]; null — событие не модуля core. */
+    /** Маска события `move-options-changed` для [viewer]; null — событие другое. */
     fun mask(event: SessionEvent, viewer: ViewerKey): SessionEvent? {
         if (event.code != MOVE_OPTIONS_CHANGED) return null
         val playerId = (event.path.getOrNull(2) as? PathSegment.Id)?.id?.let(UUID::fromString)

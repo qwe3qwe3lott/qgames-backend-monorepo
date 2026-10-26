@@ -1,8 +1,8 @@
 package site.qgames.game.cache.session
 
-import site.qgames.game.model.session.SessionStateModel
-import site.qgames.games.api.session.ViewerKey
 import java.util.UUID
+import site.qgames.game.model.session.SessionStateModel
+import site.qgames.games.core.ViewerKey
 
 /**
  * Кеш состояний партии по проекции зрителя: `(sessionId, viewerKey) → (seq, state)`. Хранит последнее собранное

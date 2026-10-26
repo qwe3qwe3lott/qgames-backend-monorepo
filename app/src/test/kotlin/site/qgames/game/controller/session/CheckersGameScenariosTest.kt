@@ -1,5 +1,6 @@
 package site.qgames.game.controller.session
 
+import java.util.UUID
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
 import org.springframework.http.HttpMethod
@@ -10,16 +11,16 @@ import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.game.GameCodes
 import site.qgames.game.api.dto.game.GameDetailsResponse
 import site.qgames.game.api.dto.game.GameListResponse
+import site.qgames.game.api.dto.game.TimeControlLimitsDto
 import site.qgames.game.api.dto.room.CheckersSettingsDto
 import site.qgames.game.api.dto.room.CheckersSettingsLimitsDto
+import site.qgames.game.api.dto.room.CheckersTimePreset
+import site.qgames.game.api.dto.room.CheckersTimePresetDto
 import site.qgames.game.api.dto.room.CheckersVariant
+import site.qgames.game.api.dto.room.IntRangeDto
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.room.RoomStatus
-import site.qgames.game.api.dto.room.CheckersTimePreset
-import site.qgames.game.api.dto.room.CheckersTimePresetDto
-import site.qgames.game.api.dto.game.TimeControlLimitsDto
-import site.qgames.game.api.dto.room.IntRangeDto
 import site.qgames.game.api.dto.session.CheckersColor
 import site.qgames.game.api.dto.session.CheckersMoveRulesDto
 import site.qgames.game.api.dto.session.CheckersSessionStateDto
@@ -29,10 +30,9 @@ import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CHECKERS_DEFAULT_SETTINGS
 import site.qgames.game.support.TestData.CHECKERS_DESCRIPTION
 import site.qgames.game.support.TestData.CHECKERS_TITLE
-import site.qgames.games.api.result.ResultOutcome
-import site.qgames.games.api.result.ResultState
+import site.qgames.games.core.ResultOutcome
+import site.qgames.games.core.ResultState
 import tools.jackson.databind.JsonNode
-import java.util.UUID
 
 /**
  * Шашки в сервисе game: каталог, настройки варианта, партия через общую ручку хода и поток

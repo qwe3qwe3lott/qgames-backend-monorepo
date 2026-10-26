@@ -1,28 +1,26 @@
 package site.qgames.game
 
-import org.springframework.beans.factory.annotation.Autowired
+import java.time.Instant
+import java.util.UUID
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.isNotNull
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
-import site.qgames.BaseIntegrationTest
-import site.qgames.game.table.game.GameTable
-import site.qgames.game.table.room.RoomMemberTable
-import site.qgames.game.table.room.RoomTable
-import site.qgames.game.table.session.RoomSessionEventTable
-import site.qgames.userauth.api.dto.user.Avatar
-import site.qgames.userauth.api.dto.user.UpdateProfileRequest
+import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpMethod
 import org.springframework.http.MediaType
+import org.springframework.test.web.servlet.MvcResult
 import org.springframework.test.web.servlet.ResultActionsDsl
+import org.springframework.test.web.servlet.get
 import org.springframework.test.web.servlet.request
+import site.qgames.BaseIntegrationTest
+import site.qgames.game.api.dto.game.GameCode
+import site.qgames.game.api.dto.game.GameCodes
 import site.qgames.game.api.dto.room.ChangeRoleRequest
 import site.qgames.game.api.dto.room.CheckersSettingsDto
 import site.qgames.game.api.dto.room.CreateRoomRequest
-import site.qgames.game.api.dto.game.GameCode
-import site.qgames.game.api.dto.game.GameCodes
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.NothingSettingsDto
 import site.qgames.game.api.dto.room.RoomResponse
@@ -35,12 +33,14 @@ import site.qgames.game.service.session.SessionJournalService
 import site.qgames.game.service.session.SessionStateService
 import site.qgames.game.stream.room.RoomStreamRegistry
 import site.qgames.game.stream.session.SessionStreamRegistry
-import site.qgames.games.api.session.Session
-import site.qgames.games.api.session.ViewerKey
-import org.springframework.test.web.servlet.MvcResult
-import org.springframework.test.web.servlet.get
-import java.time.Instant
-import java.util.UUID
+import site.qgames.game.table.game.GameTable
+import site.qgames.game.table.room.RoomMemberTable
+import site.qgames.game.table.room.RoomTable
+import site.qgames.game.table.session.RoomSessionEventTable
+import site.qgames.games.core.Session
+import site.qgames.games.core.ViewerKey
+import site.qgames.userauth.api.dto.user.Avatar
+import site.qgames.userauth.api.dto.user.UpdateProfileRequest
 
 /**
  * Хелперы тестов модуля game: комнаты, потоки (SSE), партии. Пользователь запроса — access-JWT игрока

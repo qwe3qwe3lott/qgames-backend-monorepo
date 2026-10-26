@@ -1,5 +1,6 @@
 package site.qgames.game.service.session
 
+import java.util.UUID
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionSynchronization
 import org.springframework.transaction.support.TransactionSynchronizationManager
@@ -8,10 +9,9 @@ import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.SessionStateModel
 import site.qgames.game.repository.session.RoomSessionEventRepository
 import site.qgames.game.service.game.GameRegistry
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.SessionPatch
-import site.qgames.games.api.session.ViewerKey
-import java.util.UUID
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.SessionPatch
+import site.qgames.games.core.ViewerKey
 
 /**
  * Сборка документа партии для зрителя из журнала. Берёт из [SessionStateCache] последний документ проекции (seq K),

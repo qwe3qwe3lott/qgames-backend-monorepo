@@ -1,13 +1,31 @@
-package site.qgames.games.api.timer
+package site.qgames.games.core
 
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEvents
 import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 
-/** Шахматные часы партии (модуль timer). Пауза — часть таймера: у партии без таймера пауз нет. */
+/**
+ * Шахматные часы партии — единственный вид таймера: у каждого игрока запас [baseSeconds] на всю партию, после своего
+ * хода он получает добавку [incrementSeconds] (Фишер; 0 — без добавки). Таймеры ведёт сервис game, игра объявляет
+ * только границы ([TimeControlRules]). Партия без таймера — `timeControl = null`.
+ */
+data class TimeControl(
+    val baseSeconds: Int,
+    val incrementSeconds: Int,
+)
+
+/**
+ * Что игра разрешает: можно ли играть без таймера ([optional]), границы запаса и добавки (в секундах) и правила времени
+ * по умолчанию ([default]; null — без таймера, только при [optional]).
+ */
+data class TimeControlRules(
+    val optional: Boolean,
+    val baseSeconds: IntRange,
+    val incrementSeconds: IntRange,
+    val default: TimeControl?,
+)
+
+/** Шахматные часы партии. Пауза — часть таймера: у партии без таймера пауз нет. */
 data class TimerState(
     val status: TimerStatus,
     /**
@@ -36,7 +54,7 @@ enum class TimerStatus {
 }
 
 /**
- * Модуль timer (`state.timer`) — шахматные часы ([TimeControl]). Старт: у всех запас `baseSeconds`, дедлайн ходящего —
+ * Часы партии (`state.timer`) — шахматные часы ([TimeControl]). Старт: у всех запас `baseSeconds`, дедлайн ходящего —
  * `now + запас`. Часы переключаются только при смене очереди: ходивший получает остаток и добавку `incrementSeconds`,
  * следующему ставится дедлайн по его запасу. Ход без смены очереди часы не трогает. Время вышло — последствия решает
  * игра (`GameRules.onTimeout`); запас ходившего тогда 0 (плюс добавка, если очередь сменилась). Пауза запрещает ходы и
@@ -46,7 +64,7 @@ enum class TimerStatus {
  * События: `clock-switched` и `timer-stopped` — таймер целиком (PUT), `game-paused` и `game-resumed` — изменившиеся
  * поля (PATCH).
  */
-object TimerModule {
+object Timer {
 
     const val CLOCK_SWITCHED = "clock-switched"
     const val GAME_PAUSED = "game-paused"

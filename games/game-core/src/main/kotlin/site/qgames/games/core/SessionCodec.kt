@@ -1,4 +1,4 @@
-package site.qgames.games.api.session
+package site.qgames.games.core
 
 /**
  * Перевод объектов в JSON-дерево и обратно (Map, List, String, Number, Boolean, null) — тем же способом, каким сервис

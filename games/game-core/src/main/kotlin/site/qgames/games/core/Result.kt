@@ -1,10 +1,8 @@
-package site.qgames.games.api.result
+package site.qgames.games.core
 
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEvents
 import java.util.UUID
 
-/** Итог партии (модуль result): исход, победители и причина окончания. */
+/** Итог партии: исход, победители и причина окончания. */
 data class ResultState(
     val outcome: ResultOutcome,
     /** Победители; у ничьей — пустой список. */
@@ -19,11 +17,11 @@ enum class ResultOutcome {
 }
 
 /**
- * Модуль result (`state.result`): итог партии. После старта итога нет (`null`). Игра ставит итог событием `result-set`
+ * Итог партии (`state.result`). После старта итога нет (`null`). Игра ставит итог событием `result-set`
  * (`PUT ["state", "result"]`, [set]) только в том же наборе событий, что и `session-finished`: это проверяет
  * платформа. У отменённой партии итога нет.
  */
-object ResultModule {
+object Result {
 
     /** Итог партии подведён. */
     const val RESULT_SET = "result-set"

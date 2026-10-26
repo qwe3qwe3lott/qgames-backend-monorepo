@@ -1,5 +1,6 @@
-package site.qgames.games.api.session
+package site.qgames.games.core
 
+import java.util.stream.Stream
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -7,13 +8,12 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
-import site.qgames.games.api.session.SessionEvents.delete
-import site.qgames.games.api.session.SessionEvents.id
-import site.qgames.games.api.session.SessionEvents.info
-import site.qgames.games.api.session.SessionEvents.patch
-import site.qgames.games.api.session.SessionEvents.path
-import site.qgames.games.api.session.SessionEvents.put
-import java.util.stream.Stream
+import site.qgames.games.core.SessionEvents.delete
+import site.qgames.games.core.SessionEvents.id
+import site.qgames.games.core.SessionEvents.info
+import site.qgames.games.core.SessionEvents.patch
+import site.qgames.games.core.SessionEvents.path
+import site.qgames.games.core.SessionEvents.put
 
 /** Общий применитель событий: PUT, PATCH, DELETE, INFO по путям с ключами и `{id}`, ошибки пути. */
 class SessionPatchScenariosTest {

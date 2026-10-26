@@ -5,7 +5,7 @@ import org.springframework.stereotype.Component
 import site.qgames.game.mapper.session.SessionEventResponseMapper
 import site.qgames.game.model.session.SessionEventsNotificationModel
 import site.qgames.game.service.session.SessionStreamService
-import site.qgames.games.api.session.SessionEvents
+import site.qgames.games.core.SessionEvents
 
 /**
  * Раздаёт события журнала партии подписчикам её потока. События `fromSeq..toSeq` читаются из журнала один раз (уже

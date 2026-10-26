@@ -1,22 +1,11 @@
-package site.qgames.games.api.session
+package site.qgames.games.core
 
-import site.qgames.games.api.Decision
-import site.qgames.games.api.GameRules
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.core.CoreModule
-import site.qgames.games.api.core.PlayerState
-import site.qgames.games.api.result.ResultModule
-import site.qgames.games.api.result.ResultState
-import site.qgames.games.api.timer.TimerModule
-import site.qgames.games.api.timer.TimerState
-import site.qgames.games.api.turns.TurnsModule
-import site.qgames.games.api.turns.TurnsState
 import java.time.Instant
 import java.util.UUID
 
 /**
- * Платформа партии: собирает игру с модулями core, turns, timer и result. Чистые функции, без IO: сервис game отвечает
- * за журнал, блокировки и рассылку, а перевод в JSON-дерево даёт [codec].
+ * Платформа партии: ведёт блоки core (игроки, очерёдность, часы, итог) вокруг правил игры. Чистые функции, без IO:
+ * сервис game отвечает за журнал, блокировки и рассылку, а перевод в JSON-дерево даёт [codec].
  *
  * - [start] — первое событие журнала `session-started` (`PUT [] {status, meta, state}`);
  * - [move], [timeout], [pause], [resume], [cancel] — события изменения по полному документу партии;
@@ -31,7 +20,7 @@ import java.util.UUID
  * (`timer-stopped`), а событие конца уходит последним. Итог партии (`result-set`) игра ставит только вместе с
  * `session-finished`.
  *
- * Поля игры у игрока ([PlayerState.game]) лежат в документе прямо в объекте игрока рядом с полями модуля core.
+ * Поля игры у игрока ([PlayerState.game]) лежат в документе прямо в объекте игрока рядом с полями core.
  */
 class SessionEngine(private val codec: SessionCodec) {
 
@@ -47,8 +36,8 @@ class SessionEngine(private val codec: SessionCodec) {
         val start = rules.start(players, seed, settings)
         checkStartPlayers(rules, players, start.players)
         val initial = SessionState(
-            players = CoreModule.initialPlayers(players, start.players),
-            timer = TimerModule.initial(timeControl, players, start.turns.currentPlayerId, now),
+            players = Players.initial(players, start.players),
+            timer = Timer.initial(timeControl, players, start.turns.currentPlayerId, now),
             turns = start.turns,
             result = null,
             game = start.game,
@@ -65,7 +54,7 @@ class SessionEngine(private val codec: SessionCodec) {
         val session = document.session
         return when {
             session.status != SessionStatus.IN_PROGRESS -> MoveOutcome.NotInProgress
-            TimerModule.isPaused(session.state.timer) -> MoveOutcome.Paused
+            Timer.isPaused(session.state.timer) -> MoveOutcome.Paused
             else -> when (val decision = rules.decide(session.state, settings(rules, session), playerId, move)) {
                 is Decision.Rejected -> MoveOutcome.Rejected(decision.code, decision.message)
                 is Decision.Accepted -> MoveOutcome.Accepted(complete(rules, document, decision.events, now))
@@ -76,16 +65,16 @@ class SessionEngine(private val codec: SessionCodec) {
     /** Время хода истекло: последствия решает игра. Пустой список — ничего не происходит. */
     fun timeout(rules: GameRules<Any, Any, Any>, document: SessionDocument, now: Instant): List<SessionEvent> {
         val session = document.session
-        if (session.status != SessionStatus.IN_PROGRESS || TimerModule.isPaused(session.state.timer)) return emptyList()
+        if (session.status != SessionStatus.IN_PROGRESS || Timer.isPaused(session.state.timer)) return emptyList()
         val events = rules.onTimeout(session.state)
         return if (events.isEmpty()) emptyList() else complete(rules, document, events, now)
     }
 
     /** Пауза — действие таймера (`game-paused`). */
-    fun pause(document: SessionDocument, now: Instant): TimerOutcome = timerAction(document) { TimerModule.pause(it, now) }
+    fun pause(document: SessionDocument, now: Instant): TimerOutcome = timerAction(document) { Timer.pause(it, now) }
 
     /** Продолжение (`game-resumed`): дедлайн хода сдвигается на длительность паузы. */
-    fun resume(document: SessionDocument, now: Instant): TimerOutcome = timerAction(document) { TimerModule.resume(it, now) }
+    fun resume(document: SessionDocument, now: Instant): TimerOutcome = timerAction(document) { Timer.resume(it, now) }
 
     /**
      * Отмена: варианты ходов всех игроков обнуляются (`move-options-changed`, как на конце партии), таймер (если есть)
@@ -93,8 +82,8 @@ class SessionEngine(private val codec: SessionCodec) {
      */
     fun cancel(document: SessionDocument, now: Instant): List<SessionEvent> {
         val state = document.session.state
-        val timer = state.timer?.let { TimerModule.stop(it, state.turns.currentPlayerId, now) }
-        val events = CoreModule.changes(state) { emptyList() } + listOfNotNull(timer) + SessionEvents.cancelled()
+        val timer = state.timer?.let { Timer.stop(it, state.turns.currentPlayerId, now) }
+        val events = Players.changes(state) { emptyList() } + listOfNotNull(timer) + SessionEvents.cancelled()
         return events.map(::tree)
     }
 
@@ -103,7 +92,7 @@ class SessionEngine(private val codec: SessionCodec) {
         if (viewer == ViewerKey.Full) return event
         return when (event.code) {
             SessionEvents.SESSION_STARTED -> event.copy(value = maskStart(rules, objectOf(event.value), viewer))
-            CoreModule.MOVE_OPTIONS_CHANGED -> CoreModule.mask(event, viewer)!!
+            Players.MOVE_OPTIONS_CHANGED -> Players.mask(event, viewer)!!
             in PUBLIC_CODES -> event
             else -> tree(rules.mask(event, viewer))
         }
@@ -116,18 +105,18 @@ class SessionEngine(private val codec: SessionCodec) {
             meta = codec.fromTree(document[META], SessionMeta::class.java),
             status = SessionStatus.valueOf(document[STATUS] as String),
             state = SessionState(
-                players = (state[CoreModule.PLAYERS] as List<*>).map { readPlayer(rules, it) },
-                timer = state[TimerModule.TIMER]?.let { codec.fromTree(it, TimerState::class.java) },
-                turns = codec.fromTree(state[TurnsModule.TURNS], TurnsState::class.java),
-                result = state[ResultModule.RESULT]?.let { codec.fromTree(it, ResultState::class.java) },
-                game = codec.fromTree(state - MODULE_KEYS, rules.gameStateClass),
+                players = (state[Players.PLAYERS] as List<*>).map { readPlayer(rules, it) },
+                timer = state[Timer.TIMER]?.let { codec.fromTree(it, TimerState::class.java) },
+                turns = codec.fromTree(state[Turns.TURNS], TurnsState::class.java),
+                result = state[Result.RESULT]?.let { codec.fromTree(it, ResultState::class.java) },
+                game = codec.fromTree(state - CORE_KEYS, rules.gameStateClass),
             ),
         )
         return SessionDocument(document, session)
     }
 
     /**
-     * Дописывает к событиям игры события модулей: варианты ходов, переключение часов при смене очереди; конец партии —
+     * Дописывает к событиям игры события core: варианты ходов, переключение часов при смене очереди; конец партии —
      * последним.
      * Итог партии (`result-set`) допускается только вместе с концом партии.
      */
@@ -139,16 +128,16 @@ class SessionEngine(private val codec: SessionCodec) {
     ): List<SessionEvent> {
         val (ending, own) = gameEvents.map(::tree).partition { it.code == SessionEvents.SESSION_FINISHED }
         val finished = ending.isNotEmpty()
-        val results = own.count { it.code == ResultModule.RESULT_SET }
-        check(results == 0 || finished) { "${ResultModule.RESULT_SET} is allowed only together with ${SessionEvents.SESSION_FINISHED}" }
-        check(results <= 1) { "${ResultModule.RESULT_SET} must be set once, got $results" }
+        val results = own.count { it.code == Result.RESULT_SET }
+        check(results == 0 || finished) { "${Result.RESULT_SET} is allowed only together with ${SessionEvents.SESSION_FINISHED}" }
+        check(results <= 1) { "${Result.RESULT_SET} must be set once, got $results" }
         val after = read(rules, fold(document.tree, own)!!).session
-        val players = CoreModule.changes(after.state) { if (finished) emptyList() else rules.moveOptions(after.state, it) }
+        val players = Players.changes(after.state) { if (finished) emptyList() else rules.moveOptions(after.state, it) }
         val previous = document.session.state.turns.currentPlayerId
         val timer = if (finished) {
-            after.state.timer?.let { TimerModule.stop(it, previous, now) }
+            after.state.timer?.let { Timer.stop(it, previous, now) }
         } else {
-            TimerModule.switch(after.state.timer, document.session.meta.game.rules.timeControl, previous, after.state.turns.currentPlayerId, now)
+            Timer.switch(after.state.timer, document.session.meta.game.rules.timeControl, previous, after.state.turns.currentPlayerId, now)
         }
         return own + (players + listOfNotNull(timer) + ending.take(1)).map(::tree)
     }
@@ -168,31 +157,31 @@ class SessionEngine(private val codec: SessionCodec) {
     /** Начальный документ для [viewer]: чужие варианты ходов скрыты, игровая часть — по маске игры. */
     private fun maskStart(rules: GameRules<Any, Any, Any>, document: Map<String, Any?>, viewer: ViewerKey): Map<String, Any?> {
         val state = objectOf(document[SessionEvents.STATE])
-        val players = (state[CoreModule.PLAYERS] as List<*>).map { playerTree(CoreModule.mask(readPlayer(rules, it), viewer)) }
-        val game = rules.maskGame(codec.fromTree(state - MODULE_KEYS, rules.gameStateClass), viewer)
+        val players = (state[Players.PLAYERS] as List<*>).map { playerTree(Players.mask(readPlayer(rules, it), viewer)) }
+        val game = rules.maskGame(codec.fromTree(state - CORE_KEYS, rules.gameStateClass), viewer)
         val masked = linkedMapOf(
-            CoreModule.PLAYERS to players,
-            TimerModule.TIMER to state[TimerModule.TIMER],
-            TurnsModule.TURNS to state[TurnsModule.TURNS],
-            ResultModule.RESULT to state[ResultModule.RESULT],
+            Players.PLAYERS to players,
+            Timer.TIMER to state[Timer.TIMER],
+            Turns.TURNS to state[Turns.TURNS],
+            Result.RESULT to state[Result.RESULT],
         ).apply { putAll(objectTree(game)) }
         return LinkedHashMap(document).apply { put(SessionEvents.STATE, masked) }
     }
 
-    /** Состояние в документе: блоки модулей, рядом — поля игры. */
+    /** Состояние в документе: блоки core, рядом — поля игры. */
     private fun stateTree(state: SessionState<Any>): Map<String, Any?> {
         val game = objectTree(state.game)
-        val clash = game.keys.filter { it in MODULE_KEYS }
-        check(clash.isEmpty()) { "Game state fields $clash clash with the module blocks $MODULE_KEYS" }
+        val clash = game.keys.filter { it in CORE_KEYS }
+        check(clash.isEmpty()) { "Game state fields $clash clash with the core blocks $CORE_KEYS" }
         return linkedMapOf(
-            CoreModule.PLAYERS to state.players.map(::playerTree),
-            TimerModule.TIMER to codec.toTree(state.timer),
-            TurnsModule.TURNS to codec.toTree(state.turns),
-            ResultModule.RESULT to codec.toTree(state.result),
+            Players.PLAYERS to state.players.map(::playerTree),
+            Timer.TIMER to codec.toTree(state.timer),
+            Turns.TURNS to codec.toTree(state.turns),
+            Result.RESULT to codec.toTree(state.result),
         ).apply { putAll(game) }
     }
 
-    /** Объект игрока в документе: поля модуля core, рядом — поля игры. */
+    /** Объект игрока в документе: поля core, рядом — поля игры. */
     private fun playerTree(player: PlayerState): Map<String, Any?> {
         val core = linkedMapOf<String, Any?>("id" to codec.toTree(player.id), "moveOptions" to codec.toTree(player.moveOptions))
         val game = player.game?.let(::objectTree).orEmpty()
@@ -201,7 +190,7 @@ class SessionEngine(private val codec: SessionCodec) {
         return core.apply { putAll(game) }
     }
 
-    /** Игрок из документа: поля модуля core и поля игры (GameRules.playerClass). */
+    /** Игрок из документа: поля core и поля игры (GameRules.playerClass). */
     private fun readPlayer(rules: GameRules<Any, Any, Any>, tree: Any?): PlayerState {
         val player = objectOf(tree)
         val core = codec.fromTree(player.filterKeys { it in PlayerState.FIELDS }, PlayerState::class.java)
@@ -240,19 +229,19 @@ class SessionEngine(private val codec: SessionCodec) {
         /** Поле настроек игры в meta.game.rules.gameSettings с кодом игры (как в настройках комнаты). */
         const val GAME_CODE = "gameCode"
 
-        /** Блоки модулей в состоянии; остальные поля состояния — игровые. */
-        val MODULE_KEYS = setOf(CoreModule.PLAYERS, TimerModule.TIMER, TurnsModule.TURNS, ResultModule.RESULT)
+        /** Блоки core в состоянии; остальные поля состояния — игровые. */
+        val CORE_KEYS = setOf(Players.PLAYERS, Timer.TIMER, Turns.TURNS, Result.RESULT)
 
-        /** Коды публичных событий платформы и модулей: маски нет. */
+        /** Коды публичных событий платформы и core: маски нет. */
         private val PUBLIC_CODES = setOf(
             SessionEvents.SESSION_FINISHED,
             SessionEvents.SESSION_CANCELLED,
-            TurnsModule.TURN_CHANGED,
-            TimerModule.CLOCK_SWITCHED,
-            TimerModule.GAME_PAUSED,
-            TimerModule.GAME_RESUMED,
-            TimerModule.TIMER_STOPPED,
-            ResultModule.RESULT_SET,
+            Turns.TURN_CHANGED,
+            Timer.CLOCK_SWITCHED,
+            Timer.GAME_PAUSED,
+            Timer.GAME_RESUMED,
+            Timer.TIMER_STOPPED,
+            Result.RESULT_SET,
         )
 
         /** Свёртка событий общим применителем; [document] null — журнал с начала. */

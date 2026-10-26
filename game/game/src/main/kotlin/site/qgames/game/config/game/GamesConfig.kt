@@ -2,9 +2,9 @@ package site.qgames.game.config.game
 
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
-import site.qgames.games.api.session.SessionCodec
-import site.qgames.games.api.session.SessionEngine
 import site.qgames.games.checkers.CheckersGameRules
+import site.qgames.games.core.SessionCodec
+import site.qgames.games.core.SessionEngine
 import site.qgames.games.nothing.NothingGameRules
 
 /**

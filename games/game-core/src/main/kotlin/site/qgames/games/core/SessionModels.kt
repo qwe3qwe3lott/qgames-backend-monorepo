@@ -1,16 +1,11 @@
-package site.qgames.games.api.session
+package site.qgames.games.core
 
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.core.PlayerState
-import site.qgames.games.api.result.ResultState
-import site.qgames.games.api.timer.TimerState
-import site.qgames.games.api.turns.TurnsState
 import java.util.UUID
 
 /**
  * Событие журнала партии — одна операция над документом партии `{status, meta, state}` ([SessionPatch]).
  *
- * - [code] — что произошло (`player-passed`, `turn-changed`, `game-paused`…): задаёт платформа, модуль или игра, набор
+ * - [code] — что произошло (`player-passed`, `turn-changed`, `game-paused`…): задаёт платформа (core) или игра, набор
  *   кодов свободно расширяется. Состояние по коду не меняется — только по [method];
  * - [method] — как меняется документ: [SessionEventMethod.PUT], [SessionEventMethod.PATCH], [SessionEventMethod.DELETE]
  *   или [SessionEventMethod.INFO] (ничего не меняет, [value] — данные для журнала);
@@ -62,17 +57,17 @@ data class SessionDocument(
 )
 
 /**
- * Состояние партии: блоки модулей и игровая часть [game] (формат задаёт игра). В документе поля игры лежат в `state`
- * рядом с блоками модулей (`players`, `timer`, `turns`), а не отдельным объектом.
+ * Состояние партии: блоки core и игровая часть [game] (формат задаёт игра). В документе поля игры лежат в `state`
+ * рядом с блоками core (`players`, `timer`, `turns`, `result`), а не отдельным объектом.
  */
 data class SessionState<G : Any>(
-    /** Модуль core: игроки в порядке мест. */
+    /** Игроки в порядке мест. */
     val players: List<PlayerState>,
-    /** Модуль timer: null — партия без таймера. */
+    /** Часы: null — партия без таймера. */
     val timer: TimerState?,
-    /** Модуль turns: очерёдность и раунды. */
+    /** Очерёдность и раунды. */
     val turns: TurnsState,
-    /** Модуль result: итог партии; null — партия не закончена по правилам (идёт или отменена). */
+    /** Итог партии; null — партия не закончена по правилам (идёт или отменена). */
     val result: ResultState?,
     val game: G,
 )

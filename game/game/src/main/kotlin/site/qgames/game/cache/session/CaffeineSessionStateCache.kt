@@ -2,11 +2,11 @@ package site.qgames.game.cache.session
 
 import com.github.benmanes.caffeine.cache.Cache
 import com.github.benmanes.caffeine.cache.Caffeine
+import java.util.UUID
 import org.springframework.stereotype.Component
 import site.qgames.game.config.GameProperties
 import site.qgames.game.model.session.SessionStateModel
-import site.qgames.games.api.session.ViewerKey
-import java.util.UUID
+import site.qgames.games.core.ViewerKey
 
 /**
  * [SessionStateCache] в памяти процесса: ограничен по числу записей и вытесняет давно не читанные. Потеря записи

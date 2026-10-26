@@ -1,9 +1,9 @@
 package site.qgames.game.stream.session
 
+import java.util.UUID
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import site.qgames.game.stream.common.SseWriter
-import site.qgames.games.api.session.ViewerKey
-import java.util.UUID
+import site.qgames.games.core.ViewerKey
 
 /**
  * Один открытый поток партии (SSE): зритель с проекцией [viewer]. Аренды и присутствия у потока партии нет:

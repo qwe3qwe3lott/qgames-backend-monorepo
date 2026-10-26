@@ -1,9 +1,9 @@
 package site.qgames.game.mapper.session
 
 import org.springframework.stereotype.Component
-import site.qgames.games.api.session.PathSegment
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEventMethod
+import site.qgames.games.core.PathSegment
+import site.qgames.games.core.SessionEvent
+import site.qgames.games.core.SessionEventMethod
 import tools.jackson.databind.json.JsonMapper
 
 /**

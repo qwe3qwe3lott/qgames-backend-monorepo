@@ -1,13 +1,12 @@
 package site.qgames.game.mapper.session
 
+import java.time.Instant
 import org.springframework.stereotype.Component
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.SessionStatus
 import site.qgames.game.api.dto.session.CheckersMoveRulesDto
 import site.qgames.game.api.dto.session.CheckersSessionStateDto
 import site.qgames.game.api.dto.session.DeleteData
-import site.qgames.game.api.dto.session.SessionGameDto
-import site.qgames.game.api.dto.session.SessionMoveRulesDto
 import site.qgames.game.api.dto.session.NothingSessionStateDto
 import site.qgames.game.api.dto.session.PatchData
 import site.qgames.game.api.dto.session.PutData
@@ -16,19 +15,20 @@ import site.qgames.game.api.dto.session.SessionEventInfo
 import site.qgames.game.api.dto.session.SessionEventMethod
 import site.qgames.game.api.dto.session.SessionEventPatch
 import site.qgames.game.api.dto.session.SessionEventPut
+import site.qgames.game.api.dto.session.SessionGameDto
 import site.qgames.game.api.dto.session.SessionMetaDto
+import site.qgames.game.api.dto.session.SessionMoveRulesDto
 import site.qgames.game.api.dto.session.SessionPatchEvent
 import site.qgames.game.api.dto.session.SessionSnapshotDto
 import site.qgames.game.api.dto.session.SessionStateDto
 import site.qgames.game.api.dto.session.SessionStreamEventType
 import site.qgames.game.model.session.SessionSnapshotModel
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEvents
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.SessionEvent
+import site.qgames.games.core.SessionEvents
 import tools.jackson.databind.DeserializationFeature
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
-import java.time.Instant
 
 /**
  * Данные потока партии (поле `data:` SSE) → DTO контракта game-api (SessionStreamEvent). Только

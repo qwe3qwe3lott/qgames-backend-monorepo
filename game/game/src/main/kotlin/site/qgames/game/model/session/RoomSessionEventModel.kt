@@ -1,8 +1,8 @@
 package site.qgames.game.model.session
 
-import site.qgames.games.api.session.SessionEvent
 import java.time.Instant
 import java.util.UUID
+import site.qgames.games.core.SessionEvent
 
 /** Событие журнала партии: seq, момент записи и событие с полными (немаскированными) данными. */
 data class RoomSessionEventModel(

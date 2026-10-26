@@ -1,4 +1,4 @@
-package site.qgames.games.api.session
+package site.qgames.games.core
 
 import java.util.UUID
 

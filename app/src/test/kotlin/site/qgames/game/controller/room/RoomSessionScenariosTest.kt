@@ -1,7 +1,16 @@
 package site.qgames.game.controller.room
 
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import java.util.UUID
+import java.util.stream.Stream
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.within
+import org.jetbrains.exposed.v1.core.and
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.isNotNull
+import org.jetbrains.exposed.v1.jdbc.selectAll
+import org.jetbrains.exposed.v1.jdbc.update
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -19,21 +28,12 @@ import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.game.support.TestData.DAVE
-import site.qgames.games.api.core.MoveOption
-import site.qgames.games.api.timer.TimerState
-import site.qgames.games.api.timer.TimerStatus
-import site.qgames.games.api.turns.TurnsState
-import java.time.Instant
-import java.time.temporal.ChronoUnit
-import java.util.UUID
-import java.util.stream.Stream
-import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.and
-import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.update
-import org.jetbrains.exposed.v1.core.isNotNull
-import site.qgames.game.table.session.RoomSessionTable
 import site.qgames.game.table.session.RoomSessionEventTable
+import site.qgames.game.table.session.RoomSessionTable
+import site.qgames.games.core.MoveOption
+import site.qgames.games.core.TimerState
+import site.qgames.games.core.TimerStatus
+import site.qgames.games.core.TurnsState
 
 /**
  * Партии «игры в ничто»: игроки по очереди делают PASS, после заданного в настройках числа кругов (по умолчанию 3)

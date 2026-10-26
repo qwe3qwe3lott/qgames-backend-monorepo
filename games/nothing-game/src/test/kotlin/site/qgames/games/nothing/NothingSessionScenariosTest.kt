@@ -1,5 +1,8 @@
 package site.qgames.games.nothing
 
+import java.time.Instant
+import java.util.UUID
+import java.util.stream.Stream
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
@@ -7,33 +10,30 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
-import site.qgames.games.api.Decision
-import site.qgames.games.api.GameRules
-import site.qgames.games.api.result.ResultModule
-import site.qgames.games.api.result.ResultOutcome
-import site.qgames.games.api.result.ResultState
-import site.qgames.games.api.session.SessionEvents
-import site.qgames.games.api.session.SessionState
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.session.MoveOutcome
-import site.qgames.games.api.session.PathSegment
-import site.qgames.games.api.session.SessionDocument
-import site.qgames.games.api.session.SessionEngine
-import site.qgames.games.api.session.SessionEvent
-import site.qgames.games.api.session.SessionEventMethod
-import site.qgames.games.api.session.SessionStatus
-import site.qgames.games.api.session.TimerOutcome
-import site.qgames.games.api.session.ViewerKey
-import site.qgames.games.api.timer.PlayerClock
-import site.qgames.games.api.timer.TimerState
-import site.qgames.games.api.timer.TimerStatus
-import site.qgames.games.api.turns.TurnsState
-import java.time.Instant
-import java.util.UUID
-import java.util.stream.Stream
+import site.qgames.games.core.Decision
+import site.qgames.games.core.GameRules
+import site.qgames.games.core.MoveOutcome
+import site.qgames.games.core.PathSegment
+import site.qgames.games.core.PlayerClock
+import site.qgames.games.core.Result
+import site.qgames.games.core.ResultOutcome
+import site.qgames.games.core.ResultState
+import site.qgames.games.core.SessionDocument
+import site.qgames.games.core.SessionEngine
+import site.qgames.games.core.SessionEvent
+import site.qgames.games.core.SessionEventMethod
+import site.qgames.games.core.SessionEvents
+import site.qgames.games.core.SessionState
+import site.qgames.games.core.SessionStatus
+import site.qgames.games.core.TimeControl
+import site.qgames.games.core.TimerOutcome
+import site.qgames.games.core.TimerState
+import site.qgames.games.core.TimerStatus
+import site.qgames.games.core.TurnsState
+import site.qgames.games.core.ViewerKey
 
 /**
- * Партия «игры в ничто» на платформе (модули core, turns, timer): события-патчи, их свёртка общим применителем и
+ * Партия «игры в ничто» на платформе (core: игроки, очерёдность, часы): события-патчи, их свёртка общим применителем и
  * маскировка — чистые функции, без сервиса.
  */
 class NothingSessionScenariosTest {
@@ -80,7 +80,7 @@ class NothingSessionScenariosTest {
     }
 
     @Test
-    fun `move produces game and module events in order`() {
+    fun `move produces game and core events in order`() {
         val journal = journal(TimeControl(30, 5))
 
         val events = accepted(fold(journal), ALICE, NOW.plusSeconds(1))
@@ -145,7 +145,7 @@ class NothingSessionScenariosTest {
         @Suppress("UNCHECKED_CAST")
         val drawn = object : GameRules<NothingGameState, NothingMove, NothingSettings> by nothing {
             override fun decide(state: SessionState<NothingGameState>, settings: NothingSettings, playerId: UUID, move: NothingMove) =
-                Decision.Accepted(listOf(ResultModule.draw("AGREED"), SessionEvents.finished()))
+                Decision.Accepted(listOf(Result.draw("AGREED"), SessionEvents.finished()))
         } as GameRules<Any, Any, Any>
         val journal = journal()
 
@@ -336,8 +336,8 @@ class NothingSessionScenariosTest {
 
         @JvmStatic
         fun misplacedResults(): Stream<Arguments> = Stream.of(
-            arguments("result without session-finished", listOf(ResultModule.win(ALICE, "X"))),
-            arguments("result twice", listOf(ResultModule.win(ALICE, "X"), ResultModule.draw("Y"), SessionEvents.finished())),
+            arguments("result without session-finished", listOf(Result.win(ALICE, "X"))),
+            arguments("result twice", listOf(Result.win(ALICE, "X"), Result.draw("Y"), SessionEvents.finished())),
         )
 
         @JvmStatic
