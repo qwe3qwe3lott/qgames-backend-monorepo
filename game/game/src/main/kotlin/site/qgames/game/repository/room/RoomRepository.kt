@@ -17,14 +17,15 @@ class RoomRepository(
 ) {
 
     /**
-     * Новая комната ждёт игроков ([RoomStatus.WAITING]). [gameSettings] — JSON настроек игры. Участников и владельца
-     * у неё нет, она пустая с [now], а окно владения до [ownerGraceDeadline] — за создателем [creatorId].
+     * Новая комната ждёт игроков ([RoomStatus.WAITING]). [timeControl] — часы (null — без таймера), [gameSettings] — JSON
+     * настроек игры. Участников и владельца у неё нет, она пустая с [now], а окно владения до [ownerGraceDeadline] — за
+     * создателем [creatorId].
      */
     fun insert(
         gameCode: GameCode,
         creatorId: UUID,
         ownerGraceDeadline: Instant,
-        timeControl: RoomTimeControlModel,
+        timeControl: RoomTimeControlModel?,
         gameSettings: String,
         now: Instant,
     ): RoomModel = roomExposedRepository.insert(

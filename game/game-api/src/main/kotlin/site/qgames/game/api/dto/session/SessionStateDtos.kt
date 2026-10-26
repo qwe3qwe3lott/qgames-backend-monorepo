@@ -41,7 +41,10 @@ data class SessionResultDto(
     val outcome: SessionResultOutcome,
     /** Победители; у ничьей — пустой список. */
     val winnerIds: List<UUID>,
-    /** Машиночитаемая причина окончания, набор задаёт игра (шашки: NO_PIECES, NO_MOVES, RESIGN, TIMEOUT, DRAW_RULE). */
+    /**
+     * Машиночитаемая причина окончания, набор задаёт игра (шашки: NO_PIECES, NO_MOVES, RESIGN, TIMEOUT, DRAW_RULE,
+     * DRAW_AGREED, REPETITION, ENDGAME_RULE).
+     */
     val reason: String,
 )
 
@@ -81,17 +84,28 @@ enum class SessionTimerStatus {
     RUNNING,
     PAUSED,
 
-    /** Партия закончилась или отменена: deadline и pausedAt — null. */
+    /** Партия закончилась или отменена: deadline и pausedAt — null, clocks — итоговые остатки. */
     STOPPED,
 }
 
-/** Таймер хода (модуль timer). Пауза — состояние таймера. */
+/** Шахматные часы партии (модуль timer). Пауза — состояние таймера. */
 data class SessionTimerDto(
     val status: SessionTimerStatus,
-    /** Когда истекает время текущего хода; null — ход ничей. На паузе не меняется: остаток — deadline − pausedAt. */
+    /**
+     * Когда кончится запас того, чей ход; null — ход ничей. На паузе не меняется: остаток — deadline − pausedAt.
+     */
     val deadline: Instant?,
     /** С какого момента таймер на паузе; null — идёт. */
     val pausedAt: Instant?,
+    /** Запас каждого игрока на момент последней смены хода; у ходящего текущий остаток — по deadline. */
+    val clocks: List<PlayerClockDto>,
+)
+
+/** Запас времени игрока. */
+data class PlayerClockDto(
+    val playerId: UUID,
+    /** Остаток в миллисекундах. */
+    val remainingMs: Long,
 )
 
 /**
@@ -196,21 +210,29 @@ data class CheckersSessionStateDto(
     val pieces: List<CheckersPieceDto>,
     /** Последний ход; null — ходов ещё не было. */
     val lastMove: CheckersLastMoveDto?,
-    /** Сколько ходов подряд (обеих сторон в сумме) сделано только дамками без взятий; ничья — на 30 (по 15 у каждой стороны). */
+    /** Сколько ходов подряд (обеих сторон в сумме) сделано только дамками без взятий (ничья DRAW_RULE). */
     @field:Schema(
-        description = "Сколько ходов подряд (обеих сторон в сумме) сделано только дамками без взятий; на 30 (по 15 у " +
-            "каждой стороны) партия заканчивается ничьей (DRAW_RULE)",
+        description = "Сколько ходов подряд (обеих сторон в сумме) сделано только дамками без взятий; на пороге варианта " +
+            "(русские 30, международные 50, английские 80) партия заканчивается ничьей (DRAW_RULE)",
     )
     val quietMoves: Int,
+    /** Сколько ходов (обеих сторон) прошло с последнего взятия или превращения — для правил окончаний (ENDGAME_RULE). */
+    val materialMoves: Int,
+    /** Служебное: ключи позиций с последнего взятия или хода простой — для троекратного повторения (REPETITION). */
+    val positionHistory: List<String>,
+    /** Кто предложил ничью вместе со своим ходом; null — предложения нет. Принять — ходом ACCEPT_DRAW. */
+    val drawOfferedBy: UUID?,
 ) : SessionStateDto
 
 /**
- * Параметры хода MOVE в шашках (`data` тела хода MoveRequest): полный путь шашки, включая начальную клетку. Сдача —
- * `{type: "RESIGN"}` без data.
+ * Параметры хода MOVE в шашках (`data` тела хода MoveRequest): полный путь шашки, включая начальную клетку. Принять
+ * ничью — `{type: "ACCEPT_DRAW"}`, сдача — `{type: "RESIGN"}`, оба без data.
  */
 data class CheckersMoveDataDto(
     /** Клетки пути [x, y] с начальной, например [[3, 3], [5, 5], [7, 3]]. */
     val path: List<List<Int>>,
+    /** Предложить ничью вместе с этим ходом; по умолчанию false. */
+    val offerDraw: Boolean?,
 )
 
 /** Схемы параметров ходов игр (`data` тела хода MoveRequest): публикуются в components OpenAPI. */

@@ -1,26 +1,22 @@
 package site.qgames.games.api
 
 /**
- * Режим контроля времени партии. Таймеры ведёт сервис game, игра только объявляет, какие режимы поддерживает.
- * Расширяется новыми режимами (время на раунд, шахматные часы) без изменения уже поддерживаемых.
+ * Шахматные часы партии — единственный вид таймера: у каждого игрока запас [baseSeconds] на всю партию, после своего
+ * хода он получает добавку [incrementSeconds] (Фишер; 0 — без добавки). Таймеры ведёт сервис game, игра объявляет
+ * только границы ([TimeControlRules]). Партия без таймера — `timeControl = null`.
  */
-enum class TimeControlMode {
-    /** Без таймера. */
-    NONE,
-
-    /** Фиксированное время на каждый ход. */
-    PER_MOVE,
-}
-
-/** Правила времени партии: режим и время на ход в секундах (только для [TimeControlMode.PER_MOVE]). */
 data class TimeControl(
-    val mode: TimeControlMode,
-    val moveSeconds: Int?,
+    val baseSeconds: Int,
+    val incrementSeconds: Int,
 )
 
-/** Что игра разрешает: режимы, границы времени на ход (в секундах) и правила времени по умолчанию. */
+/**
+ * Что игра разрешает: можно ли играть без таймера ([optional]), границы запаса и добавки (в секундах) и правила времени
+ * по умолчанию ([default]; null — без таймера, только при [optional]).
+ */
 data class TimeControlRules(
-    val modes: Set<TimeControlMode>,
-    val moveSeconds: IntRange,
-    val default: TimeControl,
+    val optional: Boolean,
+    val baseSeconds: IntRange,
+    val incrementSeconds: IntRange,
+    val default: TimeControl?,
 )

@@ -22,7 +22,7 @@ class RoomSessionRepository(
         roomId: UUID,
         gameCode: GameCode,
         seed: Long,
-        timeControl: RoomTimeControlModel,
+        timeControl: RoomTimeControlModel?,
         gameSettings: String,
         players: List<UUID>,
         now: Instant,

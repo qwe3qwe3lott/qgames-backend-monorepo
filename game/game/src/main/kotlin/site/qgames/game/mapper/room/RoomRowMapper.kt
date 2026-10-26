@@ -8,8 +8,6 @@ import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomOwnerGraceModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
-import site.qgames.game.model.room.RoomTimeControlMode
-import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.model.user.UserAvatar
 import site.qgames.game.model.user.UserProfileModel
 import site.qgames.game.table.room.RoomMemberTable
@@ -18,7 +16,7 @@ import site.qgames.userauth.api.table.user.UserProfileTable
 
 /** Строки таблиц `room`, `room_member` и профиля `user` (user-auth) → модели. */
 @Component
-class RoomRowMapper {
+class RoomRowMapper(private val roomSettingsJsonMapper: RoomSettingsJsonMapper) {
 
     fun toRoom(row: ResultRow): RoomModel {
         val gameCode = row[RoomTable.gameCode]
@@ -30,8 +28,8 @@ class RoomRowMapper {
             status = RoomStatus.valueOf(row[RoomTable.status]),
             currentSessionId = row[RoomTable.currentSessionId],
             emptySince = row[RoomTable.emptySince],
-            timeControl = RoomTimeControlModel(RoomTimeControlMode.valueOf(row[RoomTable.timeControlMode]), row[RoomTable.moveSeconds]),
-            gameSettings = row[RoomTable.gameSettings],
+            timeControl = roomSettingsJsonMapper.timeControl(row[RoomTable.gameSettings]),
+            gameSettings = roomSettingsJsonMapper.gameSettings(row[RoomTable.gameSettings]),
             createdAt = row[RoomTable.createdAt],
         )
     }

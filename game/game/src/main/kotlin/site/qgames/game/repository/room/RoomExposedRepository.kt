@@ -15,6 +15,7 @@ import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
 import site.qgames.game.mapper.room.RoomRowMapper
+import site.qgames.game.mapper.room.RoomSettingsJsonMapper
 import site.qgames.game.model.game.GamePublishStatus
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.table.game.GameTable
@@ -25,7 +26,10 @@ import java.util.UUID
 /** Таблица `room` (Exposed). Используется только из [RoomRepository]. */
 @Repository
 @Transactional
-class RoomExposedRepository(private val roomRowMapper: RoomRowMapper) {
+class RoomExposedRepository(
+    private val roomRowMapper: RoomRowMapper,
+    private val roomSettingsJsonMapper: RoomSettingsJsonMapper,
+) {
 
     fun insert(room: RoomModel): RoomModel {
         RoomTable.insert {
@@ -87,8 +91,6 @@ class RoomExposedRepository(private val roomRowMapper: RoomRowMapper) {
         statement[status] = room.status.name
         statement[currentSessionId] = room.currentSessionId
         statement[emptySince] = room.emptySince
-        statement[timeControlMode] = room.timeControl.mode.name
-        statement[moveSeconds] = room.timeControl.moveSeconds
-        statement[gameSettings] = room.gameSettings
+        statement[gameSettings] = roomSettingsJsonMapper.write(room.timeControl, room.gameSettings)
     }
 }

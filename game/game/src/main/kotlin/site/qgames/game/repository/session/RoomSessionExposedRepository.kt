@@ -12,6 +12,7 @@ import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.stereotype.Repository
 import org.springframework.transaction.annotation.Transactional
+import site.qgames.game.mapper.room.RoomSettingsJsonMapper
 import site.qgames.game.mapper.session.RoomSessionRowMapper
 import site.qgames.game.model.game.GamePublishStatus
 import site.qgames.game.model.session.RoomSessionModel
@@ -25,7 +26,10 @@ import java.util.UUID
 /** Таблицы `room_session` и `room_session_player` (Exposed). Используется только из [RoomSessionRepository]. */
 @Repository
 @Transactional
-class RoomSessionExposedRepository(private val roomSessionRowMapper: RoomSessionRowMapper) {
+class RoomSessionExposedRepository(
+    private val roomSessionRowMapper: RoomSessionRowMapper,
+    private val roomSettingsJsonMapper: RoomSettingsJsonMapper,
+) {
 
     fun insert(session: RoomSessionModel, players: List<UUID>): RoomSessionModel {
         RoomSessionTable.insert {
@@ -35,9 +39,7 @@ class RoomSessionExposedRepository(private val roomSessionRowMapper: RoomSession
             it[status] = session.status.name
             it[seed] = session.seed
             it[lastSeq] = session.lastSeq
-            it[timeControlMode] = session.timeControl.mode.name
-            it[moveSeconds] = session.timeControl.moveSeconds
-            it[gameSettings] = session.gameSettings
+            it[gameSettings] = roomSettingsJsonMapper.write(session.timeControl, session.gameSettings)
             it[moveDeadline] = session.moveDeadline
             it[createdAt] = session.createdAt
             it[finishedAt] = session.finishedAt

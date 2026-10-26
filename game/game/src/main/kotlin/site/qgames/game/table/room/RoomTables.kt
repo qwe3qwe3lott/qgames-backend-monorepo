@@ -15,9 +15,7 @@ object RoomTable : Table("room") {
     val status = varchar("status", 16)
     val currentSessionId = javaUUID("current_session_id").nullable()
     val emptySince = timestamp("empty_since").nullable()
-    val timeControlMode = varchar("time_control_mode", 16)
-    val moveSeconds = integer("move_seconds").nullable()
-    /** JSON настроек игры как есть (формат задаёт модуль игры). */
+    /** JSON настроек комнаты: часы и настройки игры как есть (RoomSettingsJsonMapper). */
     val gameSettings = json<String>("game_settings", { it }, { it })
     val createdAt = timestamp("created_at")
 

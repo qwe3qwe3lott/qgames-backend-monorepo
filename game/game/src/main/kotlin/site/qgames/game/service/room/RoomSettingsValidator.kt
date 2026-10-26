@@ -5,11 +5,11 @@ import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.service.game.GameRegistry
-import site.qgames.games.api.TimeControlMode
 
 /**
- * Проверяет настройки комнаты по правилам игры: режим времени и его параметры — по [site.qgames.games.api.TimeControlRules],
- * настройки игры — правилами модуля игры. Ошибки отдаются по полям в формате `@Valid` (400 VALIDATION_ERROR, `errors`).
+ * Проверяет настройки комнаты по правилам игры: шахматные часы — по [site.qgames.games.api.TimeControlRules] (можно ли
+ * без таймера, границы запаса и добавки), настройки игры — правилами модуля игры. Ошибки отдаются по полям в формате
+ * `@Valid` (400 VALIDATION_ERROR, `errors`).
  */
 @Component
 class RoomSettingsValidator(private val gameRegistry: GameRegistry) {
@@ -25,25 +25,22 @@ class RoomSettingsValidator(private val gameRegistry: GameRegistry) {
         }
     }
 
-    /** Нарушения по полям относительно настроек комнаты (`timeControl.moveSeconds`, `gameSettings.rounds`). */
+    /** Нарушения по полям относительно настроек комнаты (`timeControl.baseSeconds`, `gameSettings.rounds`). */
     fun validate(gameCode: GameCode, settings: RoomSettingsModel): Map<String, String> {
         val rules = gameRegistry.rules(gameCode)
         val errors = linkedMapOf<String, String>()
 
         val timeControl = settings.timeControl
         val limits = rules.timeControl
-        val mode = TimeControlMode.valueOf(timeControl.mode.name)
-        if (mode !in limits.modes) {
-            errors["timeControl.mode"] = "is not supported by the game, allowed: ${limits.modes.joinToString()}"
+        if (timeControl == null) {
+            if (!limits.optional) errors["timeControl"] = "is required: the game is played only with a clock"
         } else {
-            when (mode) {
-                TimeControlMode.NONE -> if (timeControl.moveSeconds != null) {
-                    errors["timeControl.moveSeconds"] = "must be null when there is no timer"
-                }
-                TimeControlMode.PER_MOVE -> if (timeControl.moveSeconds == null || timeControl.moveSeconds !in limits.moveSeconds) {
-                    errors["timeControl.moveSeconds"] =
-                        "must be between ${limits.moveSeconds.first} and ${limits.moveSeconds.last}"
-                }
+            if (timeControl.baseSeconds !in limits.baseSeconds) {
+                errors["timeControl.baseSeconds"] = "must be between ${limits.baseSeconds.first} and ${limits.baseSeconds.last}"
+            }
+            if (timeControl.incrementSeconds !in limits.incrementSeconds) {
+                errors["timeControl.incrementSeconds"] =
+                    "must be between ${limits.incrementSeconds.first} and ${limits.incrementSeconds.last}"
             }
         }
 

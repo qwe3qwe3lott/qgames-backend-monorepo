@@ -248,10 +248,12 @@ object SessionEventCodes {
         "- move-options-changed — PUT [\"state\", \"players\", {id}, \"moveOptions\"]: варианты ходов игрока " +
         "(чужим зрителям — пустой список);\n" +
         "- turn-changed — PUT [\"state\", \"turns\"]: сменился текущий игрок или раунд;\n" +
-        "- timer-started — PUT [\"state\", \"timer\"]: таймер следующего хода;\n" +
+        "- clock-switched — PUT [\"state\", \"timer\"]: шахматные часы после смены очереди (запас ходившего с добавкой, " +
+        "дедлайн следующего);\n" +
         "- game-paused — PATCH [\"state\", \"timer\"] {status: PAUSED, pausedAt}: пауза;\n" +
         "- game-resumed — PATCH [\"state\", \"timer\"] {status: RUNNING, deadline, pausedAt: null}: продолжение;\n" +
-        "- timer-stopped — PUT [\"state\", \"timer\"]: таймер остановлен перед концом или отменой партии;\n" +
+        "- timer-stopped — PUT [\"state\", \"timer\"]: часы остановлены перед концом или отменой партии (итоговые " +
+        "остатки);\n" +
         "- result-set — PUT [\"state\", \"result\"] {outcome, winnerIds, reason}: итог партии, только перед " +
         "session-finished;\n" +
         "- player-passed («игра в ничто») — PATCH [\"state\"] {moves}: игрок пропустил ход; по истечении времени — " +
@@ -260,7 +262,12 @@ object SessionEventCodes {
         "- piece-captured (шашки) — DELETE [\"state\", \"pieces\", {id}]: шашка сбита (на каждую сбитую);\n" +
         "- piece-crowned (шашки) — PATCH [\"state\", \"pieces\", {id}] {kind: KING}: шашка стала дамкой;\n" +
         "- last-move-changed (шашки) — PUT [\"state\", \"lastMove\"] {pieceId, path, captured}: последний ход;\n" +
-        "- counters-changed (шашки) — PATCH [\"state\"] {quietMoves}: счётчик ходов дамками без взятий;\n" +
+        "- counters-changed (шашки) — PATCH [\"state\"] {quietMoves, materialMoves}: счётчики ходов дамками без взятий " +
+        "и ходов с последнего взятия или превращения;\n" +
+        "- position-recorded (шашки) — PUT [\"state\", \"positionHistory\"]: история позиций для повторения;\n" +
+        "- draw-offer-changed (шашки) — PATCH [\"state\"] {drawOfferedBy}: ничья предложена ходом или снята ходом " +
+        "соперника;\n" +
+        "- draw-accepted (шашки) — INFO {playerId}: игрок принял ничью;\n" +
         "- player-resigned (шашки) — INFO {playerId}: игрок сдался;\n" +
         "- move-timed-out (шашки) — INFO {playerId}: время хода игрока вышло (поражение)."
 }

@@ -6,7 +6,6 @@ import site.qgames.game.api.dto.room.CheckersVariant
 import site.qgames.game.api.dto.room.NothingSettingsDto
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.room.TimeControlDto
-import site.qgames.game.api.dto.room.TimeControlMode
 import java.util.UUID
 
 /**
@@ -41,11 +40,11 @@ object TestData {
     const val NOTHING_MAX_PLAYERS = 4
 
     /** Настройки «игры в ничто» по умолчанию (из её правил): 3 круга, без таймера. */
-    val NOTHING_DEFAULT_SETTINGS = RoomSettingsDto(TimeControlDto(TimeControlMode.NONE, null), NothingSettingsDto(GameCode.NOTHING, 3))
+    val NOTHING_DEFAULT_SETTINGS = RoomSettingsDto(null, NothingSettingsDto(GameCode.NOTHING, 3))
 
-    /** Настройки шашек по умолчанию (из их правил): русские, без таймера. */
+    /** Настройки шашек по умолчанию (из их правил): русские, шахматные часы 10 мин + 5 с. */
     val CHECKERS_DEFAULT_SETTINGS = RoomSettingsDto(
-        TimeControlDto(TimeControlMode.NONE, null),
+        TimeControlDto(baseSeconds = 600, incrementSeconds = 5),
         CheckersSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN),
     )
 }

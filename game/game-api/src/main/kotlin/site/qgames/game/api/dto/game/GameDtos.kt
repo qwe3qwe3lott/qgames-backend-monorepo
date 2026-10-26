@@ -4,7 +4,6 @@ import com.fasterxml.jackson.annotation.JsonValue
 import site.qgames.game.api.dto.room.GameSettingsLimitsDto
 import site.qgames.game.api.dto.room.IntRangeDto
 import site.qgames.game.api.dto.room.RoomSettingsDto
-import site.qgames.game.api.dto.room.TimeControlMode
 
 /** Код игры. В JSON и в путях API (`/api/games/{gameCode}/…`) — строчный [code], например `nothing`. */
 enum class GameCode(@get:JsonValue val code: String) {
@@ -60,9 +59,12 @@ data class GameRulesDto(
     val defaultSettings: RoomSettingsDto,
 )
 
-/** Какие правила времени разрешает игра. */
+/** Какие шахматные часы разрешает игра. */
 data class TimeControlLimitsDto(
-    val modes: List<TimeControlMode>,
-    /** Границы времени на ход в секундах (для PER_MOVE). */
-    val moveSeconds: IntRangeDto,
+    /** Можно ли играть без таймера (timeControl = null). */
+    val optional: Boolean,
+    /** Границы запаса на партию в секундах. */
+    val baseSeconds: IntRangeDto,
+    /** Границы добавки за ход в секундах. */
+    val incrementSeconds: IntRangeDto,
 )

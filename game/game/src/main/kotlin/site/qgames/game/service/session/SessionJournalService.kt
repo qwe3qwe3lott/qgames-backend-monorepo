@@ -63,7 +63,7 @@ class SessionJournalService(
     /** Отмена идущей партии ([SessionEngine.cancel]); возвращает полный документ после неё. */
     fun cancel(session: RoomSessionModel, now: Instant): SessionDocument? {
         val full = full(session)
-        return record(session, full, sessionEngine.cancel(full), now)
+        return record(session, full, sessionEngine.cancel(full, now), now)
     }
 
     /** Время хода истекло, но игре нечего делать: проекция таймера снимается, чтобы джоб не брал партию снова. */

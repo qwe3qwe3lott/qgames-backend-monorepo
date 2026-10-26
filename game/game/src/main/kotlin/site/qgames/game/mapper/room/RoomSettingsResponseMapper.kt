@@ -15,9 +15,9 @@ import site.qgames.game.api.dto.room.NothingSettingsDto
 import site.qgames.game.api.dto.room.NothingSettingsLimitsDto
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.room.TimeControlDto
-import site.qgames.game.api.dto.room.TimeControlMode
+import site.qgames.game.api.dto.room.CheckersTimePreset
+import site.qgames.game.api.dto.room.CheckersTimePresetDto
 import site.qgames.game.model.room.RoomSettingsModel
-import site.qgames.game.model.room.RoomTimeControlMode
 import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.games.nothing.NothingSettings
 import site.qgames.games.nothing.NothingSettingsLimits
@@ -30,7 +30,7 @@ import site.qgames.games.nothing.NothingSettingsLimits
 class RoomSettingsResponseMapper {
 
     fun toModel(dto: RoomSettingsDto) = RoomSettingsModel(
-        timeControl = RoomTimeControlModel(RoomTimeControlMode.valueOf(dto.timeControl.mode.name), dto.timeControl.moveSeconds),
+        timeControl = dto.timeControl?.let { RoomTimeControlModel(it.baseSeconds, it.incrementSeconds) },
         gameSettings = when (val settings = dto.gameSettings) {
             is NothingSettingsDto -> NothingSettings(rounds = settings.rounds)
             is CheckersSettingsDto -> CheckersSettings(CheckersVariant.valueOf(settings.variant.name))
@@ -38,7 +38,7 @@ class RoomSettingsResponseMapper {
     )
 
     fun toResponse(model: RoomSettingsModel) = RoomSettingsDto(
-        timeControl = TimeControlDto(TimeControlMode.valueOf(model.timeControl.mode.name), model.timeControl.moveSeconds),
+        timeControl = model.timeControl?.let { TimeControlDto(it.baseSeconds, it.incrementSeconds) },
         gameSettings = toResponse(model.gameSettings),
     )
 
@@ -47,6 +47,14 @@ class RoomSettingsResponseMapper {
         is CheckersSettingsLimits -> CheckersSettingsLimitsDto(
             gameCode = GameCode.CHECKERS,
             variants = limits.variants.map { CheckersVariantDto.valueOf(it.name) },
+            timePresets = limits.timePresets.map {
+                CheckersTimePresetDto(
+                    variant = CheckersVariantDto.valueOf(it.variant.name),
+                    preset = CheckersTimePreset.valueOf(it.kind.name),
+                    baseSeconds = it.baseSeconds,
+                    incrementSeconds = it.incrementSeconds,
+                )
+            },
         )
         else -> error("No DTO for game settings limits ${limits::class.qualifiedName}")
     }

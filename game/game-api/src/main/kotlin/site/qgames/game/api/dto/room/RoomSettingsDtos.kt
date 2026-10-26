@@ -9,27 +9,22 @@ import jakarta.validation.constraints.NotNull
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.game.GameCodes
 
-/** Режим контроля времени. Будут добавлены время на раунд и шахматные часы. */
-enum class TimeControlMode {
-    /** Без таймера. */
-    NONE,
-
-    /** Фиксированное время на каждый ход. */
-    PER_MOVE,
-}
-
+/**
+ * Шахматные часы: у каждого игрока запас на всю партию, после своего хода он получает добавку (0 — без добавки).
+ * Границы задаёт игра (TimeControlLimitsDto).
+ */
 data class TimeControlDto(
     @field:NotNull
-    val mode: TimeControlMode,
-    /** Секунды на ход: обязательны при PER_MOVE, при NONE — null. Границы задаёт игра. */
-    val moveSeconds: Int?,
+    val baseSeconds: Int,
+    @field:NotNull
+    val incrementSeconds: Int,
 )
 
-/** Настройки комнаты: правила времени и настройки конкретной игры. */
+/** Настройки комнаты: часы и настройки конкретной игры. */
 data class RoomSettingsDto(
-    @field:NotNull
+    /** Шахматные часы; null — без таймера (если игра разрешает, TimeControlLimitsDto.optional). */
     @field:Valid
-    val timeControl: TimeControlDto,
+    val timeControl: TimeControlDto?,
     @field:NotNull
     @field:Valid
     val gameSettings: GameSettingsDto,
@@ -116,4 +111,26 @@ data class CheckersSettingsLimitsDto(
     val gameCode: GameCode,
     /** Варианты правил, которые можно выбрать. */
     val variants: List<CheckersVariant>,
+    /** Официальные контроли времени по вариантам: готовые значения шахматных часов для формы. */
+    val timePresets: List<CheckersTimePresetDto>,
 ) : GameSettingsLimitsDto
+
+/** Вид официального контроля времени. */
+enum class CheckersTimePreset {
+    /** Классика. */
+    CLASSIC,
+
+    /** Быстрые шашки. */
+    RAPID,
+
+    /** Блиц. */
+    BLITZ,
+}
+
+/** Официальный контроль времени варианта правил: значения шахматных часов (TimeControlDto). */
+data class CheckersTimePresetDto(
+    val variant: CheckersVariant,
+    val preset: CheckersTimePreset,
+    val baseSeconds: Int,
+    val incrementSeconds: Int,
+)

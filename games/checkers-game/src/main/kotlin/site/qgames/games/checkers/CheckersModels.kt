@@ -1,5 +1,7 @@
 package site.qgames.games.checkers
 
+import java.util.UUID
+
 /** Вариант правил: настройка комнаты (флаги — [CheckersMoveRules.of]). */
 enum class CheckersVariant {
     RUSSIAN,
@@ -28,9 +30,25 @@ data class CheckersSettings(
     val variant: CheckersVariant,
 )
 
-/** Границы настроек для формы: доступные варианты правил. */
+/** Границы настроек для формы: доступные варианты правил и их официальные контроли времени. */
 data class CheckersSettingsLimits(
     val variants: List<CheckersVariant>,
+    val timePresets: List<CheckersTimePreset>,
+)
+
+/** Вид официального контроля времени. */
+enum class CheckersTimePresetKind {
+    CLASSIC,
+    RAPID,
+    BLITZ,
+}
+
+/** Официальный контроль времени варианта: значения шахматных часов (TimeControl) для формы, не отдельный вид таймера. */
+data class CheckersTimePreset(
+    val variant: CheckersVariant,
+    val kind: CheckersTimePresetKind,
+    val baseSeconds: Int,
+    val incrementSeconds: Int,
 )
 
 /**
@@ -111,7 +129,10 @@ data class CheckersMoveRules(
     }
 }
 
-/** Игровая часть состояния (в документе — поля `state.pieces`, `state.lastMove`, `state.quietMoves`). */
+/**
+ * Игровая часть состояния (в документе — поля `state.pieces`, `state.lastMove`, `state.quietMoves`,
+ * `state.materialMoves`, `state.positionHistory`, `state.drawOfferedBy`).
+ */
 data class CheckersGameState(
     /** Шашки на доске; сбитые удаляются. */
     val pieces: List<CheckersPiece>,
@@ -119,6 +140,12 @@ data class CheckersGameState(
     val lastMove: CheckersLastMove?,
     /** Сколько ходов подряд сделано только дамками без взятий (для ничьей). */
     val quietMoves: Int,
+    /** Сколько ходов (обеих сторон) прошло с последнего взятия или превращения — для правил окончаний. */
+    val materialMoves: Int,
+    /** Ключи позиций (очередь + шашки) с последнего взятия или хода простой — для троекратного повторения. */
+    val positionHistory: List<String>,
+    /** Кто предложил ничью вместе со своим ходом; null — предложения нет. */
+    val drawOfferedBy: UUID?,
 )
 
 /** Шашка: элемент массива `state.pieces`, адресуется по [id] (`w1…`, `b1…`). */
@@ -142,13 +169,17 @@ data class CheckersPlayer(
     val color: CheckersColor,
 )
 
-/** Ход: `{type: "MOVE", data: {path}}` или `{type: "RESIGN"}`. */
+/** Ход: `{type: "MOVE", data: {path, offerDraw?}}`, `{type: "ACCEPT_DRAW"}` или `{type: "RESIGN"}`. */
 data class CheckersMove(
     val type: String,
     val data: CheckersMoveData? = null,
 )
 
-/** Параметры хода MOVE: полный путь шашки, включая начальную клетку, клетки — `[x, y]`. */
+/**
+ * Параметры хода MOVE: полный путь шашки, включая начальную клетку, клетки — `[x, y]`; [offerDraw] — предложить ничью
+ * вместе с этим ходом.
+ */
 data class CheckersMoveData(
     val path: List<List<Int>>,
+    val offerDraw: Boolean = false,
 )

@@ -19,8 +19,8 @@ data class RoomModel(
     val currentSessionId: UUID?,
     /** С какого момента в комнате нет присутствующих участников (отсутствующие игроки партии комнату не держат). */
     val emptySince: Instant?,
-    /** Правила времени следующей партии. */
-    val timeControl: RoomTimeControlModel,
+    /** Шахматные часы следующей партии; null — без таймера. */
+    val timeControl: RoomTimeControlModel?,
     /** JSON настроек игры, формат задаёт модуль игры (GameRules.settingsClass). */
     val gameSettings: String,
     val createdAt: Instant,
@@ -44,15 +44,18 @@ data class RoomOwnerGraceModel(
     val deadline: Instant,
 )
 
-/** Правила времени: режим и секунды на ход (только для [RoomTimeControlMode.PER_MOVE]). */
+/** Шахматные часы: запас на партию и добавка за ход в секундах (как TimeControl из SPI игр). */
 data class RoomTimeControlModel(
-    val mode: RoomTimeControlMode,
-    val moveSeconds: Int?,
+    val baseSeconds: Int,
+    val incrementSeconds: Int,
 )
 
-/** Настройки комнаты целиком; [gameSettings] — объект настроек модуля игры (GameRules.settingsClass). */
+/**
+ * Настройки комнаты целиком: часы (null — без таймера) и [gameSettings] — объект настроек модуля игры
+ * (GameRules.settingsClass).
+ */
 data class RoomSettingsModel(
-    val timeControl: RoomTimeControlModel,
+    val timeControl: RoomTimeControlModel?,
     val gameSettings: Any,
 )
 
@@ -64,10 +67,4 @@ enum class RoomStatus {
 enum class RoomRole {
     PLAYER,
     SPECTATOR,
-}
-
-/** Режим контроля времени. Имя значения совпадает с TimeControlMode из SPI игр. */
-enum class RoomTimeControlMode {
-    NONE,
-    PER_MOVE,
 }

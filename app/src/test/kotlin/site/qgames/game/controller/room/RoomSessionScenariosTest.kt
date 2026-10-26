@@ -15,7 +15,6 @@ import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.RoomStatus
 import site.qgames.game.api.dto.room.SessionStatus
-import site.qgames.game.api.dto.room.TimeControlMode
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
@@ -125,8 +124,8 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
     }
 
     @Test
-    fun `move timer starts with the game and every move resets it`() {
-        val roomId = roomWith(ALICE, BOB, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+    fun `clock starts with the game and every move switches it to the next player`() {
+        val roomId = roomWith(ALICE, BOB, settings = nothingSettings(clockSeconds = 30))
 
         val beforeStart = Instant.now()
         start(ALICE, roomId)
@@ -141,12 +140,12 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
         val secondDeadline = fullState(roomId).state.timer!!.deadline!!
         assertThat(secondDeadline).isBetween(beforeMove.plusSeconds(30).minusMillis(1), afterMove.plusSeconds(30))
         assertThat(storedDeadline(roomId)).isCloseTo(secondDeadline, within(1, ChronoUnit.MILLIS))
-        assertThat(journal(roomId).last().second).isEqualTo("timer-started")
+        assertThat(journal(roomId).last().second).isEqualTo("clock-switched")
 
         cancel(ALICE, roomId)
         assertThat(storedDeadline(roomId)).isNull()
         assertThat(journal(roomId).takeLast(3).map { it.second }).containsExactly("move-options-changed", "timer-stopped", "session-cancelled")
-        assertThat(fullState(roomId).state.timer).isEqualTo(TimerState(TimerStatus.STOPPED, null, null))
+        assertStopped(fullState(roomId).state.timer, ALICE, BOB)
     }
 
     @Test
@@ -156,20 +155,28 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
         pass(ALICE, roomId)
 
         assertThat(fullState(roomId).state.timer).isNull()
-        assertThat(journal(roomId).map { it.second }).doesNotContain("timer-started", "timer-stopped")
+        assertThat(journal(roomId).map { it.second }).doesNotContain("clock-switched", "timer-stopped")
         assertThat(storedDeadline(roomId)).isNull()
     }
 
     @Test
     fun `finished game has no deadline`() {
-        val roomId = roomWith(ALICE, started = true, settings = nothingSettings(rounds = 1, mode = TimeControlMode.PER_MOVE, moveSeconds = 5))
+        val roomId = roomWith(ALICE, started = true, settings = nothingSettings(rounds = 1, clockSeconds = 5))
 
         pass(ALICE, roomId)
 
         assertThat(room(roomId, ALICE).session!!.status).isEqualTo(SessionStatus.FINISHED)
         assertThat(storedDeadline(roomId)).isNull()
         assertThat(journal(roomId).takeLast(2).map { it.second }).containsExactly("timer-stopped", "session-finished")
-        assertThat(fullState(roomId).state.timer).isEqualTo(TimerState(TimerStatus.STOPPED, null, null))
+        assertStopped(fullState(roomId).state.timer, ALICE)
+    }
+
+    /** Часы остановлены: дедлайна и паузы нет, остатки — у всех игроков партии. */
+    private fun assertStopped(timer: TimerState?, vararg players: UUID) {
+        assertThat(timer!!.status).isEqualTo(TimerStatus.STOPPED)
+        assertThat(timer.deadline).isNull()
+        assertThat(timer.pausedAt).isNull()
+        assertThat(timer.clocks.map { it.playerId }).containsExactly(*players)
     }
 
     @Test

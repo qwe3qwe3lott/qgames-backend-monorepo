@@ -8,7 +8,6 @@ import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
 import site.qgames.games.api.GameRules
 import site.qgames.games.api.TimeControl
-import site.qgames.games.api.TimeControlMode
 import site.qgames.games.api.core.MoveOption
 import site.qgames.games.api.result.ResultOutcome
 import site.qgames.games.api.result.ResultState
@@ -63,7 +62,7 @@ class CheckersSessionScenariosTest {
                 "game" to mapOf(
                     "code" to "checkers",
                     "rules" to mapOf(
-                        "timeControl" to mapOf("mode" to "NONE", "moveSeconds" to null),
+                        "timeControl" to null,
                         "gameSettings" to mapOf("gameCode" to "checkers", "variant" to "RUSSIAN"),
                     ),
                 ),
@@ -82,7 +81,9 @@ class CheckersSessionScenariosTest {
         )
         @Suppress("UNCHECKED_CAST")
         val state = document["state"] as Map<String, Any?>
-        assertThat(state.keys).containsExactlyInAnyOrder("players", "timer", "turns", "result", "pieces", "lastMove", "quietMoves")
+        assertThat(state.keys).containsExactlyInAnyOrder(
+            "players", "timer", "turns", "result", "pieces", "lastMove", "quietMoves", "materialMoves", "positionHistory", "drawOfferedBy",
+        )
         assertThat(state["players"]).isEqualTo(
             listOf(ALICE, BOB).map {
                 val color = if (it == white) "WHITE" else "BLACK"
@@ -115,9 +116,110 @@ class CheckersSessionScenariosTest {
     @Test
     fun `all variants pass the settings check`() {
         assertThat(CheckersVariant.entries.flatMap { checkers.validateSettings(CheckersSettings(it)) }).isEmpty()
-        assertThat(checkers.settingsLimits).isEqualTo(CheckersSettingsLimits(CheckersVariant.entries))
+        assertThat(checkers.settingsLimits.variants).isEqualTo(CheckersVariant.entries)
     }
 
+    @Test
+    fun `every variant has classic, rapid and blitz presets within the clock limits`() {
+        val presets = checkers.settingsLimits.timePresets
+
+        CheckersVariant.entries.forEach { variant ->
+            assertThat(presets.filter { it.variant == variant }.map { it.kind }).containsExactly(*CheckersTimePresetKind.entries.toTypedArray())
+        }
+        assertThat(presets).allMatch { it.baseSeconds in checkers.timeControl.baseSeconds && it.incrementSeconds in checkers.timeControl.incrementSeconds }
+        assertThat(presets.single { it.variant == CheckersVariant.RUSSIAN && it.kind == CheckersTimePresetKind.CLASSIC })
+            .isEqualTo(CheckersTimePreset(CheckersVariant.RUSSIAN, CheckersTimePresetKind.CLASSIC, 1800, 30))
+    }
+
+    @Test
+    fun `a draw offered with a move is accepted by the opponent in their turn`() {
+        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)))
+
+        val offered = accepted(journal, white, offer(3 to 3, 4 to 4))
+        assertThat(offered.single { it.code == "draw-offer-changed" }.value).isEqualTo(mapOf("drawOfferedBy" to white.toString()))
+        val afterOffer = fold(journal + offered).session
+        assertThat((afterOffer.state.game as CheckersGameState).drawOfferedBy).isEqualTo(white)
+        assertThat(afterOffer.state.players.single { it.id == black }.moveOptions.map { it.type }).containsExactly("MOVE", "ACCEPT_DRAW", "RESIGN")
+
+        val events = accepted(journal + offered, black, CheckersMove("ACCEPT_DRAW"))
+        assertThat(events.first().code).isEqualTo("draw-accepted")
+        assertThat(fold(journal + offered + events).session.state.result).isEqualTo(ResultState(ResultOutcome.DRAW, emptyList(), "DRAW_AGREED"))
+    }
+
+    @Test
+    fun `a move of the opponent declines the draw offer`() {
+        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)))
+        val offered = journal + accepted(journal, white, offer(3 to 3, 4 to 4))
+
+        val declined = accepted(offered, black, 8 to 8, 7 to 7)
+
+        assertThat(declined.single { it.code == "draw-offer-changed" }.value).isEqualTo(mapOf("drawOfferedBy" to null))
+        val session = fold(offered + declined).session
+        assertThat((session.state.game as CheckersGameState).drawOfferedBy).isNull()
+        assertThat(session.state.players.single { it.id == white }.moveOptions.map { it.type }).containsExactly("MOVE", "RESIGN")
+    }
+
+    @Test
+    fun `a draw can be accepted only when the opponent offered it`() {
+        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)))
+        val offered = journal + accepted(journal, white, offer(3 to 3, 4 to 4))
+
+        assertThat(rejected(journal, white, CheckersMove("ACCEPT_DRAW"))).isEqualTo("ILLEGAL_MOVE")
+        assertThat(rejected(offered, white, CheckersMove("ACCEPT_DRAW"))).isEqualTo("NOT_YOUR_TURN")
+    }
+
+    @Test
+    fun `the same position for the third time is a draw`() {
+        val cycle = listOf(white to listOf(1 to 1, 2 to 2), black to listOf(8 to 2, 7 to 3), white to listOf(2 to 2, 1 to 1), black to listOf(7 to 3, 8 to 2))
+        val journal = position(listOf(wk("w1", 1, 1), bk("b1", 8, 2))).toMutableList()
+
+        // Позиция начала повторится второй раз после первого круга и третий — после второго.
+        (cycle + cycle.dropLast(1)).forEach { (player, path) ->
+            journal += accepted(journal, player, *path.toTypedArray())
+            assertThat(fold(journal).session.state.result).isNull()
+        }
+        val events = accepted(journal, black, 7 to 3, 8 to 2)
+
+        assertThat(fold(journal + events).session.state.result).isEqualTo(ResultState(ResultOutcome.DRAW, emptyList(), "REPETITION"))
+    }
+
+    @Test
+    fun `a capture or a move of a man resets the position history`() {
+        val journal = position(listOf(w("w1", 3, 3), wk("w2", 1, 1), bk("b1", 8, 2)))
+
+        val events = accepted(journal, white, 3 to 3, 4 to 4)
+
+        assertThat((fold(journal + events).session.state.game as CheckersGameState).positionHistory).hasSize(1)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("endgames")
+    fun `endgame rules draw at their move limit`(case: String, settings: CheckersSettings, pieces: List<CheckersPiece>, path: List<Pair<Int, Int>>, limit: Int) {
+        val mover = if (CheckersMoveRules.of(settings.variant).firstColor == WHITE) white else black
+
+        val before = position(pieces, materialMoves = limit - 2, settings = settings)
+        assertThat(fold(before + accepted(before, mover, *path.toTypedArray())).session.state.result).isNull()
+
+        val atLimit = position(pieces, materialMoves = limit - 1, settings = settings)
+        val result = fold(atLimit + accepted(atLimit, mover, *path.toTypedArray())).session.state.result
+        assertThat(result).isEqualTo(ResultState(ResultOutcome.DRAW, emptyList(), "ENDGAME_RULE"))
+    }
+
+    @Test
+    fun `english draughts have no endgame rules`() {
+        val journal = position(listOf(wk("w1", 1, 1), bk("b1", 8, 2)), materialMoves = 500, settings = ENGLISH)
+
+        assertThat(fold(journal + accepted(journal, black, 8 to 2, 7 to 3)).session.state.result).isNull()
+    }
+
+    @Test
+    fun `a capture or a crowning resets the endgame counter`() {
+        val journal = position(listOf(w("w1", 3, 3), b("b1", 4, 4), bk("b2", 8, 2)), materialMoves = 7)
+
+        val events = accepted(journal, white, 3 to 3, 5 to 5)
+
+        assertThat((fold(journal + events).session.state.game as CheckersGameState).materialMoves).isZero()
+    }
     @Test
     fun `international - 10x10 board with four rows of men, white moves first`() {
         val document = fold(engine.start(rules, listOf(ALICE, BOB), SEED, INTERNATIONAL, NO_TIMER, NOW))
@@ -227,12 +329,16 @@ class CheckersSessionScenariosTest {
         assertThat(events.map { Triple(it.code, it.method, it.path) }).containsExactly(
             Triple("piece-moved", SessionEventMethod.PATCH, piecePath("w1")),
             Triple("last-move-changed", SessionEventMethod.PUT, listOf(key("state"), key("lastMove"))),
+            Triple("counters-changed", SessionEventMethod.PATCH, listOf(key("state"))),
+            Triple("position-recorded", SessionEventMethod.PUT, listOf(key("state"), key("positionHistory"))),
             Triple("turn-changed", SessionEventMethod.PUT, listOf(key("state"), key("turns"))),
             Triple("move-options-changed", SessionEventMethod.PUT, playerOptions(ALICE)),
             Triple("move-options-changed", SessionEventMethod.PUT, playerOptions(BOB)),
         )
         assertThat(events[0].value).isEqualTo(mapOf("square" to listOf(4, 4)))
         assertThat(events[1].value).isEqualTo(mapOf("pieceId" to "w1", "path" to listOf(listOf(3, 3), listOf(4, 4)), "captured" to emptyList<Any>()))
+        // Ход простой необратим: история повторений начинается заново с новой позиции.
+        assertThat(events[3].value).isEqualTo(listOf("B|BM8,8;WM4,4"))
         val after = fold(journal + events).session
         assertThat(after.state.turns.currentPlayerId).isEqualTo(black)
         assertThat(after.state.players.single { it.id == black }.moveOptions).containsExactly(MoveOption("MOVE"), MoveOption("RESIGN"))
@@ -250,7 +356,7 @@ class CheckersSessionScenariosTest {
         assertThat(rejection(kings, white, 1 to 1, 7 to 7)).isEqualTo("ILLEGAL_MOVE")
         val events = accepted(kings, white, 1 to 1, 5 to 5)
         assertThat(events.map { it.code }).contains("counters-changed")
-        assertThat(events.single { it.code == "counters-changed" }.value).isEqualTo(mapOf("quietMoves" to 1))
+        assertThat(events.single { it.code == "counters-changed" }.value).isEqualTo(mapOf("quietMoves" to 1, "materialMoves" to 1))
     }
 
     @Test
@@ -346,7 +452,7 @@ class CheckersSessionScenariosTest {
 
         assertThat(game(journal + accepted(journal, white, 1 to 1, 2 to 2)).quietMoves).isEqualTo(6)
         val manMove = accepted(journal, white, 3 to 1, 4 to 2)
-        assertThat(manMove.single { it.code == "counters-changed" }.value).isEqualTo(mapOf("quietMoves" to 0))
+        assertThat(manMove.single { it.code == "counters-changed" }.value).isEqualTo(mapOf("quietMoves" to 0, "materialMoves" to 1))
     }
 
     @ParameterizedTest(name = "{0}")
@@ -367,7 +473,7 @@ class CheckersSessionScenariosTest {
 
     @Test
     fun `either player can resign at any time`() {
-        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(TimeControlMode.PER_MOVE, 30))
+        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(30, 0))
 
         val events = (engine.move(rules, fold(journal), black, CheckersMove("RESIGN"), NOW) as MoveOutcome.Accepted).events
 
@@ -380,7 +486,7 @@ class CheckersSessionScenariosTest {
 
     @Test
     fun `timeout loses the game`() {
-        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(TimeControlMode.PER_MOVE, 10))
+        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(10, 0))
 
         val events = engine.timeout(rules, fold(journal), NOW.plusSeconds(10))
 
@@ -420,7 +526,7 @@ class CheckersSessionScenariosTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("viewers")
     fun `fold of masked events equals masked full fold`(viewer: ViewerKey) {
-        val journal = engine.start(rules, listOf(ALICE, BOB), SEED, RUSSIAN, TimeControl(TimeControlMode.PER_MOVE, 30), NOW).toMutableList()
+        val journal = engine.start(rules, listOf(ALICE, BOB), SEED, RUSSIAN, TimeControl(30, 0), NOW).toMutableList()
         val whiteId = idOf(fold(journal), WHITE)
         val blackId = idOf(fold(journal), BLACK)
         journal += moved(journal, whiteId, 3 to 3, 4 to 4)
@@ -440,24 +546,42 @@ class CheckersSessionScenariosTest {
         assertThat(fold(journal).session.status).isEqualTo(SessionStatus.FINISHED)
     }
 
-    /** Позиция поверх начального журнала варианта: шашки, счётчик; очередь — того, кто ходит первым в варианте. */
+    /**
+     * Позиция поверх начального журнала варианта: шашки, счётчики, история позиций — с этой позицией; очередь — того, кто
+     * ходит первым в варианте.
+     */
     private fun position(
         pieces: List<CheckersPiece>,
         quietMoves: Int = 0,
-        timeControl: TimeControl = NO_TIMER,
+        materialMoves: Int = 0,
+        timeControl: TimeControl? = NO_TIMER,
         settings: CheckersSettings = RUSSIAN,
     ): List<SessionEvent> {
         val started = engine.start(rules, listOf(ALICE, BOB), SEED, settings, timeControl, NOW)
+        val history = listOf(CheckersDraws.positionKey(CheckersMoveRules.of(settings.variant).firstColor, pieces))
         return started + listOf(
             SessionEvents.put("test-position", SessionEvents.path("state", "pieces"), pieces),
-            SessionEvents.patch("test-position", SessionEvents.path("state"), mapOf("quietMoves" to quietMoves)),
+            SessionEvents.patch(
+                "test-position",
+                SessionEvents.path("state"),
+                mapOf("quietMoves" to quietMoves, "materialMoves" to materialMoves, "positionHistory" to history),
+            ),
         ).map { it.copy(value = codec.toTree(it.value)) }
     }
 
-    private fun accepted(journal: List<SessionEvent>, player: UUID, vararg path: Pair<Int, Int>): List<SessionEvent> {
-        val outcome = engine.move(rules, fold(journal), player, moveOf(*path), NOW)
+    private fun accepted(journal: List<SessionEvent>, player: UUID, vararg path: Pair<Int, Int>): List<SessionEvent> =
+        accepted(journal, player, moveOf(*path))
+
+    private fun accepted(journal: List<SessionEvent>, player: UUID, move: CheckersMove): List<SessionEvent> {
+        val outcome = engine.move(rules, fold(journal), player, move, NOW)
         assertThat(outcome).isInstanceOf(MoveOutcome.Accepted::class.java)
         return (outcome as MoveOutcome.Accepted).events
+    }
+
+    private fun rejected(journal: List<SessionEvent>, player: UUID, move: CheckersMove): String {
+        val outcome = engine.move(rules, fold(journal), player, move, NOW)
+        assertThat(outcome).isInstanceOf(MoveOutcome.Rejected::class.java)
+        return (outcome as MoveOutcome.Rejected).code
     }
 
     private fun moved(journal: List<SessionEvent>, player: UUID, vararg path: Pair<Int, Int>) =
@@ -484,7 +608,7 @@ class CheckersSessionScenariosTest {
         private val RUSSIAN = CheckersSettings(CheckersVariant.RUSSIAN)
         private val INTERNATIONAL = CheckersSettings(CheckersVariant.INTERNATIONAL)
         private val ENGLISH = CheckersSettings(CheckersVariant.ENGLISH)
-        private val NO_TIMER = TimeControl(TimeControlMode.NONE, null)
+        private val NO_TIMER: TimeControl? = null
 
         private fun w(id: String, x: Int, y: Int) = CheckersPiece(id, WHITE, CheckersPieceKind.MAN, listOf(x, y))
         private fun wk(id: String, x: Int, y: Int) = CheckersPiece(id, WHITE, CheckersPieceKind.KING, listOf(x, y))
@@ -494,6 +618,9 @@ class CheckersSessionScenariosTest {
         private fun squares(vararg path: Pair<Int, Int>) = path.map { listOf(it.first, it.second) }
 
         private fun moveOf(vararg path: Pair<Int, Int>) = CheckersMove("MOVE", CheckersMoveData(squares(*path)))
+
+        /** Ход с предложением ничьей. */
+        private fun offer(vararg path: Pair<Int, Int>) = CheckersMove("MOVE", CheckersMoveData(squares(*path), offerDraw = true))
 
         private fun option(type: String) = mapOf("type" to type, "data" to null)
 
@@ -531,6 +658,50 @@ class CheckersSessionScenariosTest {
                 listOf(1 to 1, 2 to 2),
                 ResultOutcome.DRAW,
                 "DRAW_RULE",
+            ),
+        )
+
+        /**
+         * Правила окончаний: позиция без взятий, ход того, кто ходит первым, и порог счётчика `materialMoves` (с этим ходом).
+         * «N-й ход сильнейшей стороны» — 2N − 1, «по N ходов» — 2N.
+         */
+        @JvmStatic
+        fun endgames(): Stream<Arguments> = Stream.of(
+            arguments(
+                "russian - three kings against a lone king, 15th move of the stronger side",
+                RUSSIAN,
+                listOf(wk("w1", 1, 3), wk("w2", 3, 1), wk("w3", 1, 7), bk("b1", 8, 4)),
+                listOf(1 to 7, 2 to 8),
+                29,
+            ),
+            arguments(
+                "russian - a lone king on the main road against three pieces, 5th move of the stronger side",
+                RUSSIAN,
+                listOf(wk("w1", 1, 3), wk("w2", 8, 2), wk("w3", 2, 8), bk("b1", 4, 4)),
+                listOf(1 to 3, 2 to 4),
+                9,
+            ),
+            arguments("russian - king against king, 5 moves each", RUSSIAN, listOf(wk("w1", 1, 1), bk("b1", 8, 2)), listOf(1 to 1, 2 to 2), 10),
+            arguments(
+                "russian - four pieces with kings on both sides, 30 moves each",
+                RUSSIAN,
+                listOf(wk("w1", 1, 1), w("w2", 5, 1), bk("b1", 8, 2), b("b2", 2, 8)),
+                listOf(1 to 1, 2 to 2),
+                60,
+            ),
+            arguments(
+                "international - three pieces with a king against a lone king, 16 moves each",
+                INTERNATIONAL,
+                listOf(wk("w1", 1, 1), w("w2", 3, 1), w("w3", 5, 1), bk("b1", 10, 2)),
+                listOf(1 to 1, 2 to 2),
+                32,
+            ),
+            arguments(
+                "international - king against king, 5 moves each",
+                INTERNATIONAL,
+                listOf(wk("w1", 1, 1), bk("b1", 10, 2)),
+                listOf(1 to 1, 2 to 2),
+                10,
             ),
         )
 

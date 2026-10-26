@@ -158,7 +158,7 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         }
         assertThat(strings(schemas.path("SessionSnapshotDto").path("required")))
             .containsExactlyInAnyOrder("seq", "status", "serverTime", "meta", "state")
-        assertThat(strings(schemas.path("SessionTimerDto").path("required"))).containsExactly("status")
+        assertThat(strings(schemas.path("SessionTimerDto").path("required"))).containsExactlyInAnyOrder("status", "clocks")
         assertThat(strings(schemas.path("SessionTimerDto").path("properties").path("status").path("enum")))
             .containsExactly("RUNNING", "PAUSED", "STOPPED")
         assertThat(strings(schemas.path("SessionPlayerDto").path("required"))).containsExactlyInAnyOrder("id", "moveOptions")
@@ -225,7 +225,9 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
     @ParameterizedTest(name = "{1}")
     @CsvSource(
         "SessionStateDto, NothingSessionStateDto, players|timer|turns|result|moves, players|turns|moves",
-        "SessionStateDto, CheckersSessionStateDto, players|timer|turns|result|pieces|lastMove|quietMoves, players|turns|pieces|quietMoves",
+        "SessionStateDto, CheckersSessionStateDto, " +
+            "players|timer|turns|result|pieces|lastMove|quietMoves|materialMoves|positionHistory|drawOfferedBy, " +
+            "players|turns|pieces|quietMoves|materialMoves|positionHistory",
         "SessionMoveRulesDto, CheckersMoveRulesDto, " +
             "boardSize|firstColor|menMoveBackward|menCaptureBackward|flyingKings|captureRequired|maxCaptureRequired|" +
             "promoteMidCapture|removeCapturedAfterMove, " +

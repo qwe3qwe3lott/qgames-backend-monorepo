@@ -8,8 +8,8 @@ databaseChangeLog:
         станет первый вошедший). Окно владения (owner_grace_user_id и owner_grace_deadline, оба заданы или оба NULL):
         ушедший владелец до срока может вернуть владение, потом RoomOwnerGraceJob отдаёт его присутствующему.
         current_session_id — идущая партия (без FK: room_session ссылается на room). empty_since — с какого момента в комнате
-        нет присутствующих участников (автоудаление). time_control_mode, move_seconds и game_settings (формат задаёт модуль
-        игры) — настройки, с которыми стартует следующая партия.
+        нет присутствующих участников (автоудаление). game_settings — настройки, с которыми стартует следующая партия:
+        {"timeControl": шахматные часы или null, "gameSettings": настройки игры (формат задаёт модуль игры)}.
       changes:
         - createTable:
             tableName: room
@@ -48,14 +48,6 @@ databaseChangeLog:
               - column:
                   name: empty_since
                   type: timestamp with time zone
-              - column:
-                  name: time_control_mode
-                  type: varchar(16)
-                  constraints:
-                    nullable: false
-              - column:
-                  name: move_seconds
-                  type: integer
               - column:
                   name: game_settings
                   type: json

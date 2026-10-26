@@ -6,7 +6,6 @@ import site.qgames.game.api.dto.game.GameListResponse
 import site.qgames.game.api.dto.game.GameRulesDto
 import site.qgames.game.api.dto.game.GameSummaryDto
 import site.qgames.game.api.dto.game.TimeControlLimitsDto
-import site.qgames.game.api.dto.room.TimeControlMode
 import site.qgames.game.mapper.room.RoomSettingsResponseMapper
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.game.GameDetailsModel
@@ -41,8 +40,9 @@ class GameResponseMapper(private val roomSettingsResponseMapper: RoomSettingsRes
         minPlayers = rules.minPlayers,
         maxPlayers = rules.maxPlayers,
         timeControl = TimeControlLimitsDto(
-            modes = rules.timeControlModes.map { TimeControlMode.valueOf(it.name) },
-            moveSeconds = roomSettingsResponseMapper.toDto(rules.moveSeconds),
+            optional = rules.timeControlOptional,
+            baseSeconds = roomSettingsResponseMapper.toDto(rules.baseSeconds),
+            incrementSeconds = roomSettingsResponseMapper.toDto(rules.incrementSeconds),
         ),
         gameSettingsLimits = roomSettingsResponseMapper.toLimitsResponse(rules.settingsLimits),
         defaultSettings = roomSettingsResponseMapper.toResponse(rules.defaultSettings),

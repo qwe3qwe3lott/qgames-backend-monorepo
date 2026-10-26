@@ -21,7 +21,6 @@ import site.qgames.game.service.game.GameRegistry
 import site.qgames.game.service.game.GameService
 import site.qgames.game.service.room.RoomDetailsService
 import site.qgames.games.api.TimeControl
-import site.qgames.games.api.TimeControlMode
 import site.qgames.games.api.session.MoveOutcome
 import site.qgames.games.api.session.SessionDocument
 import site.qgames.games.api.session.SessionEngine
@@ -258,7 +257,7 @@ class RoomSessionService(
     companion object {
         private val log = LoggerFactory.getLogger(RoomSessionService::class.java)
 
-        /** Правила времени комнаты → правила времени модуля игры (имена режимов совпадают). */
-        fun timeControl(model: RoomTimeControlModel) = TimeControl(TimeControlMode.valueOf(model.mode.name), model.moveSeconds)
+        /** Часы комнаты → часы модуля игры; null — без таймера. */
+        fun timeControl(model: RoomTimeControlModel?) = model?.let { TimeControl(it.baseSeconds, it.incrementSeconds) }
     }
 }

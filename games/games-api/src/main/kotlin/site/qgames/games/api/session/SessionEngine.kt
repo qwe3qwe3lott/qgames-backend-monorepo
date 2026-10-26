@@ -26,8 +26,8 @@ import java.util.UUID
  * - [read] — типизированное чтение документа.
  *
  * Все события, которые отдаёт платформа, уже со значением-деревом (как в журнале и у клиента). После событий игры
- * платформа сама добавляет `move-options-changed` игрокам, у которых изменились варианты ходов, и `timer-started` с
- * дедлайном следующего хода. Перед концом партии (`session-finished` игры, отмена) таймер останавливается
+ * платформа сама добавляет `move-options-changed` игрокам, у которых изменились варианты ходов, и `clock-switched`, если
+ * сменилась очередь (часы ходившего и следующего). Перед концом партии (`session-finished` игры, отмена) таймер останавливается
  * (`timer-stopped`), а событие конца уходит последним. Итог партии (`result-set`) игра ставит только вместе с
  * `session-finished`.
  *
@@ -41,14 +41,14 @@ class SessionEngine(private val codec: SessionCodec) {
         players: List<UUID>,
         seed: Long,
         settings: Any,
-        timeControl: TimeControl,
+        timeControl: TimeControl?,
         now: Instant,
     ): List<SessionEvent> {
         val start = rules.start(players, seed, settings)
         checkStartPlayers(rules, players, start.players)
         val initial = SessionState(
             players = CoreModule.initialPlayers(players, start.players),
-            timer = TimerModule.initial(timeControl, now),
+            timer = TimerModule.initial(timeControl, players, start.turns.currentPlayerId, now),
             turns = start.turns,
             result = null,
             game = start.game,
@@ -91,9 +91,10 @@ class SessionEngine(private val codec: SessionCodec) {
      * Отмена: варианты ходов всех игроков обнуляются (`move-options-changed`, как на конце партии), таймер (если есть)
      * останавливается, затем `session-cancelled`. Итога у отменённой партии нет.
      */
-    fun cancel(document: SessionDocument): List<SessionEvent> {
+    fun cancel(document: SessionDocument, now: Instant): List<SessionEvent> {
         val state = document.session.state
-        val events = CoreModule.changes(state) { emptyList() } + listOfNotNull(state.timer?.let(TimerModule::stop)) + SessionEvents.cancelled()
+        val timer = state.timer?.let { TimerModule.stop(it, state.turns.currentPlayerId, now) }
+        val events = CoreModule.changes(state) { emptyList() } + listOfNotNull(timer) + SessionEvents.cancelled()
         return events.map(::tree)
     }
 
@@ -126,7 +127,8 @@ class SessionEngine(private val codec: SessionCodec) {
     }
 
     /**
-     * Дописывает к событиям игры события модулей: варианты ходов, таймер следующего хода; конец партии — последним.
+     * Дописывает к событиям игры события модулей: варианты ходов, переключение часов при смене очереди; конец партии —
+     * последним.
      * Итог партии (`result-set`) допускается только вместе с концом партии.
      */
     private fun complete(
@@ -142,10 +144,11 @@ class SessionEngine(private val codec: SessionCodec) {
         check(results <= 1) { "${ResultModule.RESULT_SET} must be set once, got $results" }
         val after = read(rules, fold(document.tree, own)!!).session
         val players = CoreModule.changes(after.state) { if (finished) emptyList() else rules.moveOptions(after.state, it) }
+        val previous = document.session.state.turns.currentPlayerId
         val timer = if (finished) {
-            after.state.timer?.let(TimerModule::stop)
+            after.state.timer?.let { TimerModule.stop(it, previous, now) }
         } else {
-            TimerModule.restart(document.session.meta.game.rules.timeControl, now)
+            TimerModule.switch(after.state.timer, document.session.meta.game.rules.timeControl, previous, after.state.turns.currentPlayerId, now)
         }
         return own + (players + listOfNotNull(timer) + ending.take(1)).map(::tree)
     }
@@ -245,7 +248,7 @@ class SessionEngine(private val codec: SessionCodec) {
             SessionEvents.SESSION_FINISHED,
             SessionEvents.SESSION_CANCELLED,
             TurnsModule.TURN_CHANGED,
-            TimerModule.TIMER_STARTED,
+            TimerModule.CLOCK_SWITCHED,
             TimerModule.GAME_PAUSED,
             TimerModule.GAME_RESUMED,
             TimerModule.TIMER_STOPPED,

@@ -4,8 +4,6 @@ import site.qgames.games.api.Decision
 import site.qgames.games.api.GameRules
 import site.qgames.games.api.GameStart
 import site.qgames.games.api.SettingsViolation
-import site.qgames.games.api.TimeControl
-import site.qgames.games.api.TimeControlMode
 import site.qgames.games.api.TimeControlRules
 import site.qgames.games.api.core.MoveOption
 import site.qgames.games.api.session.SessionEvent
@@ -33,11 +31,7 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
     override val moveClass = NothingMove::class.java
     override val settingsClass = NothingSettings::class.java
 
-    override val timeControl = TimeControlRules(
-        modes = setOf(TimeControlMode.NONE, TimeControlMode.PER_MOVE),
-        moveSeconds = 5..600,
-        default = TimeControl(TimeControlMode.NONE, moveSeconds = null),
-    )
+    override val timeControl = TimeControlRules(optional = true, baseSeconds = 5..3600, incrementSeconds = 0..60, default = null)
 
     override val defaultSettings = NothingSettings(rounds = 3)
 
@@ -65,7 +59,10 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
         }
     }
 
-    /** Время вышло — ход пропускается: очередь переходит дальше, счётчик ходов не меняется. */
+    /**
+     * Время вышло — ход пропускается: очередь переходит дальше, счётчик ходов не меняется. У игрока без запаса (и без
+     * добавки) следующие ходы тоже пропускаются по таймауту.
+     */
     override fun onTimeout(state: SessionState<NothingGameState>): List<SessionEvent> {
         val current = state.turns.currentPlayerId ?: return emptyList()
         return pass(state, SessionEvents.info(PLAYER_PASSED, mapOf("playerId" to current, "timeout" to true)))

@@ -16,8 +16,10 @@ import site.qgames.game.api.dto.room.CheckersVariant
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.room.RoomStatus
-import site.qgames.game.api.dto.room.TimeControlDto
-import site.qgames.game.api.dto.room.TimeControlMode
+import site.qgames.game.api.dto.room.CheckersTimePreset
+import site.qgames.game.api.dto.room.CheckersTimePresetDto
+import site.qgames.game.api.dto.game.TimeControlLimitsDto
+import site.qgames.game.api.dto.room.IntRangeDto
 import site.qgames.game.api.dto.session.CheckersColor
 import site.qgames.game.api.dto.session.CheckersMoveRulesDto
 import site.qgames.game.api.dto.session.CheckersSessionStateDto
@@ -50,16 +52,17 @@ class CheckersGameScenariosTest : GameIntegrationTest() {
         assertThat(details.description).isEqualTo(CHECKERS_DESCRIPTION)
         assertThat(details.rules.minPlayers).isEqualTo(2)
         assertThat(details.rules.maxPlayers).isEqualTo(2)
-        assertThat(details.rules.timeControl.modes).containsExactly(TimeControlMode.NONE, TimeControlMode.PER_MOVE)
-        assertThat(details.rules.gameSettingsLimits).isEqualTo(
-            CheckersSettingsLimitsDto(GameCode.CHECKERS, listOf(CheckersVariant.RUSSIAN, CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH)),
-        )
+        assertThat(details.rules.timeControl).isEqualTo(TimeControlLimitsDto(optional = true, IntRangeDto(60, 10800), IntRangeDto(0, 60)))
+        val limits = details.rules.gameSettingsLimits as CheckersSettingsLimitsDto
+        assertThat(limits.variants).containsExactly(CheckersVariant.RUSSIAN, CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH)
+        assertThat(limits.timePresets).hasSize(9)
+        assertThat(limits.timePresets.first()).isEqualTo(CheckersTimePresetDto(CheckersVariant.RUSSIAN, CheckersTimePreset.CLASSIC, 1800, 30))
         assertThat(details.rules.defaultSettings).isEqualTo(CHECKERS_DEFAULT_SETTINGS)
     }
 
     @Test
     fun `the variant of the room sets the move rules and the board of the game`() {
-        val settings = RoomSettingsDto(TimeControlDto(TimeControlMode.NONE, null), CheckersSettingsDto(GameCode.CHECKERS, CheckersVariant.INTERNATIONAL))
+        val settings = RoomSettingsDto(null, CheckersSettingsDto(GameCode.CHECKERS, CheckersVariant.INTERNATIONAL))
         val roomId = roomWith(ALICE, BOB, started = true, settings = settings)
         val stream = openSessionStream(ALICE, roomId, gameCode = GameCodes.CHECKERS)
 
@@ -96,22 +99,45 @@ class CheckersGameScenariosTest : GameIntegrationTest() {
         rejected(black, roomId, listOf(listOf(6, 6), listOf(5, 5)), "NOT_YOUR_TURN")
         moveRequest(white, roomId, mapOf("path" to listOf(listOf(3, 3), listOf(4, 4)))).andExpect { status { isNoContent() } }
 
-        val afterMove = awaitEvents(stream, 6).drop(1).map { jsonMapper.readTree(it.second) }
-        assertThat(afterMove.map { it.path("code").asString() })
-            .containsExactly("piece-moved", "last-move-changed", "turn-changed", "move-options-changed", "move-options-changed")
+        val afterMove = awaitEvents(stream, 9).drop(1).map { jsonMapper.readTree(it.second) }
+        assertThat(afterMove.map { it.path("code").asString() }).containsExactly(
+            "piece-moved", "last-move-changed", "counters-changed", "position-recorded", "turn-changed",
+            "move-options-changed", "move-options-changed", "clock-switched",
+        )
 
         // Сдаться можно вне очереди: белые сдаются на ходу чёрных.
         call(HttpMethod.POST, "/api/games/checkers/rooms/$roomId/moves", white, MoveRequest("RESIGN")).andExpect { status { isNoContent() } }
 
-        val ending = awaitEvents(stream, 11).drop(6).map { it.first to jsonMapper.readTree(it.second) }
+        val ending = awaitEvents(stream, 15).drop(9).map { it.first to jsonMapper.readTree(it.second) }
         assertThat(ending.map { it.second.path("code").asString() })
-            .containsExactly("player-resigned", "result-set", "move-options-changed", "move-options-changed", "session-finished")
+            .containsExactly("player-resigned", "result-set", "move-options-changed", "move-options-changed", "timer-stopped", "session-finished")
         assertThat(ending[1].first).isEqualTo("put")
         assertThat(ending[1].second.path("data").path("value")).isEqualTo(
             jsonMapper.readTree("""{"outcome": "WIN", "winnerIds": ["$black"], "reason": "RESIGN"}"""),
         )
         assertThat(fullState(roomId).state.result).isEqualTo(ResultState(ResultOutcome.WIN, listOf(black), "RESIGN"))
         assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.WAITING)
+    }
+
+    @Test
+    fun `a draw offered with a move and accepted by the opponent ends the game`() {
+        val roomId = roomWith(ALICE, BOB, started = true, settings = CHECKERS_DEFAULT_SETTINGS)
+        val players = fullState(roomId).state.players
+        val white = players.single { (it.game as site.qgames.games.checkers.CheckersPlayer).color.name == "WHITE" }.id
+        val black = players.single { it.id != white }.id
+
+        rejectedRequest(black, roomId, MoveRequest("ACCEPT_DRAW"), "NOT_YOUR_TURN")
+        moveRequest(white, roomId, mapOf("path" to listOf(listOf(3, 3), listOf(4, 4)), "offerDraw" to true)).andExpect { status { isNoContent() } }
+        call(HttpMethod.POST, "/api/games/checkers/rooms/$roomId/moves", black, MoveRequest("ACCEPT_DRAW")).andExpect { status { isNoContent() } }
+
+        assertThat(fullState(roomId).state.result).isEqualTo(ResultState(ResultOutcome.DRAW, emptyList(), "DRAW_AGREED"))
+    }
+
+    private fun rejectedRequest(user: UUID, roomId: UUID, move: MoveRequest, reason: String) {
+        call(HttpMethod.POST, "/api/games/checkers/rooms/$roomId/moves", user, move).andExpect {
+            status { isEqualTo(HttpStatus.UNPROCESSABLE_CONTENT.value()) }
+            jsonPath("$.reason") { value(reason) }
+        }
     }
 
     private fun moveRequest(user: UUID, roomId: UUID, data: Map<String, Any?>) =

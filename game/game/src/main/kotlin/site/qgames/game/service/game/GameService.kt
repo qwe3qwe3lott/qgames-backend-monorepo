@@ -9,7 +9,6 @@ import site.qgames.game.model.game.GameModel
 import site.qgames.game.model.game.GamePublishStatus
 import site.qgames.game.model.game.GameRulesModel
 import site.qgames.game.model.room.RoomSettingsModel
-import site.qgames.game.model.room.RoomTimeControlMode
 import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.repository.game.GameRepository
 
@@ -61,15 +60,12 @@ class GameService(
         return GameRulesModel(
             minPlayers = rules.minPlayers,
             maxPlayers = rules.maxPlayers,
-            // Порядок — как в enum, чтобы ответ был стабильным.
-            timeControlModes = RoomTimeControlMode.entries.filter { mode -> timeControl.modes.any { it.name == mode.name } },
-            moveSeconds = timeControl.moveSeconds,
+            timeControlOptional = timeControl.optional,
+            baseSeconds = timeControl.baseSeconds,
+            incrementSeconds = timeControl.incrementSeconds,
             settingsLimits = rules.settingsLimits,
             defaultSettings = RoomSettingsModel(
-                timeControl = RoomTimeControlModel(
-                    mode = RoomTimeControlMode.valueOf(timeControl.default.mode.name),
-                    moveSeconds = timeControl.default.moveSeconds,
-                ),
+                timeControl = timeControl.default?.let { RoomTimeControlModel(it.baseSeconds, it.incrementSeconds) },
                 gameSettings = rules.defaultSettings,
             ),
         )

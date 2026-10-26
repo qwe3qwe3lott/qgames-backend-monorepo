@@ -16,7 +16,6 @@ import org.springframework.test.web.servlet.get
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.SessionStatus
-import site.qgames.game.api.dto.room.TimeControlMode
 import site.qgames.game.api.dto.session.MoveOptionDto
 import site.qgames.game.api.dto.session.NothingSessionStateDto
 import site.qgames.game.api.dto.session.SessionPlayerDto
@@ -79,7 +78,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
 
     @Test
     fun `snapshots differ by the mask of the viewer`() {
-        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(rounds = 2, mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(rounds = 2, clockSeconds = 30))
         join(CAROL, roomId)
 
         val alice = snapshot(openSessionStream(ALICE, roomId))
@@ -105,7 +104,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
 
     @Test
     fun `move reaches every viewer with its own mask and continuous seq`() {
-        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(clockSeconds = 30))
         join(CAROL, roomId)
         val streams = mapOf(ALICE to openSessionStream(ALICE, roomId), BOB to openSessionStream(BOB, roomId), CAROL to openSessionStream(CAROL, roomId))
         streams.values.forEach { awaitEvents(it, 1) }
@@ -118,7 +117,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
             val frames = events.drop(1).map(::frame)
             assertThat(frames.map { it.path("seq").asLong() }).containsExactly(2L, 3L, 4L, 5L, 6L)
             assertThat(frames.map { it.path("code").asString() })
-                .containsExactly("player-passed", "turn-changed", "move-options-changed", "move-options-changed", "timer-started")
+                .containsExactly("player-passed", "turn-changed", "move-options-changed", "move-options-changed", "clock-switched")
             assertThat(frames.map { it.path("method").asString() }).containsExactly("PATCH", "PUT", "PUT", "PUT", "PUT")
             assertThat(frames[0].path("data")).isEqualTo(json("""{"path": ["state"], "value": {"moves": 1}}"""))
             assertThat(frames[1].path("data")).isEqualTo(
@@ -138,7 +137,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
 
     @Test
     fun `pause and resume are timer patches in the session stream, the room stream is not touched`() {
-        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(clockSeconds = 30))
         val roomStream = openStream(ALICE, roomId)
         awaitEvents(roomStream, 1)
         val stream = openSessionStream(BOB, roomId)
@@ -180,7 +179,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
 
     @Test
     fun `timer is stopped right before the end of a timed game`() {
-        val roomId = roomWith(ALICE, started = true, settings = nothingSettings(rounds = 1, mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        val roomId = roomWith(ALICE, started = true, settings = nothingSettings(rounds = 1, clockSeconds = 30))
         val stream = openSessionStream(ALICE, roomId)
         awaitEvents(stream, 1)
 
@@ -189,14 +188,18 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
         val events = awaitEvents(stream, 6)
         assertThat(events.drop(1).map { frame(it).path("code").asString() })
             .containsExactly("player-passed", "turn-changed", "move-options-changed", "timer-stopped", "session-finished")
-        assertThat(frame(events[4]).path("data")).isEqualTo(
-            json("""{"path": ["state", "timer"], "value": {"status": "${SessionTimerStatus.STOPPED}", "deadline": null, "pausedAt": null}}"""),
-        )
+        // Остановленные часы хранят итоговый остаток ходившего: он зависит от времени хода, поэтому — по полям.
+        val stopped = frame(events[4]).path("data")
+        assertThat(stopped.path("path")).isEqualTo(json("""["state", "timer"]"""))
+        assertThat(stopped.path("value").path("status").asString()).isEqualTo(SessionTimerStatus.STOPPED.name)
+        assertThat(stopped.path("value").path("deadline").isNull).isTrue()
+        assertThat(stopped.path("value").path("clocks").size()).isEqualTo(1)
+        assertThat(stopped.path("value").path("clocks").path(0).path("playerId").asString()).isEqualTo(ALICE.toString())
     }
 
     @Test
     fun `cancel stops the timer, ends the stream with session-cancelled and closes it`() {
-        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(clockSeconds = 30))
         val stream = openSessionStream(BOB, roomId)
         awaitEvents(stream, 1)
 
@@ -215,7 +218,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
      */
     @Test
     fun `events applied to the snapshot give the final snapshot for every viewer`() {
-        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(rounds = 2, mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(rounds = 2, clockSeconds = 30))
         join(CAROL, roomId)
         val sessionId = sessionId(roomId)
         val streams = listOf(ALICE, BOB, CAROL).map { openSessionStream(it, roomId) }

@@ -16,7 +16,7 @@ import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.room.TimeControlDto
-import site.qgames.game.api.dto.room.TimeControlMode
+import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.EVE
@@ -24,16 +24,14 @@ import site.qgames.games.api.TimeControl
 import site.qgames.games.api.TimeControlRules
 import java.util.UUID
 import java.util.stream.Stream
-import site.qgames.games.api.TimeControlMode as GameTimeControlMode
 import org.jetbrains.exposed.v1.core.eq
-import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.update
 import site.qgames.game.table.room.RoomTable
 
 /**
  * Настройки комнаты: задаются при создании (POST /api/games/{gameCode}/rooms) и меняются владельцем между партиями
- * (PUT …/settings). Границы — из правил «игры в ничто»: 1–50 кругов, время на ход 5–600 с.
+ * (PUT …/settings). Границы — из правил «игры в ничто»: 1–50 кругов, шахматные часы — запас 5–3600 с, добавка 0–60 с,
+ * можно без таймера.
  */
 class RoomSettingsScenariosTest : GameIntegrationTest() {
 
@@ -43,9 +41,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         val room = createRoom(ALICE, settings)
 
         assertThat(room.settings).isEqualTo(settings)
-        assertThat(storedSettings(room.id)).isEqualTo(
-            StoredSettings(settings.timeControl.mode.name, settings.timeControl.moveSeconds, rounds(settings)),
-        )
+        assertThat(storedSettings(room.id)).isEqualTo(StoredSettings(settings.timeControl, rounds(settings)))
         assertThat(room.ownerId).isEqualTo(ALICE)
     }
 
@@ -74,7 +70,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
     @Test
     fun `settings change with a foreign game settings discriminator is rejected by the field`() {
         val roomId = roomWith(ALICE)
-        val body = mapOf("timeControl" to mapOf("mode" to "NONE"), "gameSettings" to mapOf("gameCode" to "chess", "rounds" to 5))
+        val body = mapOf("timeControl" to null, "gameSettings" to mapOf("gameCode" to "chess", "rounds" to 5))
 
         updateSettingsRequest(ALICE, roomId, body).andExpect {
             status { isBadRequest() }
@@ -94,14 +90,13 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
     }
 
     @Test
-    fun `time control mode the game does not support is rejected`() {
-        every { nothingGameRules.timeControl } returns
-            TimeControlRules(setOf(GameTimeControlMode.NONE), 5..600, TimeControl(GameTimeControlMode.NONE, null))
+    fun `a game without the timer when the game requires a clock is rejected`() {
+        every { nothingGameRules.timeControl } returns TimeControlRules(optional = false, 5..600, 0..60, TimeControl(30, 0))
 
-        createRoomRequest(ALICE, CreateRoomRequest(nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))).andExpect {
+        createRoomRequest(ALICE, CreateRoomRequest(nothingSettings())).andExpect {
             status { isBadRequest() }
             jsonPath("$.code") { value("VALIDATION_ERROR") }
-            jsonPath("$.errors['settings.timeControl.mode']") { exists() }
+            jsonPath("$.errors['settings.timeControl']") { exists() }
         }
         assertThat(count(RoomTable)).isZero()
     }
@@ -109,19 +104,18 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
     @Test
     fun `owner changes the settings between games and the next game uses them`() {
         val roomId = roomWith(ALICE, BOB)
-        val settings = nothingSettings(rounds = 1, mode = TimeControlMode.PER_MOVE, moveSeconds = 45)
+        val settings = nothingSettings(rounds = 1, clockSeconds = 45, incrementSeconds = 2)
 
         val updated = updateSettingsRequest(ALICE, roomId, settings).andExpect { status { isOk() } }.body<RoomResponse>()
 
         assertThat(updated.settings).isEqualTo(settings)
-        assertThat(storedSettings(roomId)).isEqualTo(StoredSettings("PER_MOVE", 45, 1))
+        assertThat(storedSettings(roomId)).isEqualTo(StoredSettings(TimeControlDto(45, 2), 1))
         val started = start(ALICE, roomId)
         assertThat(started.session).isNotNull()
         assertThat(fullState(roomId).state.turns.rounds).isEqualTo(1)
         assertThat(fullState(roomId).state.timer).isNotNull()
         val session = roomSessionRepository.findLatest(roomId)!!
-        assertThat(session.timeControl.mode.name).isEqualTo("PER_MOVE")
-        assertThat(session.timeControl.moveSeconds).isEqualTo(45)
+        assertThat(session.timeControl).isEqualTo(RoomTimeControlModel(45, 2))
         assertThat(jsonMapper.readTree(session.gameSettings)["rounds"].asInt()).isEqualTo(1)
     }
 
@@ -153,16 +147,15 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         fun RoomSettingsScenariosTest.prepare(): UUID
     }
 
-    private data class StoredSettings(val mode: String, val moveSeconds: Int?, val rounds: Int)
+    private data class StoredSettings(val timeControl: TimeControlDto?, val rounds: Int)
 
+    /** Настройки из колонки `game_settings`: `{"timeControl": …, "gameSettings": {…}}`. */
     private fun storedSettings(roomId: UUID): StoredSettings =
         db {
             RoomTable.selectAll().where { RoomTable.id eq roomId }.single().let {
-                StoredSettings(
-                    it[RoomTable.timeControlMode],
-                    it[RoomTable.moveSeconds],
-                    jsonMapper.readTree(it[RoomTable.gameSettings])["rounds"].asInt(),
-                )
+                val column = jsonMapper.readTree(it[RoomTable.gameSettings])
+                val timeControl = column["timeControl"].takeUnless { node -> node.isNull }?.let { node -> jsonMapper.treeToValue(node, TimeControlDto::class.java) }
+                StoredSettings(timeControl, column["gameSettings"]["rounds"].asInt())
             }
         }
 
@@ -170,9 +163,9 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         (settings.gameSettings as NothingSettingsDto).rounds
 
     companion object {
-        private fun settings(rounds: Int = 3, mode: TimeControlMode = TimeControlMode.NONE, moveSeconds: Int? = null) =
+        private fun settings(rounds: Int = 3, clockSeconds: Int? = null, incrementSeconds: Int = 0) =
             RoomSettingsDto(
-                TimeControlDto(mode, moveSeconds),
+                clockSeconds?.let { TimeControlDto(it, incrementSeconds) },
                 NothingSettingsDto(GameCode.NOTHING, rounds),
             )
 
@@ -182,18 +175,18 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         fun validSettings(): Stream<Arguments> = Stream.of(
             arguments("minimum rounds, no timer", settings(rounds = 1)),
             arguments("maximum rounds", settings(rounds = 50)),
-            arguments("shortest move time", settings(mode = TimeControlMode.PER_MOVE, moveSeconds = 5)),
-            arguments("longest move time", settings(rounds = 7, mode = TimeControlMode.PER_MOVE, moveSeconds = 600)),
+            arguments("smallest clock without increment", settings(clockSeconds = 5)),
+            arguments("largest clock and increment", settings(rounds = 7, clockSeconds = 3600, incrementSeconds = 60)),
         )
 
         @JvmStatic
         fun invalidSettings(): Stream<Arguments> = Stream.of(
             arguments("zero rounds", settings(rounds = 0), "gameSettings.rounds"),
             arguments("too many rounds", settings(rounds = 51), "gameSettings.rounds"),
-            arguments("move time too short", settings(mode = TimeControlMode.PER_MOVE, moveSeconds = 4), "timeControl.moveSeconds"),
-            arguments("move time too long", settings(mode = TimeControlMode.PER_MOVE, moveSeconds = 601), "timeControl.moveSeconds"),
-            arguments("timer without move time", settings(mode = TimeControlMode.PER_MOVE, moveSeconds = null), "timeControl.moveSeconds"),
-            arguments("move time without a timer", settings(mode = TimeControlMode.NONE, moveSeconds = 30), "timeControl.moveSeconds"),
+            arguments("clock too short", settings(clockSeconds = 4), "timeControl.baseSeconds"),
+            arguments("clock too long", settings(clockSeconds = 3601), "timeControl.baseSeconds"),
+            arguments("negative increment", settings(clockSeconds = 30, incrementSeconds = -1), "timeControl.incrementSeconds"),
+            arguments("increment too large", settings(clockSeconds = 30, incrementSeconds = 61), "timeControl.incrementSeconds"),
         )
 
         @JvmStatic
@@ -202,20 +195,19 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             arguments("body with the game code only", mapOf("gameCode" to "nothing"), null),
             arguments(
                 "foreign game settings discriminator",
-                mapOf("settings" to mapOf("timeControl" to mapOf("mode" to "NONE"), "gameSettings" to mapOf("gameCode" to "chess", "rounds" to 3))),
+                mapOf("settings" to mapOf("timeControl" to null, "gameSettings" to mapOf("gameCode" to "chess", "rounds" to 3))),
                 "settings.gameSettings.gameCode",
             ),
             arguments(
                 "game settings without discriminator",
-                mapOf("settings" to mapOf("timeControl" to mapOf("mode" to "NONE"), "gameSettings" to mapOf("rounds" to 3))),
+                mapOf("settings" to mapOf("timeControl" to null, "gameSettings" to mapOf("rounds" to 3))),
                 "settings.gameSettings.gameCode",
             ),
             arguments(
-                "unknown time control mode",
-                mapOf("settings" to mapOf("timeControl" to mapOf("mode" to "CHESS"), "gameSettings" to gameSettingsJson())),
+                "clock without the base time",
+                mapOf("settings" to mapOf("timeControl" to mapOf("incrementSeconds" to 5), "gameSettings" to gameSettingsJson())),
                 null,
             ),
-            arguments("no time control", mapOf("settings" to mapOf("gameSettings" to gameSettingsJson())), null),
         )
 
         @JvmStatic
@@ -241,10 +233,10 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
                 HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "gameSettings.rounds",
             ),
             arguments(
-                "owner-spectator sends a timer without move time",
+                "owner-spectator sends a clock out of limits",
                 RoomSetup { roomWith(ALICE, BOB).also { changeRole(ALICE, it, RoomRole.SPECTATOR) } },
-                ALICE, "nothing", settings(mode = TimeControlMode.PER_MOVE),
-                HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "timeControl.moveSeconds",
+                ALICE, "nothing", settings(clockSeconds = 4),
+                HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "timeControl.baseSeconds",
             ),
         )
     }

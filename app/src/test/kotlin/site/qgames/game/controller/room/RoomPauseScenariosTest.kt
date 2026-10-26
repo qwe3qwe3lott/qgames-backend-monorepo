@@ -13,7 +13,6 @@ import org.springframework.http.HttpStatus
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.room.RoomStatus
 import site.qgames.game.api.dto.room.SessionStatus
-import site.qgames.game.api.dto.room.TimeControlMode
 import site.qgames.game.job.session.MoveTimeoutJob
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
@@ -210,13 +209,13 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
     private fun storedDeadline(roomId: UUID): Instant? =
         db { RoomSessionTable.selectAll().where { RoomSessionTable.roomId eq roomId }.single()[RoomSessionTable.moveDeadline] }
 
-    private fun perMove() = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30)
+    private fun perMove() = nothingSettings(clockSeconds = 30)
 
     companion object {
         @JvmStatic
         fun rejections(): Stream<Arguments> = listOf("pause", "resume").flatMap { action ->
             val running = RoomSetup {
-                roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+                roomWith(ALICE, BOB, started = true, settings = nothingSettings(clockSeconds = 30))
                     .also { if (action == "resume") pause(ALICE, it) }
             }
             listOf(

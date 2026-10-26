@@ -13,7 +13,6 @@ import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.RoomStatus
-import site.qgames.game.api.dto.room.TimeControlMode
 import site.qgames.game.job.room.EmptyRoomCleanupJob
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
@@ -226,7 +225,7 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
     @ParameterizedTest(name = "paused: {0}")
     @MethodSource("paused")
     fun `player of the running game stays as an absent member and comes back to the seat`(paused: Boolean) {
-        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(mode = TimeControlMode.PER_MOVE, moveSeconds = 30))
+        val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(clockSeconds = 30))
         if (paused) pause(ALICE, roomId)
 
         leave(BOB, roomId)

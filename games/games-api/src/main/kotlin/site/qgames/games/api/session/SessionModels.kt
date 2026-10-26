@@ -104,11 +104,11 @@ data class GameMeta(
 )
 
 /**
- * Правила партии: время и настройки игры. [gameSettings] — настройки игры (GameRules.settingsClass) с кодом игры в поле
- * `gameCode`, как в настройках комнаты.
+ * Правила партии: часы (null — без таймера) и настройки игры. [gameSettings] — настройки игры (GameRules.settingsClass) с
+ * кодом игры в поле `gameCode`, как в настройках комнаты.
  */
 data class SessionRules(
-    val timeControl: TimeControl,
+    val timeControl: TimeControl?,
     val gameSettings: Map<String, Any?>,
 )
 

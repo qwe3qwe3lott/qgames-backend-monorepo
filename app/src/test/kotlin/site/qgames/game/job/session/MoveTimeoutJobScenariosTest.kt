@@ -6,7 +6,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.room.RoomStatus
 import site.qgames.game.api.dto.room.SessionStatus
-import site.qgames.game.api.dto.room.TimeControlMode
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.games.nothing.NothingGameState
@@ -47,7 +46,7 @@ class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
         assertThat(state.turns.currentPlayerId).isEqualTo(BOB)
         assertThat(state.timer!!.deadline).isBetween(before.plusSeconds(30).minusMillis(1), after.plusSeconds(30))
         assertThat(journal(roomId).map { it.second })
-            .containsExactly("session-started", "player-passed", "turn-changed", "move-options-changed", "move-options-changed", "timer-started")
+            .containsExactly("session-started", "player-passed", "turn-changed", "move-options-changed", "move-options-changed", "clock-switched")
         // Пропуск по времени — INFO: в журнале, но счётчик ходов игры не меняется.
         val passed = db {
             RoomSessionEventTable.selectAll().where { RoomSessionEventTable.code eq "player-passed" }.single()
@@ -105,7 +104,7 @@ class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
     }
 
     private fun perMove(seconds: Int, rounds: Int = 3) =
-        nothingSettings(rounds = rounds, mode = TimeControlMode.PER_MOVE, moveSeconds = seconds)
+        nothingSettings(rounds = rounds, clockSeconds = seconds)
 
     private fun expireMove(roomId: UUID) {
         db {
