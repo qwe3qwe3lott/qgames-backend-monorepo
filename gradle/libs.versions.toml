@@ -8,23 +8,27 @@ springdoc = "3.1.1"
 # Должна совпадать с версией, которую тянет springdoc.
 swaggerAnnotations = "2.2.55"
 bouncycastle = "1.86"
-protobufPlugin = "0.10.0"
-# Должна совпадать с protobuf-java из Spring Boot BOM.
-protoc = "4.35.1"
-shedlock = "7.10.1"
+# Spring Modulith не входит в Spring Boot BOM: линейка 2.1 — для Spring Boot 4.1.
+springModulith = "2.1.2"
 springmockk = "5.0.1"
 wiremock = "3.13.2"
+# Exposed (ORM, DSL) не входит в Spring Boot BOM: свой BOM, интеграция с транзакциями Spring — стартер для Boot 4.
+exposed = "1.6.0"
 
 [libraries]
 kotlinGradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 kotlinAllopenPlugin = { module = "org.jetbrains.kotlin:kotlin-allopen", version.ref = "kotlin" }
 springBootGradlePlugin = { module = "org.springframework.boot:spring-boot-gradle-plugin", version.ref = "springBoot" }
-protobufGradlePlugin = { module = "com.google.protobuf:protobuf-gradle-plugin", version.ref = "protobufPlugin" }
 
 springdocWebmvcUi = { module = "org.springdoc:springdoc-openapi-starter-webmvc-ui", version.ref = "springdoc" }
 swaggerAnnotations = { module = "io.swagger.core.v3:swagger-annotations-jakarta", version.ref = "swaggerAnnotations" }
 bouncycastle = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
-shedlockSpring = { module = "net.javacrumbs.shedlock:shedlock-spring", version.ref = "shedlock" }
-shedlockJdbc = { module = "net.javacrumbs.shedlock:shedlock-provider-jdbc-template", version.ref = "shedlock" }
+springModulithBom = { module = "org.springframework.modulith:spring-modulith-bom", version.ref = "springModulith" }
 springmockk = { module = "com.ninja-squad:springmockk", version.ref = "springmockk" }
 wiremock = { module = "org.wiremock:wiremock-standalone", version.ref = "wiremock" }
+exposedBom = { module = "org.jetbrains.exposed:exposed-bom", version.ref = "exposed" }
+exposedCore = { module = "org.jetbrains.exposed:exposed-core" }
+exposedJdbc = { module = "org.jetbrains.exposed:exposed-jdbc" }
+exposedJavaTime = { module = "org.jetbrains.exposed:exposed-java-time" }
+exposedJson = { module = "org.jetbrains.exposed:exposed-json" }
+exposedSpringBoot4Starter = { module = "org.jetbrains.exposed:exposed-spring-boot4-starter" }

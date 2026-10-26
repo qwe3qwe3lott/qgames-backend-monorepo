@@ -10,27 +10,25 @@ data class AuthProperties(
     val refreshTokenTtl: Duration,
     /** Сколько после ротации старый refresh-токен ещё принимается без отзыва сессии (параллельные вкладки). */
     val refreshReuseGrace: Duration,
-    val verification: Verification,
-    val mail: Mail,
     val google: Google,
+    val cookies: Cookies = Cookies(),
 ) {
     data class Jwt(
         val issuer: String,
         val keyId: String,
-        /** PKCS#8 PEM приватного ключа ES256. Одинаковый у всех инстансов, берётся из секрета. */
+        /** PKCS#8 PEM приватного ключа ES256, берётся из секрета. */
         val privateKey: Resource,
         val publicKey: Resource,
         val accessTokenTtl: Duration,
     )
 
-    data class Verification(
-        val codeTtl: Duration,
-        val maxAttempts: Int,
-        val resendCooldown: Duration,
-    )
-
-    data class Mail(
-        val from: String,
+    /**
+     * Куки сессии (имена и пути — в контракте, [site.qgames.userauth.api.cookie.AuthCookieNames]).
+     * Браузеры считают localhost безопасным контекстом, поэтому Secure-куки работают и по http://localhost.
+     */
+    data class Cookies(
+        val secure: Boolean = true,
+        val sameSite: String = "Lax",
     )
 
     data class Google(

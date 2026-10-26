@@ -2,15 +2,15 @@ package site.qgames.game.stream.room
 
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import site.qgames.game.gatewayapi.dto.room.RoomStreamEventType
+import site.qgames.game.api.dto.room.RoomStreamEventType
 import site.qgames.game.mapper.room.RoomEventResponseMapper
 import site.qgames.game.model.room.RoomEventModel
 import site.qgames.game.model.room.RoomEventType
 import site.qgames.game.service.room.RoomService
 
 /**
- * Раздаёт событие комнаты из шины локальным подписчикам её потока. Данные события (участники, настройки) читаются
- * здесь один раз на инстанс, уже после коммита изменения, — поэтому они не старше события. События несут полное
+ * Раздаёт событие комнаты (NOTIFY) подписчикам её потока. Данные события (участники, настройки) читаются здесь один
+ * раз, уже после коммита изменения, — поэтому они не старше события. События несут полное
  * значение, так что более свежие данные безопасны.
  */
 @Component

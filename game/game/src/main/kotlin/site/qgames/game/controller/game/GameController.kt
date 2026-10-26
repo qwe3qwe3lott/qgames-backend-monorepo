@@ -2,9 +2,9 @@ package site.qgames.game.controller.game
 
 import org.springframework.web.bind.annotation.RestController
 import site.qgames.game.exception.room.RoomErrors
-import site.qgames.game.gatewayapi.api.GameApi
-import site.qgames.game.gatewayapi.dto.game.GameDetailsResponse
-import site.qgames.game.gatewayapi.dto.game.GameListResponse
+import site.qgames.game.api.web.GameApi
+import site.qgames.game.api.dto.game.GameDetailsResponse
+import site.qgames.game.api.dto.game.GameListResponse
 import site.qgames.game.mapper.game.GameResponseMapper
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.service.game.GameService

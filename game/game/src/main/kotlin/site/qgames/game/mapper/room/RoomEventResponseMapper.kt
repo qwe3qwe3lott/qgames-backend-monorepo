@@ -1,15 +1,15 @@
 package site.qgames.game.mapper.room
 
 import org.springframework.stereotype.Component
-import site.qgames.game.gatewayapi.dto.room.RoomResponse
-import site.qgames.game.gatewayapi.dto.room.RoomSettingsChangedDto
-import site.qgames.game.gatewayapi.dto.room.RoomUsersDto
+import site.qgames.game.api.dto.room.RoomResponse
+import site.qgames.game.api.dto.room.RoomSettingsChangedDto
+import site.qgames.game.api.dto.room.RoomUsersDto
 import site.qgames.game.model.room.RoomDetailsModel
 import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.model.room.RoomUsersModel
 
 /**
- * Данные событий потока комнаты (поле `data:` SSE) → DTO контракта game-user-gateway-sync-api (RoomStreamEvent).
+ * Данные событий потока комнаты (поле `data:` SSE) → DTO контракта game-api (RoomStreamEvent).
  * Только преобразование, без обращений к данным.
  */
 @Component

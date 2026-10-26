@@ -45,13 +45,13 @@ data class GameProperties(
     )
 
     data class Connection(
-        /** Срок аренды подключения: инстанс, держащий поток, продлевает его каждые [heartbeatInterval]. */
+        /** Срок аренды подключения: приложение продлевает аренду живых потоков каждые [heartbeatInterval]. */
         val lease: Duration,
         /** Как часто слать в потоки комментарий `: ping` и продлевать аренду подключений (RoomConnectionHeartbeatJob). */
         val heartbeatInterval: Duration,
         /** Запуск RoomConnectionHeartbeatJob по расписанию. В тестах выключен: job вызывается напрямую. */
         val heartbeatEnabled: Boolean = true,
-        /** Как часто удалять подключения с истёкшей арендой — подключения упавших инстансов (RoomConnectionCleanupJob). */
+        /** Как часто удалять подключения с истёкшей арендой — их никто не продлевает (RoomConnectionCleanupJob). */
         val cleanupInterval: Duration,
         /** Запуск RoomConnectionCleanupJob по расписанию. В тестах выключен: job вызывается напрямую. */
         val cleanupEnabled: Boolean = true,
@@ -71,9 +71,9 @@ data class GameProperties(
     )
 
     data class StateCache(
-        /** Сколько состояний (партия × проекция) держит инстанс. */
-        val maxSize: Long = 10_000,
+        /** Сколько состояний (партия × проекция) держит кеш. */
+        val maxSize: Long = 2_000,
         /** Состояние, которое так долго не читали, вытесняется. */
-        val expireAfterAccess: Duration = Duration.ofMinutes(30),
+        val expireAfterAccess: Duration = Duration.ofMinutes(5),
     )
 }

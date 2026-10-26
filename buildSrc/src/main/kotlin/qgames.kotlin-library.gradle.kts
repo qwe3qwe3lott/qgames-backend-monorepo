@@ -1,4 +1,4 @@
-// Базовая конвенция для любого Kotlin-модуля: библиотеки, API-модули и сервисы.
+// Базовая конвенция для любого Kotlin-модуля: библиотеки, модули приложения, их -api и само приложение app.
 import org.gradle.api.tasks.testing.logging.TestLogEvent
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.springframework.boot.gradle.plugin.SpringBootPlugin
@@ -33,10 +33,16 @@ kotlin {
     }
 }
 
+val libs = versionCatalogs.named("libs")
+
 dependencies {
-    // Версии зависимостей берутся из Spring Boot BOM для всех модулей.
+    // Версии зависимостей берутся из Spring Boot BOM (и BOM Spring Modulith и Exposed, которых в нём нет) для всех модулей.
     "api"(platform(SpringBootPlugin.BOM_COORDINATES))
     "testImplementation"(platform(SpringBootPlugin.BOM_COORDINATES))
+    "api"(platform(libs.findLibrary("springModulithBom").get()))
+    "testImplementation"(platform(libs.findLibrary("springModulithBom").get()))
+    "api"(platform(libs.findLibrary("exposedBom").get()))
+    "testImplementation"(platform(libs.findLibrary("exposedBom").get()))
 }
 
 tasks.withType<Test>().configureEach {

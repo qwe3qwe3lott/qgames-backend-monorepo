@@ -1,0 +1,33 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-20-CREATE-admin
+      author: A Kozlov
+      runInTransaction: true
+      comment: Администраторы. Логин сравнивается точно, с учётом регистра; пароль — Argon2id, соль внутри хеша.
+      changes:
+        - createTable:
+            tableName: admin
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: admin_pk
+              - column:
+                  name: login
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: admin_login_uq
+              - column:
+                  name: password_hash
+                  type: varchar(255)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false

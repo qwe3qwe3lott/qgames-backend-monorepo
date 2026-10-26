@@ -1,0 +1,63 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-17-CREATE-user_identity
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Способы входа: PASSWORD (subject — email) и GOOGLE (subject — claim sub). Способ входа привязан к одному
+        аккаунту, у аккаунта — не больше одного способа каждого вида.
+      changes:
+        - createTable:
+            tableName: user_identity
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: user_identity_pk
+              - column:
+                  name: user_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: user_identity_user_fk
+                    referencedTableName: user
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: provider
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: subject
+                  type: varchar(320)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: password_hash
+                  type: varchar(255)
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: user_identity
+            indexName: user_identity_provider_subject_uq
+            unique: true
+            columns:
+              - column:
+                  name: provider
+              - column:
+                  name: subject
+        - createIndex:
+            tableName: user_identity
+            indexName: user_identity_user_provider_uq
+            unique: true
+            columns:
+              - column:
+                  name: user_id
+              - column:
+                  name: provider

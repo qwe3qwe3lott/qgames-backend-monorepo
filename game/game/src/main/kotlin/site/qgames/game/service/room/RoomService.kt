@@ -2,14 +2,12 @@ package site.qgames.game.service.room
 
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import site.qgames.game.config.GameInstance
 import site.qgames.game.config.GameProperties
 import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomConnectionModel
 import site.qgames.game.model.room.RoomDetailsModel
 import site.qgames.game.model.room.RoomEventType
-import site.qgames.game.model.room.RoomMemberDetailsModel
 import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomOwnerGraceModel
@@ -18,7 +16,6 @@ import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.model.room.RoomStatus
 import site.qgames.game.model.room.RoomUsersModel
 import site.qgames.game.publisher.room.RoomEventPublisher
-import site.qgames.game.repository.replica.UserAuthUserRepository
 import site.qgames.game.repository.room.RoomConnectionRepository
 import site.qgames.game.repository.room.RoomMemberRepository
 import site.qgames.game.repository.room.RoomRepository
@@ -49,14 +46,12 @@ class RoomService(
     private val roomConnectionRepository: RoomConnectionRepository,
     private val roomSessionRepository: RoomSessionRepository,
     private val sessionJournalService: SessionJournalService,
-    private val userAuthUserRepository: UserAuthUserRepository,
     private val roomEventPublisher: RoomEventPublisher,
     private val gameRegistry: GameRegistry,
     private val gameService: GameService,
     private val roomDetailsService: RoomDetailsService,
     private val roomSettingsValidator: RoomSettingsValidator,
     private val jsonMapper: JsonMapper,
-    private val gameInstance: GameInstance,
     private val properties: GameProperties,
     private val clock: Clock,
 ) {
@@ -127,7 +122,6 @@ class RoomService(
         val connectionId = roomConnectionRepository.insert(
             roomId = roomId,
             userId = userId,
-            instanceId = gameInstance.id,
             expiresAt = clock.instant() + properties.room.connection.lease,
         )
         if (join(room, userId)) {
@@ -152,13 +146,12 @@ class RoomService(
     }
 
     /**
-     * Удаляет подключения комнаты с истёкшей арендой (их инстанс упал или потерял БД) и уводит пользователей, у которых
-     * не осталось подключений, как при закрытии потока. Комната берётся под блокировку без ожидания: если её держит
-     * другой запрос, она обработается в следующий раз. Возвращает число удалённых подключений.
+     * Удаляет подключения комнаты с истёкшей арендой (их никто не продлевает) и уводит пользователей, у которых не
+     * осталось подключений, как при закрытии потока. Возвращает число удалённых подключений; удалённую комнату пропускает.
      */
     @Transactional
     fun removeExpiredConnections(roomId: UUID): Int {
-        roomRepository.lockByIdSkipLocked(roomId) ?: return 0
+        roomRepository.lockById(roomId) ?: return 0
         val users = roomConnectionRepository.deleteExpired(roomId, clock.instant())
         val left = users.toSet().count { userId -> !roomConnectionRepository.existsForUser(roomId, userId) && leave(roomId, userId) }
         if (left > 0) {
@@ -169,12 +162,11 @@ class RoomService(
 
     /**
      * Окно владения истекло: владение получает присутствующий участник по [nextOwner], а если присутствующих нет,
-     * комната остаётся без владельца до первого вошедшего. Комната берётся под блокировку без ожидания: если её держит
-     * другой запрос, она обработается в следующий раз. Возвращает true, если окно закрыто.
+     * комната остаётся без владельца до первого вошедшего. Возвращает true, если окно закрыто.
      */
     @Transactional
     fun endOwnerGrace(roomId: UUID): Boolean {
-        val room = roomRepository.lockByIdSkipLocked(roomId) ?: return false
+        val room = roomRepository.lockById(roomId) ?: return false
         // Перепроверка под блокировкой: прежний владелец мог успеть вернуться.
         val updated = endExpiredOwnerGrace(room, roomMemberRepository.findAll(roomId), clock.instant())
         if (updated == room) {
@@ -208,14 +200,13 @@ class RoomService(
 
     /**
      * Удаляет комнату неопубликованной игры (NOT_PUBLISHED): отменяет идущую партию и удаляет комнату вместе с участниками
-     * и историей партий (каскадно). Комната берётся под блокировку без ожидания: если её держит другой запрос, она
-     * обработается в следующий раз. Возвращает true, если комната удалена. Журнал партии удаляется вместе с ней,
+     * и историей партий (каскадно). Возвращает true, если комната удалена. Журнал партии удаляется вместе с ней,
      * поэтому потоки партии закроются (диспетчер не найдёт объявленных событий), а клиенты получат 404 при
      * переподключении.
      */
     @Transactional
     fun deleteOfNotPublishedGame(roomId: UUID): Boolean {
-        val room = roomRepository.lockByIdSkipLocked(roomId) ?: return false
+        val room = roomRepository.lockById(roomId) ?: return false
         // Перепроверка под блокировкой: игру могли опубликовать снова.
         if (!gameService.isNotPublished(room.gameCode)) {
             return false
@@ -227,12 +218,11 @@ class RoomService(
     /**
      * Удаляет комнату, если она пустует (нет присутствующих участников) с момента раньше [threshold]. Идущая партия,
      * в которой остались только отсутствующие игроки, отменяется, журнал удаляется вместе с комнатой (как в
-     * [deleteOfNotPublishedGame]). Комната берётся под блокировку без ожидания: если её держит другой запрос, она
-     * обработается в следующий раз. Возвращает true, если комната удалена.
+     * [deleteOfNotPublishedGame]). Возвращает true, если комната удалена.
      */
     @Transactional
     fun deleteIfEmpty(roomId: UUID, threshold: Instant): Boolean {
-        val room = roomRepository.lockByIdSkipLocked(roomId) ?: return false
+        val room = roomRepository.lockById(roomId) ?: return false
         // Перепроверка под блокировкой: в комнату могли войти.
         val emptySince = room.emptySince
         if (emptySince == null || emptySince >= threshold) {
@@ -246,9 +236,7 @@ class RoomService(
     @Transactional(readOnly = true)
     fun findUsers(roomId: UUID): RoomUsersModel? {
         val room = roomRepository.findById(roomId) ?: return null
-        val members = roomMemberRepository.findAll(roomId)
-        val profiles = userAuthUserRepository.findByIds(members.map { it.userId })
-        return RoomUsersModel(room, members.map { RoomMemberDetailsModel(it, profiles[it.userId]) })
+        return RoomUsersModel(room, roomMemberRepository.findAllWithProfiles(roomId))
     }
 
     /** Настройки комнаты (данные события settings-changed); null — комнаты уже нет. */

@@ -1,5 +1,7 @@
 package site.qgames.userauth.service.user
 
+import org.springframework.beans.factory.annotation.Qualifier
+import site.qgames.userauth.config.CryptoConfig
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -21,7 +23,7 @@ import java.util.UUID
 class UserService(
     private val userRepository: UserRepository,
     private val userIdentityRepository: UserIdentityRepository,
-    private val passwordEncoder: PasswordEncoder,
+    @Qualifier(CryptoConfig.PASSWORD_ENCODER) private val passwordEncoder: PasswordEncoder,
     private val googleIdTokenVerifier: GoogleIdTokenVerifier,
     private val userProfilePublisher: UserProfilePublisher,
     private val tokenService: TokenService,
@@ -75,7 +77,7 @@ class UserService(
         return describe(user)
     }
 
-    /** Меняет переданные поля профиля и публикует новый снапшот для других сервисов (CDC). */
+    /** Меняет переданные поля профиля и публикует новый снапшот для других модулей (событие UserProfileChanged). */
     @Transactional
     fun updateProfile(userId: UUID, nickname: String?, avatar: UserAvatar?): UserDetailsModel {
         if (nickname == null && avatar == null) {
@@ -83,11 +85,11 @@ class UserService(
         }
         val user = findUser(userId)
         val changed = user.copy(nickname = nickname ?: user.nickname, avatar = avatar ?: user.avatar)
-        // Без изменений не сохраняем: @Version увеличил бы версию, и событие ушло бы впустую.
+        // Без изменений не сохраняем и событие не публикуем.
         if (changed == user) {
             return describe(user)
         }
-        val updated = userRepository.update(changed)
+        val updated = userRepository.updateProfile(changed)
         userProfilePublisher.publish(updated)
         return describe(updated)
     }

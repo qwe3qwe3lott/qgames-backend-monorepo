@@ -11,29 +11,23 @@ rootProject.name = "qgames-backend-monorepo"
 include(":libs:common-exception")
 include(":libs:common-web")
 include(":libs:common-test")
-include(":libs:common-cdc-source")
-include(":libs:common-cdc-consumer")
 
 // Правила игр: чистый Kotlin без инфраструктуры (см. CLAUDE.md)
-include(":games:game-api")
+include(":games:games-api")
 include(":games:nothing-game")
 include(":games:checkers-game")
 
-// Сервисы. Модули <svc>-*-sync-api / -internal-async-api заводятся только когда у них появляется содержимое.
+// Модули приложения (Spring Modulith): реализация модуля и его публичный контракт <m>-api.
 include(":user-auth:user-auth")
-include(":user-auth:user-auth-user-gateway-sync-api")
-include(":user-auth:user-auth-internal-async-api")
-
-include(":user-gateway:user-gateway")
-include(":user-gateway:user-gateway-public-sync-api")
+include(":user-auth:user-auth-api")
 
 // Комнаты и партии всех игр.
 include(":game:game")
-include(":game:game-user-gateway-sync-api")
+include(":game:game-api")
 
-// Админ-панель: аутентификация администраторов и точка входа админки.
+// Админ-панель: аутентификация администраторов.
 include(":admin-auth:admin-auth")
-include(":admin-auth:admin-auth-admin-gateway-sync-api")
+include(":admin-auth:admin-auth-api")
 
-include(":admin-gateway:admin-gateway")
-include(":admin-gateway:admin-gateway-public-sync-api")
+// Приложение: собирает модули; Security, OpenAPI, конфигурация и миграции.
+include(":app")

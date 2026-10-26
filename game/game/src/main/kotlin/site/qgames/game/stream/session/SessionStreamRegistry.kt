@@ -9,9 +9,9 @@ import site.qgames.games.api.session.ViewerKey
 import java.util.UUID
 
 /**
- * Открытые на этом инстансе потоки партий: sessionId → подписчики. Как и реестр потоков комнат, привязан к соединениям;
- * между инстансами события расходятся через Postgres NOTIFY (RoomEventListener, канал session_events). При остановке
- * приложения потоки закрываются раньше веб-сервера.
+ * Открытые потоки партий: sessionId → подписчики. Как и реестр потоков комнат, привязан к соединениям; события
+ * приходят через Postgres NOTIFY (RoomEventListener, канал session_events). При остановке приложения потоки
+ * закрываются раньше веб-сервера.
  */
 @Component
 class SessionStreamRegistry : SmartLifecycle {

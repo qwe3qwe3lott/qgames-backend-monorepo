@@ -21,5 +21,4 @@ dependencies {
     implementation(libs.kotlinGradlePlugin)
     implementation(libs.kotlinAllopenPlugin)
     implementation(libs.springBootGradlePlugin)
-    implementation(libs.protobufGradlePlugin)
 }

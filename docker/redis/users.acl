@@ -1,5 +1,0 @@
-user default off
-user healthcheck on >healthcheck +ping
-user user-auth on >user-auth ~user-auth:* resetchannels +@all -@dangerous
-user user-gateway on >user-gateway ~user-gateway:* resetchannels &game:session:* +@all -@dangerous -publish -spublish
-user game on >game ~game:* resetchannels &game:session:* +@all -@dangerous -subscribe -psubscribe -ssubscribe

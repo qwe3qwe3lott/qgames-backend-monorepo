@@ -1,0 +1,51 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-21-CREATE-room_session_event
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Журнал событий партии — единственный источник её состояния. Каждое событие — одна операция над документом партии
+        {status, meta, state}; одна нумерация seq на все изменения партии, журнал только дописывается. method — PUT, PATCH,
+        DELETE или INFO (enum SessionEventMethod); code — что произошло (session-started, turn-changed, player-passed…).
+        data — полные (немаскированные) данные события, как в кадре потока: PUT и PATCH — {path, value}, DELETE — {path},
+        INFO — объект.
+      changes:
+        - createTable:
+            tableName: room_session_event
+            columns:
+              - column:
+                  name: session_id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_session_event_pk
+                    foreignKeyName: room_session_event_session_fk
+                    referencedTableName: room_session
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: seq
+                  type: bigint
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_session_event_pk
+              - column:
+                  name: method
+                  type: varchar(8)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: code
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: data
+                  type: json
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false

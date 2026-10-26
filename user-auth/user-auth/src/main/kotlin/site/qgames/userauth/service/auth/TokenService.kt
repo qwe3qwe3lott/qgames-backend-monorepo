@@ -1,5 +1,7 @@
 package site.qgames.userauth.service.auth
 
+import org.springframework.beans.factory.annotation.Qualifier
+import site.qgames.userauth.config.CryptoConfig
 import com.nimbusds.jose.jwk.ECKey
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm
 import org.springframework.security.oauth2.jwt.JwsHeader
@@ -18,14 +20,14 @@ import java.time.Clock
 import java.util.UUID
 
 /**
- * Access-токен — короткоживущий JWT (ES256), проверяется gateway локально по JWKS.
+ * Access-токен — короткоживущий JWT (ES256), проверяется Security-цепочкой портала по публичному ключу.
  * Refresh-токен — случайная строка, в БД лежит только её SHA-256. При каждом обновлении токен ротируется,
  * а повторное предъявление уже использованного токена (после окна терпимости) отзывает всю цепочку (family).
  */
 @Service
 class TokenService(
-    private val jwtEncoder: JwtEncoder,
-    private val jwtSigningKey: ECKey,
+    @Qualifier(CryptoConfig.JWT_ENCODER) private val jwtEncoder: JwtEncoder,
+    @Qualifier(CryptoConfig.JWT_SIGNING_KEY) private val jwtSigningKey: ECKey,
     private val properties: AuthProperties,
     private val refreshTokenRepository: RefreshTokenRepository,
     private val clock: Clock,

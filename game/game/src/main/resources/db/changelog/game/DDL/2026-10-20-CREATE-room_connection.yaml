@@ -1,0 +1,53 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-20-CREATE-room_connection
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Открытые потоки событий комнаты (SSE). Подключение и есть нахождение в комнате: пока у пользователя есть хотя бы
+        одно подключение, он присутствует; закрылось последнее — он уходит (игрок идущей партии остаётся отсутствующим).
+        Приложение раз в ~5 с продлевает аренду expires_at живых подключений; подключения, которые никто не продлевает
+        (процесс упал или перезапущен), RoomConnectionCleanupJob удаляет по истечении аренды и уводит пользователей.
+      changes:
+        - createTable:
+            tableName: room_connection
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_connection_pk
+              - column:
+                  name: room_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: room_connection_room_fk
+                    referencedTableName: room
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: user_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: expires_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: room_connection
+            indexName: room_connection_room_user_idx
+            columns:
+              - column:
+                  name: room_id
+              - column:
+                  name: user_id
+        - createIndex:
+            tableName: room_connection
+            indexName: room_connection_expires_at_idx
+            columns:
+              - column:
+                  name: expires_at

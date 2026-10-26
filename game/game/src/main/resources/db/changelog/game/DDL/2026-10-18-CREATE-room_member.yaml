@@ -1,0 +1,48 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-18-CREATE-room_member
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Участники комнаты. Место игрока в партии хранится в room_session_player. Вне партии участник есть, только пока
+        подключён: закрыл последний поток — строка удаляется сразу. Игрок идущей партии закреплён до её конца: при уходе
+        строка остаётся с left_at (NULL — участник присутствует), а конец или отмена партии удаляют отсутствующих.
+      changes:
+        - createTable:
+            tableName: room_member
+            columns:
+              - column:
+                  name: room_id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_member_pk
+                    foreignKeyName: room_member_room_fk
+                    referencedTableName: room
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: user_id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_member_pk
+              - column:
+                  name: role
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: joined_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: left_at
+                  type: timestamp with time zone
+        - createIndex:
+            tableName: room_member
+            indexName: room_member_user_idx
+            columns:
+              - column:
+                  name: user_id

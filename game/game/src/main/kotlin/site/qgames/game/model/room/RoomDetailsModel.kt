@@ -1,7 +1,7 @@
 package site.qgames.game.model.room
 
-import site.qgames.game.model.replica.UserAuthUserModel
 import site.qgames.game.model.session.RoomSessionModel
+import site.qgames.game.model.user.UserProfileModel
 import java.time.Instant
 
 /** Комната целиком: результат операций RoomService и RoomSessionService. */
@@ -21,6 +21,6 @@ data class RoomDetailsModel(
 
 data class RoomMemberDetailsModel(
     val member: RoomMemberModel,
-    /** Нет, если профиль ещё не доставлен по CDC. */
-    val profile: UserAuthUserModel?,
+    /** Профиль из таблицы user модуля user-auth; null — строки пользователя нет. */
+    val profile: UserProfileModel?,
 )

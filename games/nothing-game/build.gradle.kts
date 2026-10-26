@@ -4,7 +4,7 @@ plugins {
 }
 
 dependencies {
-    api(project(":games:game-api"))
+    api(project(":games:games-api"))
 
     // Чистые функции правил проверяются без Spring и контейнеров.
     testImplementation("org.junit.jupiter:junit-jupiter")

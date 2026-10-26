@@ -1,0 +1,38 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-17-CREATE-user
+      author: A Kozlov
+      runInTransaction: true
+      comment: Аккаунты игроков. Ник не уникален (игроки различаются по id); email — логин входа по паролю, уникален.
+      changes:
+        - createTable:
+            tableName: user
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: user_pk
+              - column:
+                  name: email
+                  type: varchar(320)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: user_email_uq
+              - column:
+                  name: nickname
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: avatar
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false

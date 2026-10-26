@@ -1,0 +1,61 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-20-CREATE-admin_refresh_token
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Refresh-токены администраторов: хранится только SHA-256. Все токены одной цепочки ротаций — с общим family_id;
+        rotated_at заполняется при замене токена новым и отличает ротацию от отзыва при выходе или краже.
+      changes:
+        - createTable:
+            tableName: admin_refresh_token
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: admin_refresh_token_pk
+              - column:
+                  name: admin_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+                    foreignKeyName: admin_refresh_token_admin_fk
+                    referencedTableName: admin
+                    referencedColumnNames: id
+                    deleteCascade: true
+              - column:
+                  name: family_id
+                  type: uuid
+                  constraints:
+                    nullable: false
+              - column:
+                  name: token_hash
+                  type: varchar(64)
+                  constraints:
+                    nullable: false
+                    unique: true
+                    uniqueConstraintName: admin_refresh_token_hash_uq
+              - column:
+                  name: expires_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+              - column:
+                  name: revoked_at
+                  type: timestamp with time zone
+              - column:
+                  name: rotated_at
+                  type: timestamp with time zone
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: admin_refresh_token
+            indexName: admin_refresh_token_family_idx
+            columns:
+              - column:
+                  name: family_id

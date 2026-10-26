@@ -21,18 +21,22 @@ import java.security.spec.PKCS8EncodedKeySpec
 import java.security.spec.X509EncodedKeySpec
 import java.util.Base64
 
+/**
+ * Такие же бины (PasswordEncoder, ключ и кодировщик JWT) есть у admin-auth, поэтому бины модуля именованные и
+ * внедряются по [org.springframework.beans.factory.annotation.Qualifier] с константами ниже.
+ */
 @Configuration
 class CryptoConfig {
 
     /** Argon2id: соль генерируется на каждый пароль и хранится внутри хеша. */
-    @Bean
+    @Bean(PASSWORD_ENCODER)
     fun passwordEncoder(): PasswordEncoder = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()
 
     /**
-     * Ключ подписи access-токенов. Читается из конфигурации, а не генерируется при старте,
-     * чтобы все инстансы подписывали одним ключом.
+     * Ключ подписи access-токенов игроков. Читается из конфигурации, а не генерируется при старте. Публичную часть
+     * того же ключа приложение использует для проверки токенов (Security-цепочка портала).
      */
-    @Bean
+    @Bean(JWT_SIGNING_KEY)
     fun jwtSigningKey(properties: AuthProperties): ECKey {
         val keyFactory = KeyFactory.getInstance("EC")
         val privateKey = keyFactory.generatePrivate(PKCS8EncodedKeySpec(readPem(properties.jwt.privateKey))) as ECPrivateKey
@@ -45,9 +49,9 @@ class CryptoConfig {
             .build()
     }
 
-    @Bean
-    fun jwtEncoder(jwtSigningKey: ECKey): JwtEncoder =
-        NimbusJwtEncoder(ImmutableJWKSet<SecurityContext>(JWKSet(jwtSigningKey)))
+    @Bean(JWT_ENCODER)
+    fun jwtEncoder(properties: AuthProperties): JwtEncoder =
+        NimbusJwtEncoder(ImmutableJWKSet<SecurityContext>(JWKSet(jwtSigningKey(properties))))
 
     private fun readPem(resource: Resource): ByteArray {
         val body = resource.inputStream.use { it.readAllBytes().decodeToString() }
@@ -55,5 +59,11 @@ class CryptoConfig {
             .filterNot { it.startsWith("-----") }
             .joinToString("")
         return Base64.getMimeDecoder().decode(body)
+    }
+
+    companion object {
+        const val PASSWORD_ENCODER = "userAuthPasswordEncoder"
+        const val JWT_SIGNING_KEY = "userAuthJwtSigningKey"
+        const val JWT_ENCODER = "userAuthJwtEncoder"
     }
 }

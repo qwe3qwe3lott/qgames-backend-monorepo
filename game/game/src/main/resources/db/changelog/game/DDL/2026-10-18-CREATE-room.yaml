@@ -1,0 +1,86 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-18-CREATE-room
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Игровые комнаты. owner_id NULL — у комнаты нет владельца: идёт окно владения или в комнате никого нет (владельцем
+        станет первый вошедший). Окно владения (owner_grace_user_id и owner_grace_deadline, оба заданы или оба NULL):
+        ушедший владелец до срока может вернуть владение, потом RoomOwnerGraceJob отдаёт его присутствующему.
+        current_session_id — идущая партия (без FK: room_session ссылается на room). empty_since — с какого момента в комнате
+        нет присутствующих участников (автоудаление). time_control_mode, move_seconds и game_settings (формат задаёт модуль
+        игры) — настройки, с которыми стартует следующая партия.
+      changes:
+        - createTable:
+            tableName: room
+            columns:
+              - column:
+                  name: id
+                  type: uuid
+                  constraints:
+                    primaryKey: true
+                    primaryKeyName: room_pk
+              - column:
+                  name: game_code
+                  type: varchar(32)
+                  constraints:
+                    nullable: false
+                    foreignKeyName: room_game_fk
+                    referencedTableName: game
+                    referencedColumnNames: code
+              - column:
+                  name: owner_id
+                  type: uuid
+              - column:
+                  name: owner_grace_user_id
+                  type: uuid
+              - column:
+                  name: owner_grace_deadline
+                  type: timestamp with time zone
+              - column:
+                  name: status
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: current_session_id
+                  type: uuid
+              - column:
+                  name: empty_since
+                  type: timestamp with time zone
+              - column:
+                  name: time_control_mode
+                  type: varchar(16)
+                  constraints:
+                    nullable: false
+              - column:
+                  name: move_seconds
+                  type: integer
+              - column:
+                  name: game_settings
+                  type: json
+                  constraints:
+                    nullable: false
+              - column:
+                  name: created_at
+                  type: timestamp with time zone
+                  constraints:
+                    nullable: false
+        - createIndex:
+            tableName: room
+            indexName: room_empty_since_idx
+            columns:
+              - column:
+                  name: empty_since
+        - createIndex:
+            tableName: room
+            indexName: room_game_code_idx
+            columns:
+              - column:
+                  name: game_code
+        - createIndex:
+            tableName: room
+            indexName: room_owner_grace_deadline_idx
+            columns:
+              - column:
+                  name: owner_grace_deadline

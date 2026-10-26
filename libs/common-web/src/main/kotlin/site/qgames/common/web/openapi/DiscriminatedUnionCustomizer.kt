@@ -2,7 +2,7 @@ package site.qgames.common.web.openapi
 
 import io.swagger.v3.oas.models.OpenAPI
 import io.swagger.v3.oas.models.media.Schema
-import org.springdoc.core.customizers.OpenApiCustomizer
+import org.springdoc.core.customizers.GlobalOpenApiCustomizer
 
 /**
  * Полиморфные DTO (sealed-тип с `@JsonTypeInfo`/`@JsonSubTypes` и `@Schema(oneOf, discriminatorProperty)`) должны
@@ -11,8 +11,10 @@ import org.springdoc.core.customizers.OpenApiCustomizer
  * (родитель → вариант → родитель), из которого генераторы клиентов (Orval) строят неверные типы.
  * Здесь эта обратная ссылка убирается, а собственные свойства и `required` варианта поднимаются на его верхний уровень;
  * у родителя убирается дублирующее свойство-дискриминатор.
+ *
+ * [GlobalOpenApiCustomizer]: применяется ко всем группам OpenAPI (portal, admin).
  */
-class DiscriminatedUnionCustomizer : OpenApiCustomizer {
+class DiscriminatedUnionCustomizer : GlobalOpenApiCustomizer {
 
     override fun customise(openApi: OpenAPI) {
         val schemas = openApi.components?.schemas ?: return

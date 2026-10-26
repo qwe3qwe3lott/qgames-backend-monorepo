@@ -1,21 +1,22 @@
 package site.qgames.common.web.context
 
-import org.springframework.web.context.request.RequestContextHolder
-import org.springframework.web.context.request.ServletRequestAttributes
+import org.springframework.security.authentication.AnonymousAuthenticationToken
+import org.springframework.security.core.context.SecurityContextHolder
 import site.qgames.common.exception.exception.UnauthorizedException
-import site.qgames.common.web.header.QgamesHeaders
 import java.util.UUID
 
 /**
- * Доступ к пользователю текущего запроса. Нужен контроллерам, которые реализуют интерфейсы из *-user-gateway-sync-api:
- * сигнатура таких методов не содержит userId, его проставляет interceptor gateway в заголовок [QgamesHeaders.USER_ID].
+ * Пользователь текущего запроса. Нужен контроллерам, которые реализуют интерфейсы из `<m>-api`: в сигнатурах контракта
+ * userId нет. Значение — `sub` проверенного access-JWT из SecurityContext (Security-цепочка приложения): в цепочке
+ * портала это id игрока, в цепочке админки — id администратора.
  */
 class RequestUserContext {
 
     fun userId(): UUID {
-        val request = (RequestContextHolder.getRequestAttributes() as? ServletRequestAttributes)?.request
-        val header = request?.getHeader(QgamesHeaders.USER_ID) ?: throw unauthenticated()
-        return runCatching { UUID.fromString(header) }.getOrElse { throw unauthenticated() }
+        val authentication = SecurityContextHolder.getContext().authentication
+            ?.takeIf { it.isAuthenticated && it !is AnonymousAuthenticationToken }
+            ?: throw unauthenticated()
+        return runCatching { UUID.fromString(authentication.name) }.getOrElse { throw unauthenticated() }
     }
 
     private fun unauthenticated() =
