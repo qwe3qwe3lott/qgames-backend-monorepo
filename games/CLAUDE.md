@@ -1,6 +1,6 @@
 # Модули игр (`games/`): правила кода и чек-лист новой игры
 
-Справочник к CLAUDE.md §2: читать, когда трогаешь `games/*`, движок партий или добавляешь игру. Устройство модели игры (патчи, `GameRules`, блоки core, коды событий) — `../qgames-workspace/adr/c4/3-backend-games.md`, обоснования — `adr/game/session-events-format.md`, `adr/backend/game-rules-modules.md`.
+Вложенный CLAUDE.md: дополняет корневой `CLAUDE.md` (§2) для `games/*`, движка партий и добавления игры. Устройство модели игры (патчи, `GameRules`, блоки core, коды событий) — `adr/c4/3-backend-games.md`, обоснования — `adr/game/session-events-format.md`, `adr/backend/game-rules-modules.md` (`adr/` — `../qgames-workspace/adr` от корня репозитория).
 
 ## Правила кода
 
