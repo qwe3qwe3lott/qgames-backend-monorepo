@@ -29,4 +29,8 @@ docker compose up --build -d --wait
 ./gradlew build
 ```
 
-Правила разработки и архитектурные решения — в [CLAUDE.md](CLAUDE.md).
+## Архитектура и решения
+
+Описание всей системы (бэкенд и фронтенд) лежит в репозитории воркспейса, в папке [`adr/`](https://github.com/qwe3qwe3lott/qgames-workspace/tree/master/adr) (локально — `../qgames-workspace/adr`): архитектурные решения (ADR), диаграммы C4 и схема БД (ERD). Начинать с `adr/README.md`.
+
+Правила написания кода — в [CLAUDE.md](CLAUDE.md).
