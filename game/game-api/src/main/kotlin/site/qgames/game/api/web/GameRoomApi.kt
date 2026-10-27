@@ -20,10 +20,9 @@ import org.springframework.web.service.annotation.PostExchange
 import org.springframework.web.service.annotation.PutExchange
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import site.qgames.game.api.dto.game.GameCodes
-import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomResponse
-import site.qgames.game.api.dto.room.RoomSettingsDto
+import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import site.qgames.game.api.dto.session.SessionStreamEvent
 import java.util.UUID
 
@@ -37,20 +36,14 @@ interface GameRoomApi {
 
     @Operation(
         summary = "Создать комнату",
-        description = "Создаёт комнату под игру из пути с заданными настройками: правила времени и настройки игры. " +
+        description = "Создаёт комнату под игру из пути с настройками игры по умолчанию (rules.defaultSettings в " +
+            "GET /api/games/{gameCode}); владелец меняет их потом ручкой настроек. Тела у запроса нет. " +
             "Ссылку на комнату (её id) можно отправить другим игрокам. В ответе комната ещё пустая (members пустой, " +
             "ownerId = null): владельцем становится первый подключившийся к потоку событий комнаты — обычно сам " +
-            "создатель, он входит игроком. " +
-            "Игра должна быть доступна (опубликована или скрыта из каталога): это проверяется до настроек. " +
-            "Границы настроек и значения по умолчанию — в параметрах игры (GET /api/games/{gameCode}). Ошибки " +
-            "настроек отдаются по полям тела (например, settings.gameSettings.rounds), как у валидации запроса.",
+            "создатель, он входит игроком. Игра должна быть доступна (опубликована или скрыта из каталога).",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Комната создана"),
-        ApiResponse(
-            responseCode = "400",
-            description = "Настройки не подходят игре или запрос некорректен (VALIDATION_ERROR, поля — в errors)",
-        ),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(
             responseCode = "404",
@@ -61,20 +54,23 @@ interface GameRoomApi {
     fun createRoom(
         @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
-        @Valid @RequestBody request: CreateRoomRequest,
     ): RoomResponse
 
     @Operation(
         summary = "Изменить настройки комнаты",
-        description = "Заменяет настройки комнаты целиком. Только владелец и только между партиями; следующая партия " +
-            "стартует с новыми настройками. Код игры в пути должен совпадать с игрой комнаты. Ошибки настроек " +
-            "отдаются по полям тела (например, gameSettings.rounds).",
+        description = "Только владелец. Заменяет переданные группы настроек целиком, непереданные (null) не меняет; " +
+            "нужна хотя бы одна группа. room (лимит наблюдателей) меняется в любой момент: понижение лимита вошедших " +
+            "наблюдателей не выводит. simple и advanced взаимоисключающие и меняются только между партиями: simple " +
+            "переводит комнату в simple-режим (advanced выводится из simple), advanced — в advanced-режим. Идущую партию " +
+            "настройки не меняют — у неё свой снимок advanced. Код игры в пути должен совпадать с игрой комнаты. Ошибки " +
+            "настроек отдаются по полям тела (например, room.maxSpectators, simple.rounds, advanced.timeControl.baseSeconds).",
     )
     @ApiResponses(
         ApiResponse(responseCode = "200", description = "Настройки изменены"),
         ApiResponse(
             responseCode = "400",
-            description = "Настройки не подходят игре или запрос некорректен (VALIDATION_ERROR, поля — в errors)",
+            description = "Настройки не подходят игре, переданы и simple, и advanced, не передано ни одной группы или " +
+                "запрос некорректен (VALIDATION_ERROR, поля — в errors)",
         ),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(
@@ -88,7 +84,7 @@ interface GameRoomApi {
         ),
         ApiResponse(
             responseCode = "409",
-            description = "Комната другой игры (GAME_TYPE_MISMATCH) или идёт партия (ROOM_NOT_WAITING)",
+            description = "Комната другой игры (GAME_TYPE_MISMATCH) или simple/advanced во время партии (ROOM_NOT_WAITING)",
         ),
     )
     @PutExchange("/{gameCode}/rooms/{roomId}/settings")
@@ -96,7 +92,7 @@ interface GameRoomApi {
         @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
-        @Valid @RequestBody request: RoomSettingsDto,
+        @Valid @RequestBody request: UpdateRoomSettingsRequest,
     ): RoomResponse
 
     @Operation(
@@ -151,9 +147,10 @@ interface GameRoomApi {
             "без `id:`, раз в ~5 с комментарий `: ping`. Схема пары тип + данные — SessionStreamEvent ({type, data}, " +
             "дискриминатор type).\n\n" +
             "Первое сообщение — snapshot: документ партии для этого зрителя `{seq, status, serverTime, meta, state}`; " +
-            "так же после каждого переподключения. meta.game — код игры и правила партии, закреплённые при старте; по " +
+            "так же после каждого переподключения. meta.game — код игры и advanced-настройки партии, закреплённые при " +
+            "старте; по " +
             "meta.game.code клиент выбирает схему состояния (NothingSessionStateDto, CheckersSessionStateDto) и правил " +
-            "хода meta.moveRules (CheckersMoveRulesDto; null — у игры их нет). state — блоки core (players с " +
+            "итоговых правил meta.advancedRules (CheckersAdvancedRulesDto; null — у игры их нет). state — блоки core (players с " +
             "moveOptions и полями игры, timer, turns, result — итог партии) и поля игры.\n\n" +
             "Дальше — события журнала партии `{seq, at, method, code, data}` (SessionPatchEvent), тип сообщения — " +
             "method в нижнем регистре (put, patch, delete, info). seq непрерывен и продолжает seq снапшота: дыра " +

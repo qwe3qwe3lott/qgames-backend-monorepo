@@ -15,15 +15,41 @@ data class TimeControl(
 )
 
 /**
- * Что игра разрешает: можно ли играть без таймера ([optional]), границы запаса и добавки (в секундах) и правила времени
- * по умолчанию ([default]; null — без таймера, только при [optional]).
+ * Часы в advanced-настройках игры: включены ли ([enabled]) и их значения. Значения заполнены и у выключенных часов:
+ * форма показывает их при включении.
  */
+data class TimeControlSettings(
+    val enabled: Boolean,
+    val baseSeconds: Int,
+    val incrementSeconds: Int,
+) {
+    /** Часы партии; null — без таймера. */
+    fun toTimeControl(): TimeControl? = if (enabled) TimeControl(baseSeconds, incrementSeconds) else null
+}
+
+/** Что игра разрешает: можно ли играть без таймера ([optional]) и границы запаса и добавки (в секундах). */
 data class TimeControlRules(
     val optional: Boolean,
     val baseSeconds: IntRange,
     val incrementSeconds: IntRange,
-    val default: TimeControl?,
-)
+) {
+    /**
+     * Нарушения в часах [settings]; поля — внутри часов (`enabled`, `baseSeconds`). Значения выключенных часов не
+     * проверяются.
+     */
+    fun validate(settings: TimeControlSettings): List<SettingsViolation> = buildList {
+        if (!settings.enabled) {
+            if (!optional) add(SettingsViolation("enabled", "must be true: the game is played only with a clock"))
+            return@buildList
+        }
+        if (settings.baseSeconds !in baseSeconds) {
+            add(SettingsViolation("baseSeconds", "must be between ${baseSeconds.first} and ${baseSeconds.last}"))
+        }
+        if (settings.incrementSeconds !in incrementSeconds) {
+            add(SettingsViolation("incrementSeconds", "must be between ${incrementSeconds.first} and ${incrementSeconds.last}"))
+        }
+    }
+}
 
 /** Шахматные часы партии. Пауза — часть таймера: у партии без таймера пауз нет. */
 data class TimerState(

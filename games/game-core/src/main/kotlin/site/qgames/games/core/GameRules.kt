@@ -17,12 +17,17 @@ import java.util.UUID
  * Поля игровой части состояния [G] лежат в документе в `state` рядом с блоками core (`players`, `timer`, `turns`,
  * `result`) и не совпадают с ними по именам; события игры адресуют их путями от `state` (например,
  * `PATCH ["state"] {moves}`).
- * [G], ход [M] и настройки [C] — простые data-классы без вычисляемых свойств: сервис game пишет их в журнал как JSON.
+ * [G], ход [M] и настройки [S], [A] — простые data-классы без вычисляемых свойств: сервис game пишет их в журнал как JSON.
+ *
+ * Настройки двух уровней. Корневые — advanced [A]: полный набор правил, по которому идёт партия (часы — поле
+ * [TimeControlSettings], см. [clock]); партия знает только их. Simple [S] — короткий выбор для игроков (вариант, пресет
+ * времени), из него игра выводит advanced ([toAdvanced]). Какие правила владелец комнаты задаёт в advanced, решает игра;
+ * остальное выводится из advanced ([advancedRules]).
  *
  * Игроки партии закреплены до её конца: игрок, закрывший поток комнаты, остаётся игроком, а партия о его отсутствии
  * не знает (время идёт, ходы по таймауту — как обычно). Хука на отсутствие игрока пока нет.
  */
-interface GameRules<G : Any, M : Any, C : Any> {
+interface GameRules<G : Any, M : Any, S : Any, A : Any> {
 
     /**
      * Код игры, например `nothing`: совпадает с кодом в каталоге игр сервиса game (таблица game, enum GameCode)
@@ -35,13 +40,14 @@ interface GameRules<G : Any, M : Any, C : Any> {
     /** Класс игровой части состояния ([SessionState.game]). */
     val gameStateClass: Class<G>
     val moveClass: Class<M>
-    val settingsClass: Class<C>
+    val simpleClass: Class<S>
+    val advancedClass: Class<A>
 
-    /** Какие режимы времени поддерживает игра, их границы и режим по умолчанию. */
+    /** Можно ли играть без таймера и границы часов advanced-настроек. */
     val timeControl: TimeControlRules
 
-    /** Настройки игры по умолчанию: ими заполняется форма создания комнаты. */
-    val defaultSettings: C
+    /** Simple-настройки по умолчанию: с ними создаётся комната. */
+    val defaultSimple: S
 
     /** Границы настроек игры для формы. Формат задаёт игра, сервис game переводит его в DTO контракта. */
     val settingsLimits: Any
@@ -52,28 +58,40 @@ interface GameRules<G : Any, M : Any, C : Any> {
      */
     val playerClass: Class<*>? get() = null
 
-    /** Нарушения в настройках игры; пустой список — настройки подходят. Поле — путь внутри [C], например `rounds`. */
-    fun validateSettings(settings: C): List<SettingsViolation>
+    /** Нарушения в simple-настройках; пустой список — подходят. Поле — путь внутри [S], например `variant`. */
+    fun validateSimple(settings: S): List<SettingsViolation>
 
     /**
-     * Правила хода для клиента (`meta.moveRules`): по ним клиент подсказывает ввод хода, не зная правил игры. Задаются
-     * настройками, записываются в `session-started` и не меняются. null — подсказок нет.
+     * Нарушения в advanced-настройках, кроме часов (их проверяет платформа по [timeControl]). Поле — путь внутри [A],
+     * например `rounds`.
      */
-    fun moveRules(settings: C): Any? = null
+    fun validateAdvanced(settings: A): List<SettingsViolation>
+
+    /** Advanced-настройки, выведенные из проверенных simple-настроек: с ними идёт партия в simple-режиме комнаты. */
+    fun toAdvanced(settings: S): A
+
+    /** Часы advanced-настроек (их поле `timeControl`). */
+    fun clock(settings: A): TimeControlSettings
+
+    /**
+     * Итоговые правила партии для клиента (`meta.advancedRules`): выводятся из advanced-настроек, по ним клиент
+     * подсказывает ввод хода, не зная правил игры. Записываются в `session-started` и не меняются. null — подсказок нет.
+     */
+    fun advancedRules(settings: A): Any? = null
 
     /**
      * Начало партии: игровая часть состояния и очерёдность. Игроки перечислены в порядке мест, настройки уже
-     * проверены [validateSettings]. Из этого платформа собирает первое событие журнала `session-started`.
+     * проверены [validateAdvanced]. Из этого платформа собирает первое событие журнала `session-started`.
      */
-    fun start(players: List<UUID>, seed: Long, settings: C): GameStart<G>
+    fun start(players: List<UUID>, seed: Long, settings: A): GameStart<G>
 
     /**
      * Ход игрока [playerId] в полном состоянии [state]: события игры (и core, которыми игра управляет сама, —
      * например `turn-changed`) или отказ. Конец партии — событие `session-finished` в списке
      * ([SessionEvents.finished]); итог партии (`result-set`, [Result]) — только в том же наборе событий. Коды событий
-     * игры не совпадают с кодами платформы и core. [settings] — настройки игры, закреплённые за партией при старте.
+     * игры не совпадают с кодами платформы и core. [settings] — advanced-настройки, закреплённые за партией при старте.
      */
-    fun decide(state: SessionState<G>, settings: C, playerId: UUID, move: M): Decision
+    fun decide(state: SessionState<G>, settings: A, playerId: UUID, move: M): Decision
 
     /** Время хода текущего игрока истекло. Пустой список — ничего не происходит (ход ничей). */
     fun onTimeout(state: SessionState<G>): List<SessionEvent>

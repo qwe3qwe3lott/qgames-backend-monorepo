@@ -18,13 +18,13 @@ import site.qgames.BaseIntegrationTest
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.game.GameCodes
 import site.qgames.game.api.dto.room.ChangeRoleRequest
-import site.qgames.game.api.dto.room.CheckersSettingsDto
-import site.qgames.game.api.dto.room.CreateRoomRequest
+import site.qgames.game.api.dto.room.CheckersAdvancedSettingsDto
+import site.qgames.game.api.dto.room.GameAdvancedSettingsDto
 import site.qgames.game.api.dto.room.MoveRequest
-import site.qgames.game.api.dto.room.NothingSettingsDto
+import site.qgames.game.api.dto.room.NothingAdvancedSettingsDto
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
-import site.qgames.game.api.dto.room.RoomSettingsDto
+import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import site.qgames.game.api.dto.room.TimeControlDto
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.session.SessionJournalService
@@ -70,30 +70,39 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
         }
 
     /**
-     * Настройки «игры в ничто»: по умолчанию — как в GameRules (3 круга, без таймера). [clockSeconds] — запас шахматных
-     * часов (null — без таймера), [incrementSeconds] — добавка за ход.
+     * Advanced-настройки «игры в ничто»: по умолчанию — как выводятся из simple по умолчанию (3 круга, без таймера).
+     * [clockSeconds] — запас шахматных часов (null — без таймера), [incrementSeconds] — добавка за ход.
      */
     protected fun nothingSettings(
         rounds: Int = 3,
         clockSeconds: Int? = null,
         incrementSeconds: Int = 0,
-    ) = RoomSettingsDto(clockSeconds?.let { TimeControlDto(it, incrementSeconds) }, NothingSettingsDto(GameCode.NOTHING, rounds))
+    ) = NothingAdvancedSettingsDto(
+        GameCode.NOTHING,
+        rounds,
+        clockSeconds?.let { TimeControlDto(true, it, incrementSeconds) } ?: TimeControlDto(false, 30, 5),
+    )
 
-    protected fun createRoomRequest(owner: UUID?, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
-        call(HttpMethod.POST, "/api/games/$gameCode/rooms", owner, body)
+    protected fun createRoomRequest(owner: UUID?, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
+        call(HttpMethod.POST, "/api/games/$gameCode/rooms", owner)
 
     /**
-     * Создаёт комнату игры из настроек и, как портал после создания, подключает владельца к её потоку.
+     * Создаёт комнату игры и, как портал после создания, подключает владельца к её потоку. [settings] — advanced-настройки,
+     * которые владелец ставит сразу после входа (игра комнаты — по ним); null — комната шашек ([gameCode]) или
+     * «игры в ничто» с настройками по умолчанию.
      */
-    protected fun createRoom(owner: UUID, settings: RoomSettingsDto = nothingSettings()): RoomResponse {
-        val gameCode = when (settings.gameSettings) {
-            is NothingSettingsDto -> GameCodes.NOTHING
-            is CheckersSettingsDto -> GameCodes.CHECKERS
+    protected fun createRoom(owner: UUID, settings: GameAdvancedSettingsDto? = null, gameCode: String = GameCodes.NOTHING): RoomResponse {
+        val code = when (settings) {
+            null -> gameCode
+            is NothingAdvancedSettingsDto -> GameCodes.NOTHING
+            is CheckersAdvancedSettingsDto -> GameCodes.CHECKERS
         }
-        val created: RoomResponse = createRoomRequest(owner, CreateRoomRequest(settings), gameCode)
+        val created: RoomResponse = createRoomRequest(owner, code).andExpect { status { isOk() } }.body()
+        val joined = join(owner, created.id)
+        if (settings == null) return joined
+        return updateSettingsRequest(owner, created.id, UpdateRoomSettingsRequest(advanced = settings), code)
             .andExpect { status { isOk() } }
             .body()
-        return join(owner, created.id)
     }
 
     protected fun updateSettingsRequest(user: UUID, roomId: UUID, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
@@ -220,7 +229,7 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
         owner: UUID,
         vararg players: UUID,
         started: Boolean = false,
-        settings: RoomSettingsDto = nothingSettings(),
+        settings: GameAdvancedSettingsDto? = null,
     ): UUID {
         val roomId = createRoom(owner, settings).id
         players.forEach { join(it, roomId) }

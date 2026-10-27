@@ -24,6 +24,7 @@ import site.qgames.games.core.SessionEventMethod
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionStatus
 import site.qgames.games.core.TimeControl
+import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.TurnsState
 import site.qgames.games.core.ViewerKey
 
@@ -37,13 +38,13 @@ class CheckersSessionScenariosTest {
     private val checkers = CheckersGameRules()
 
     @Suppress("UNCHECKED_CAST")
-    private val rules = checkers as GameRules<Any, Any, Any>
+    private val rules = checkers as GameRules<Any, Any, Any, Any>
 
     private val codec = JsonSessionCodec()
 
     private val engine = SessionEngine(codec)
 
-    private val start = engine.start(rules, listOf(ALICE, BOB), SEED, RUSSIAN, NO_TIMER, NOW)
+    private val start = startOf(RUSSIAN, NO_TIMER, SEED)
 
     private val white = idOf(fold(start), WHITE)
 
@@ -61,12 +62,20 @@ class CheckersSessionScenariosTest {
             mapOf(
                 "game" to mapOf(
                     "code" to "checkers",
-                    "rules" to mapOf(
-                        "timeControl" to null,
-                        "gameSettings" to mapOf("gameCode" to "checkers", "variant" to "RUSSIAN"),
+                    "settings" to mapOf(
+                        "gameCode" to "checkers",
+                        "variant" to "RUSSIAN",
+                        "timeControl" to mapOf("enabled" to false, "baseSeconds" to 480, "incrementSeconds" to 4),
+                        "menMoveBackward" to false,
+                        "menCaptureBackward" to true,
+                        "flyingKings" to true,
+                        "captureRequired" to true,
+                        "maxCaptureRequired" to false,
+                        "promoteMidCapture" to true,
+                        "removeCapturedAfterMove" to true,
                     ),
                 ),
-                "moveRules" to mapOf(
+                "advancedRules" to mapOf(
                     "boardSize" to 8,
                     "firstColor" to "WHITE",
                     "menMoveBackward" to false,
@@ -107,15 +116,15 @@ class CheckersSessionScenariosTest {
 
     @Test
     fun `colors are random by seed and the same seed gives the same colors`() {
-        val whiteBySeed = (1L..20L).map { seed -> idOf(fold(engine.start(rules, listOf(ALICE, BOB), seed, RUSSIAN, NO_TIMER, NOW)), WHITE) }
+        val whiteBySeed = (1L..20L).map { seed -> idOf(fold(startOf(RUSSIAN, NO_TIMER, seed)), WHITE) }
 
         assertThat(whiteBySeed.toSet()).containsExactlyInAnyOrder(ALICE, BOB)
-        assertThat(idOf(fold(engine.start(rules, listOf(ALICE, BOB), SEED, RUSSIAN, NO_TIMER, NOW)), WHITE)).isEqualTo(white)
+        assertThat(idOf(fold(startOf(RUSSIAN, NO_TIMER, SEED)), WHITE)).isEqualTo(white)
     }
 
     @Test
     fun `all variants pass the settings check`() {
-        assertThat(CheckersVariant.entries.flatMap { checkers.validateSettings(CheckersSettings(it)) }).isEmpty()
+        assertThat(CheckersVariant.entries.flatMap { checkers.validateSimple(CheckersSimpleSettings(it, CheckersTime.NONE)) }).isEmpty()
         assertThat(checkers.settingsLimits.variants).isEqualTo(CheckersVariant.entries)
     }
 
@@ -124,11 +133,11 @@ class CheckersSessionScenariosTest {
         val presets = checkers.settingsLimits.timePresets
 
         CheckersVariant.entries.forEach { variant ->
-            assertThat(presets.filter { it.variant == variant }.map { it.kind }).containsExactly(*CheckersTimePresetKind.entries.toTypedArray())
+            assertThat(presets.filter { it.variant == variant }.map { it.time }).containsExactly(CheckersTime.CLASSIC, CheckersTime.RAPID, CheckersTime.BLITZ)
         }
         assertThat(presets).allMatch { it.baseSeconds in checkers.timeControl.baseSeconds && it.incrementSeconds in checkers.timeControl.incrementSeconds }
-        assertThat(presets.single { it.variant == CheckersVariant.RUSSIAN && it.kind == CheckersTimePresetKind.CLASSIC })
-            .isEqualTo(CheckersTimePreset(CheckersVariant.RUSSIAN, CheckersTimePresetKind.CLASSIC, 1800, 30))
+        assertThat(presets.single { it.variant == CheckersVariant.RUSSIAN && it.time == CheckersTime.CLASSIC })
+            .isEqualTo(CheckersTimePreset(CheckersVariant.RUSSIAN, CheckersTime.CLASSIC, 1800, 30))
     }
 
     @Test
@@ -194,8 +203,8 @@ class CheckersSessionScenariosTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("endgames")
-    fun `endgame rules draw at their move limit`(case: String, settings: CheckersSettings, pieces: List<CheckersPiece>, path: List<Pair<Int, Int>>, limit: Int) {
-        val mover = if (CheckersMoveRules.of(settings.variant).firstColor == WHITE) white else black
+    fun `endgame rules draw at their move limit`(case: String, settings: CheckersAdvancedSettings, pieces: List<CheckersPiece>, path: List<Pair<Int, Int>>, limit: Int) {
+        val mover = if (CheckersAdvancedRules.of(settings.variant).firstColor == WHITE) white else black
 
         val before = position(pieces, materialMoves = limit - 2, settings = settings)
         assertThat(fold(before + accepted(before, mover, *path.toTypedArray())).session.state.result).isNull()
@@ -222,7 +231,7 @@ class CheckersSessionScenariosTest {
     }
     @Test
     fun `international - 10x10 board with four rows of men, white moves first`() {
-        val document = fold(engine.start(rules, listOf(ALICE, BOB), SEED, INTERNATIONAL, NO_TIMER, NOW))
+        val document = fold(startOf(INTERNATIONAL, NO_TIMER, SEED))
         val game = document.session.state.game as CheckersGameState
 
         assertThat(document.session.state.turns.currentPlayerId).isEqualTo(white)
@@ -268,7 +277,7 @@ class CheckersSessionScenariosTest {
 
     @Test
     fun `english - black moves first`() {
-        val document = fold(engine.start(rules, listOf(ALICE, BOB), SEED, ENGLISH, NO_TIMER, NOW))
+        val document = fold(startOf(ENGLISH, NO_TIMER, SEED))
 
         assertThat(document.session.state.turns.currentPlayerId).isEqualTo(black)
         assertThat((document.session.state.game as CheckersGameState).pieces).hasSize(24)
@@ -309,8 +318,8 @@ class CheckersSessionScenariosTest {
     @MethodSource("drawLimits")
     fun `quiet king moves draw at the limit of the variant`(variant: CheckersVariant, limit: Int) {
         val pieces = listOf(wk("w1", 1, 1), bk("b1", 8, 2))
-        val settings = CheckersSettings(variant)
-        val mover = if (CheckersMoveRules.of(variant).firstColor == WHITE) white else black
+        val settings = advanced(variant)
+        val mover = if (CheckersAdvancedRules.of(variant).firstColor == WHITE) white else black
         val path = if (mover == white) arrayOf(1 to 1, 2 to 2) else arrayOf(8 to 2, 7 to 3)
 
         val before = accepted(position(pieces, quietMoves = limit - 2, settings = settings), mover, *path)
@@ -378,6 +387,34 @@ class CheckersSessionScenariosTest {
     }
 
     @Test
+    fun `advanced flags override the rules of the variant`() {
+        val pieces = listOf(w("w1", 3, 3), w("w2", 7, 3), b("b1", 4, 4), b("b2", 8, 8))
+        val free = position(pieces, settings = RUSSIAN.copy(captureRequired = false))
+
+        accepted(free, white, 7 to 3, 8 to 4)
+        @Suppress("UNCHECKED_CAST")
+        val meta = (free.first().value as Map<String, Any?>)["meta"] as Map<String, Any?>
+        assertThat((meta["advancedRules"] as Map<*, *>)["captureRequired"]).isEqualTo(false)
+
+        // Без турецкого удара через клетку сбитой шашки бой продолжается.
+        val turkish = listOf(wk("w1", 1, 1), b("b1", 4, 4), b("b2", 7, 5), b("b3", 7, 3), b("b4", 2, 6))
+        accepted(position(turkish, settings = RUSSIAN.copy(removeCapturedAfterMove = false)), white, 1 to 1, 6 to 6, 8 to 4, 6 to 2, 1 to 7)
+    }
+
+    @ParameterizedTest(name = "{0} {1}")
+    @MethodSource("simpleSettings")
+    fun `simple settings give the rules of the variant and the clock of the preset`(variant: CheckersVariant, time: CheckersTime) {
+        val advanced = checkers.toAdvanced(CheckersSimpleSettings(variant, time))
+        val preset = checkers.settingsLimits.timePresets.single {
+            it.variant == variant && it.time == (if (time == CheckersTime.NONE) CheckersTime.RAPID else time)
+        }
+
+        assertThat(CheckersAdvancedRules.of(advanced)).isEqualTo(CheckersAdvancedRules.of(variant))
+        assertThat(advanced.timeControl).isEqualTo(TimeControlSettings(time != CheckersTime.NONE, preset.baseSeconds, preset.incrementSeconds))
+        assertThat(checkers.validateAdvanced(advanced) + checkers.timeControl.validate(advanced.timeControl)).isEmpty()
+    }
+
+    @Test
     fun `a man captures backward`() {
         val journal = position(listOf(w("w1", 5, 5), b("b1", 4, 4), b("b2", 8, 8)))
 
@@ -417,7 +454,7 @@ class CheckersSessionScenariosTest {
             .containsExactly(piecePath("b1"), piecePath("b2"), piecePath("b3"))
 
         // Без турецкого удара сбитая сразу снимается, и через её клетку бой продолжается.
-        val removing = CheckersBoard(CheckersMoveRules.RUSSIAN.copy(removeCapturedAfterMove = false), pieces).legalMoves(WHITE)
+        val removing = CheckersBoard(CheckersAdvancedRules.RUSSIAN.copy(removeCapturedAfterMove = false), pieces).legalMoves(WHITE)
         assertThat(removing.map { it.path.map(Square::toList) }).contains(squares(1 to 1, 6 to 6, 8 to 4, 6 to 2, 1 to 7))
         assertThat(removing.map { it.path.map(Square::toList) }).doesNotContain(squares(1 to 1, 6 to 6, 8 to 4, 6 to 2))
     }
@@ -526,7 +563,7 @@ class CheckersSessionScenariosTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("viewers")
     fun `fold of masked events equals masked full fold`(viewer: ViewerKey) {
-        val journal = engine.start(rules, listOf(ALICE, BOB), SEED, RUSSIAN, TimeControl(30, 0), NOW).toMutableList()
+        val journal = startOf(RUSSIAN, TimeControl(30, 0), SEED).toMutableList()
         val whiteId = idOf(fold(journal), WHITE)
         val blackId = idOf(fold(journal), BLACK)
         journal += moved(journal, whiteId, 3 to 3, 4 to 4)
@@ -555,10 +592,10 @@ class CheckersSessionScenariosTest {
         quietMoves: Int = 0,
         materialMoves: Int = 0,
         timeControl: TimeControl? = NO_TIMER,
-        settings: CheckersSettings = RUSSIAN,
+        settings: CheckersAdvancedSettings = RUSSIAN,
     ): List<SessionEvent> {
-        val started = engine.start(rules, listOf(ALICE, BOB), SEED, settings, timeControl, NOW)
-        val history = listOf(CheckersDraws.positionKey(CheckersMoveRules.of(settings.variant).firstColor, pieces))
+        val started = startOf(settings, timeControl, SEED)
+        val history = listOf(CheckersDraws.positionKey(CheckersAdvancedRules.of(settings.variant).firstColor, pieces))
         return started + listOf(
             SessionEvents.put("test-position", SessionEvents.path("state", "pieces"), pieces),
             SessionEvents.patch(
@@ -567,6 +604,13 @@ class CheckersSessionScenariosTest {
                 mapOf("quietMoves" to quietMoves, "materialMoves" to materialMoves, "positionHistory" to history),
             ),
         ).map { it.copy(value = codec.toTree(it.value)) }
+    }
+
+    /** Начальный журнал партии с advanced-настройками [settings] и часами [timeControl] (null — без таймера). */
+    private fun startOf(settings: CheckersAdvancedSettings, timeControl: TimeControl?, seed: Long): List<SessionEvent> {
+        val clock = timeControl?.let { TimeControlSettings(true, it.baseSeconds, it.incrementSeconds) }
+            ?: settings.timeControl.copy(enabled = false)
+        return engine.start(rules, listOf(ALICE, BOB), seed, settings.copy(timeControl = clock), NOW)
     }
 
     private fun accepted(journal: List<SessionEvent>, player: UUID, vararg path: Pair<Int, Int>): List<SessionEvent> =
@@ -605,10 +649,13 @@ class CheckersSessionScenariosTest {
         private val BOB = UUID.fromString("01990000-0000-7000-8000-00000000000b")
         private val NOW = Instant.parse("2026-10-22T10:00:00Z")
         private const val SEED = 7L
-        private val RUSSIAN = CheckersSettings(CheckersVariant.RUSSIAN)
-        private val INTERNATIONAL = CheckersSettings(CheckersVariant.INTERNATIONAL)
-        private val ENGLISH = CheckersSettings(CheckersVariant.ENGLISH)
+        private val RUSSIAN = advanced(CheckersVariant.RUSSIAN)
+        private val INTERNATIONAL = advanced(CheckersVariant.INTERNATIONAL)
+        private val ENGLISH = advanced(CheckersVariant.ENGLISH)
         private val NO_TIMER: TimeControl? = null
+
+        /** Advanced-настройки, выведенные из варианта без таймера. */
+        private fun advanced(variant: CheckersVariant) = CheckersGameRules().toAdvanced(CheckersSimpleSettings(variant, CheckersTime.NONE))
 
         private fun w(id: String, x: Int, y: Int) = CheckersPiece(id, WHITE, CheckersPieceKind.MAN, listOf(x, y))
         private fun wk(id: String, x: Int, y: Int) = CheckersPiece(id, WHITE, CheckersPieceKind.KING, listOf(x, y))
@@ -704,6 +751,10 @@ class CheckersSessionScenariosTest {
                 10,
             ),
         )
+
+        @JvmStatic
+        fun simpleSettings(): Stream<Arguments> =
+            CheckersVariant.entries.flatMap { variant -> CheckersTime.entries.map { arguments(variant, it) } }.stream()
 
         @JvmStatic
         fun drawLimits(): Stream<Arguments> = Stream.of(

@@ -3,52 +3,72 @@ package site.qgames.game.service.room
 import org.springframework.stereotype.Component
 import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.model.game.GameCode
-import site.qgames.game.model.room.RoomSettingsModel
+import site.qgames.game.model.room.RoomOptionsModel
+import site.qgames.game.model.room.RoomSettingsUpdateModel
 import site.qgames.game.service.game.GameRegistry
 
 /**
- * Проверяет настройки комнаты по правилам игры: шахматные часы — по [site.qgames.games.core.TimeControlRules] (можно ли
- * без таймера, границы запаса и добавки), настройки игры — правилами модуля игры. Ошибки отдаются по полям в формате
- * `@Valid` (400 VALIDATION_ERROR, `errors`).
+ * Проверяет настройки комнаты: room — по лимиту наблюдателей ([RoomOptionsModel.MAX_SPECTATORS]), simple и advanced —
+ * по правилам игры (часы advanced — по [site.qgames.games.core.TimeControlRules], остальное — модулем игры). Ошибки
+ * отдаются по полям в формате `@Valid` (400 VALIDATION_ERROR, `errors`).
  */
 @Component
 class RoomSettingsValidator(private val gameRegistry: GameRegistry) {
 
     /**
-     * [fieldPrefix] — путь к настройкам в теле запроса (`settings.` при создании комнаты, пусто при замене настроек),
-     * чтобы клиент подсветил нужное поле формы.
+     * Замена групп настроек: нужна хотя бы одна группа, simple и advanced не вместе. Поля — по пути в теле запроса
+     * (`room.maxSpectators`, `simple.variant`, `advanced.timeControl.baseSeconds`).
      */
-    fun check(gameCode: GameCode, settings: RoomSettingsModel, fieldPrefix: String) {
-        val errors = validate(gameCode, settings)
+    fun checkUpdate(gameCode: GameCode, update: RoomSettingsUpdateModel) {
+        val errors = linkedMapOf<String, String>()
+        if (update.room == null && update.simple == null && update.advanced == null) {
+            errors[ROOM] = "at least one of room, simple and advanced is required"
+        }
+        if (update.simple != null && update.advanced != null) {
+            errors[ADVANCED] = "must not be set together with simple"
+        }
+        update.room?.let { room ->
+            if (room.maxSpectators !in RoomOptionsModel.MAX_SPECTATORS) {
+                errors["$ROOM.maxSpectators"] =
+                    "must be between ${RoomOptionsModel.MAX_SPECTATORS.first} and ${RoomOptionsModel.MAX_SPECTATORS.last}"
+            }
+        }
+        update.simple?.let { errors += prefixed("$SIMPLE.", validateSimple(gameCode, it)) }
+        update.advanced?.let { errors += prefixed("$ADVANCED.", validateAdvanced(gameCode, it)) }
         if (errors.isNotEmpty()) {
-            throw RoomErrors.invalidSettings(errors.mapKeys { fieldPrefix + it.key })
+            throw RoomErrors.invalidSettings(errors)
         }
     }
 
-    /** Нарушения по полям относительно настроек комнаты (`timeControl.baseSeconds`, `gameSettings.rounds`). */
-    fun validate(gameCode: GameCode, settings: RoomSettingsModel): Map<String, String> {
+    /** Simple-настройки сами по себе (перевод в advanced): поля — относительно настроек (`variant`). */
+    fun checkSimple(gameCode: GameCode, simple: Any) {
+        val errors = validateSimple(gameCode, simple)
+        if (errors.isNotEmpty()) {
+            throw RoomErrors.invalidSettings(errors)
+        }
+    }
+
+    private fun validateSimple(gameCode: GameCode, simple: Any): Map<String, String> {
         val rules = gameRegistry.rules(gameCode)
-        val errors = linkedMapOf<String, String>()
+        if (!rules.simpleClass.isInstance(simple)) return mapOf(GAME_CODE to GAME_MISMATCH)
+        return rules.validateSimple(simple).associate { it.field to it.message }
+    }
 
-        val timeControl = settings.timeControl
-        val limits = rules.timeControl
-        if (timeControl == null) {
-            if (!limits.optional) errors["timeControl"] = "is required: the game is played only with a clock"
-        } else {
-            if (timeControl.baseSeconds !in limits.baseSeconds) {
-                errors["timeControl.baseSeconds"] = "must be between ${limits.baseSeconds.first} and ${limits.baseSeconds.last}"
-            }
-            if (timeControl.incrementSeconds !in limits.incrementSeconds) {
-                errors["timeControl.incrementSeconds"] =
-                    "must be between ${limits.incrementSeconds.first} and ${limits.incrementSeconds.last}"
-            }
-        }
+    private fun validateAdvanced(gameCode: GameCode, advanced: Any): Map<String, String> {
+        val rules = gameRegistry.rules(gameCode)
+        if (!rules.advancedClass.isInstance(advanced)) return mapOf(GAME_CODE to GAME_MISMATCH)
+        val clock = rules.timeControl.validate(rules.clock(advanced)).map { "$TIME_CONTROL.${it.field}" to it.message }
+        return (clock + rules.validateAdvanced(advanced).map { it.field to it.message }).toMap()
+    }
 
-        if (!rules.settingsClass.isInstance(settings.gameSettings)) {
-            errors["gameSettings.gameCode"] = "must match the game of the room"
-        } else {
-            rules.validateSettings(settings.gameSettings).forEach { errors["gameSettings.${it.field}"] = it.message }
-        }
-        return errors
+    private fun prefixed(prefix: String, errors: Map<String, String>) = errors.mapKeys { prefix + it.key }
+
+    private companion object {
+        const val ROOM = "room"
+        const val SIMPLE = "simple"
+        const val ADVANCED = "advanced"
+        const val TIME_CONTROL = "timeControl"
+        const val GAME_CODE = "gameCode"
+        const val GAME_MISMATCH = "must match the game of the room"
     }
 }

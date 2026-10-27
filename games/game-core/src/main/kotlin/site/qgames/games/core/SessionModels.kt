@@ -88,23 +88,17 @@ enum class SessionStatus {
 /** Неизменное описание партии, закреплённое при старте: нужно и для повтора. */
 data class SessionMeta(
     val game: GameMeta,
-    /** Правила хода для подсказок клиенту (GameRules.moveRules) как JSON-дерево; null — у игры их нет. */
-    val moveRules: Any? = null,
-)
-
-/** Игра партии: код и правила (настройки) на момент старта. */
-data class GameMeta(
-    val code: String,
-    val rules: SessionRules,
+    /** Итоговые правила партии для подсказок клиенту (GameRules.advancedRules) как JSON-дерево; null — у игры их нет. */
+    val advancedRules: Any? = null,
 )
 
 /**
- * Правила партии: часы (null — без таймера) и настройки игры. [gameSettings] — настройки игры (GameRules.settingsClass) с
- * кодом игры в поле `gameCode`, как в настройках комнаты.
+ * Игра партии: код и advanced-настройки на момент старта. [settings] — настройки (GameRules.advancedClass) с кодом игры
+ * в поле `gameCode`, как в настройках комнаты.
  */
-data class SessionRules(
-    val timeControl: TimeControl?,
-    val gameSettings: Map<String, Any?>,
+data class GameMeta(
+    val code: String,
+    val settings: Map<String, Any?>,
 )
 
 /**

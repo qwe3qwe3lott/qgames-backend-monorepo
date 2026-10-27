@@ -5,7 +5,7 @@ import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.game.GamePublishStatus
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomStatus
-import site.qgames.game.model.room.RoomTimeControlModel
+import site.qgames.game.model.room.RoomOptionsModel
 import site.qgames.game.util.newId
 import java.time.Instant
 import java.util.UUID
@@ -16,13 +16,15 @@ class RoomRepository(
 ) {
 
     /**
-     * Новая комната ждёт игроков ([RoomStatus.WAITING]). [timeControl] — часы (null — без таймера), [gameSettings] — JSON
-     * настроек игры. Участников и владельца у неё нет, она пустая с [now]: первый вошедший станет владельцем.
+     * Новая комната ждёт игроков ([RoomStatus.WAITING]). [simpleSettings] и [advancedSettings] — JSON настроек игры
+     * (simple null — advanced-режим). Участников и владельца у неё нет, она пустая с [now]: первый вошедший станет
+     * владельцем.
      */
     fun insert(
         gameCode: GameCode,
-        timeControl: RoomTimeControlModel?,
-        gameSettings: String,
+        options: RoomOptionsModel,
+        simpleSettings: String?,
+        advancedSettings: String,
         now: Instant,
     ): RoomModel = roomExposedRepository.insert(
         RoomModel(
@@ -32,8 +34,9 @@ class RoomRepository(
             status = RoomStatus.WAITING,
             currentSessionId = null,
             emptySince = now,
-            timeControl = timeControl,
-            gameSettings = gameSettings,
+            options = options,
+            simpleSettings = simpleSettings,
+            advancedSettings = advancedSettings,
             createdAt = now,
         ),
     )

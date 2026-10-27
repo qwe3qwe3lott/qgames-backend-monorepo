@@ -11,112 +11,147 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
+import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.game.GameCode
-import site.qgames.game.api.dto.room.CreateRoomRequest
-import site.qgames.game.api.dto.room.NothingSettingsDto
+import site.qgames.game.api.dto.room.CheckersSimpleSettingsDto
+import site.qgames.game.api.dto.room.CheckersTime
+import site.qgames.game.api.dto.room.CheckersVariant
+import site.qgames.game.api.dto.room.NothingAdvancedSettingsDto
+import site.qgames.game.api.dto.room.NothingSimpleSettingsDto
+import site.qgames.game.api.dto.room.NothingTime
+import site.qgames.game.api.dto.room.RoomOptionsDto
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.RoomSettingsDto
+import site.qgames.game.api.dto.room.RoomStatus
 import site.qgames.game.api.dto.room.TimeControlDto
-import site.qgames.game.model.room.RoomTimeControlModel
+import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.EVE
+import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
+import site.qgames.game.support.TestData.checkersAdvanced
 import site.qgames.game.table.room.RoomTable
-import site.qgames.games.core.TimeControl
 import site.qgames.games.core.TimeControlRules
 
 /**
- * Настройки комнаты: задаются при создании (POST /api/games/{gameCode}/rooms) и меняются владельцем между партиями
- * (PUT …/settings). Границы — из правил «игры в ничто»: 1–50 кругов, шахматные часы — запас 5–3600 с, добавка 0–60 с,
- * можно без таймера.
+ * Настройки комнаты: комната создаётся с настройками игры по умолчанию (POST /api/games/{gameCode}/rooms), владелец
+ * меняет группы ручкой PUT …/settings — room в любой момент, simple или advanced между партиями. Перевод simple в
+ * advanced — POST /api/games/{gameCode}/advanced-settings. Границы — из правил «игры в ничто»: 1–50 кругов, шахматные
+ * часы — запас 5–3600 с, добавка 0–60 с, можно без таймера; лимит наблюдателей — 0–12.
  */
 class RoomSettingsScenariosTest : GameIntegrationTest() {
 
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("validSettings")
-    fun `room is created with the given settings`(case: String, settings: RoomSettingsDto) {
-        val room = createRoom(ALICE, settings)
-
-        assertThat(room.settings).isEqualTo(settings)
-        assertThat(storedSettings(room.id)).isEqualTo(StoredSettings(settings.timeControl, rounds(settings)))
-        assertThat(room.ownerId).isEqualTo(ALICE)
-    }
-
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("invalidSettings")
-    fun `room with settings out of the game limits is not created`(case: String, settings: RoomSettingsDto, field: String) {
-        createRoomRequest(ALICE, CreateRoomRequest(settings)).andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("VALIDATION_ERROR") }
-            jsonPath("$.errors['settings.$field']") { exists() }
-        }
-        assertThat(count(RoomTable)).isZero()
-    }
-
-    @ParameterizedTest(name = "{0}")
-    @MethodSource("malformedCreateBodies")
-    fun `malformed create request is rejected`(case: String, body: Any, field: String?) {
-        createRoomRequest(ALICE, body).andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("VALIDATION_ERROR") }
-            if (field != null) jsonPath("$.errors['$field']") { exists() }
-        }
-        assertThat(count(RoomTable)).isZero()
-    }
-
     @Test
-    fun `settings change with a foreign game settings discriminator is rejected by the field`() {
-        val roomId = roomWith(ALICE)
-        val body = mapOf("timeControl" to null, "gameSettings" to mapOf("gameCode" to "chess", "rounds" to 5))
+    fun `room is created with the default settings of the game in the simple mode`() {
+        val created = createRoomRequest(ALICE).andExpect { status { isOk() } }.body<RoomResponse>()
 
-        updateSettingsRequest(ALICE, roomId, body).andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("VALIDATION_ERROR") }
-            jsonPath("$.errors['gameSettings.gameCode']") { value("unsupported value") }
-        }
-        assertThat(storedSettings(roomId).rounds).isEqualTo(3)
+        assertThat(created.settings).isEqualTo(NOTHING_DEFAULT_SETTINGS)
+        assertThat(stored(created.id)).isEqualTo(tree(NOTHING_DEFAULT_SETTINGS))
     }
 
     @Test
     fun `room of an unknown game is not created`() {
-        createRoomRequest(ALICE, CreateRoomRequest(nothingSettings()), gameCode = "chess").andExpect {
+        createRoomRequest(ALICE, gameCode = "chess").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("GAME_NOT_FOUND") }
         }
         assertThat(count(RoomTable)).isZero()
     }
 
-    @Test
-    fun `a game without the timer when the game requires a clock is rejected`() {
-        every { nothingGameRules.timeControl } returns TimeControlRules(optional = false, 5..600, 0..60, TimeControl(30, 0))
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("validAdvancedSettings")
+    fun `advanced settings switch the room to the advanced mode`(case: String, advanced: NothingAdvancedSettingsDto) {
+        val roomId = roomWith(ALICE)
 
-        createRoomRequest(ALICE, CreateRoomRequest(nothingSettings())).andExpect {
-            status { isBadRequest() }
-            jsonPath("$.code") { value("VALIDATION_ERROR") }
-            jsonPath("$.errors['settings.timeControl']") { exists() }
-        }
-        assertThat(count(RoomTable)).isZero()
+        val updated = update(ALICE, roomId, UpdateRoomSettingsRequest(advanced = advanced))
+
+        assertThat(updated.settings).isEqualTo(RoomSettingsDto(RoomOptionsDto(8), simple = null, advanced = advanced))
+        assertThat(stored(roomId)).isEqualTo(tree(updated.settings))
     }
 
     @Test
-    fun `owner changes the settings between games and the next game uses them`() {
+    fun `simple settings switch the room back to the simple mode and give the advanced ones`() {
+        val roomId = roomWith(ALICE)
+        update(ALICE, roomId, UpdateRoomSettingsRequest(advanced = nothingSettings(rounds = 9, clockSeconds = 100)))
+        val simple = NothingSimpleSettingsDto(GameCode.NOTHING, rounds = 4, time = NothingTime.CLASSIC)
+
+        val updated = update(ALICE, roomId, UpdateRoomSettingsRequest(simple = simple))
+
+        assertThat(updated.settings).isEqualTo(
+            RoomSettingsDto(RoomOptionsDto(8), simple, NothingAdvancedSettingsDto(GameCode.NOTHING, 4, TimeControlDto(true, 30, 5))),
+        )
+        assertThat(stored(roomId)).isEqualTo(tree(updated.settings))
+    }
+
+    @Test
+    fun `owner changes the settings between games and the next game uses the advanced ones`() {
         val roomId = roomWith(ALICE, BOB)
-        val settings = nothingSettings(rounds = 1, clockSeconds = 45, incrementSeconds = 2)
+        val advanced = nothingSettings(rounds = 1, clockSeconds = 45, incrementSeconds = 2)
 
-        val updated = updateSettingsRequest(ALICE, roomId, settings).andExpect { status { isOk() } }.body<RoomResponse>()
+        update(ALICE, roomId, UpdateRoomSettingsRequest(advanced = advanced))
 
-        assertThat(updated.settings).isEqualTo(settings)
-        assertThat(storedSettings(roomId)).isEqualTo(StoredSettings(TimeControlDto(45, 2), 1))
-        val started = start(ALICE, roomId)
-        assertThat(started.session).isNotNull()
+        start(ALICE, roomId)
         assertThat(fullState(roomId).state.turns.rounds).isEqualTo(1)
         assertThat(fullState(roomId).state.timer).isNotNull()
         val session = roomSessionRepository.findLatest(roomId)!!
-        assertThat(session.timeControl).isEqualTo(RoomTimeControlModel(45, 2))
-        assertThat(jsonMapper.readTree(session.gameSettings)["rounds"].asInt()).isEqualTo(1)
+        assertThat(jsonMapper.readTree(session.settings)).isEqualTo(
+            jsonMapper.readTree("""{"rounds": 1, "timeControl": {"enabled": true, "baseSeconds": 45, "incrementSeconds": 2}}"""),
+        )
+    }
+
+    @Test
+    fun `room settings change at any time, even during a game, and keep the game settings`() {
+        val roomId = roomWith(ALICE, BOB, started = true)
+        val before = stored(roomId)
+
+        val updated = update(ALICE, roomId, UpdateRoomSettingsRequest(room = RoomOptionsDto(0)))
+
+        assertThat(updated.status).isEqualTo(RoomStatus.IN_GAME)
+        assertThat(updated.settings).isEqualTo(NOTHING_DEFAULT_SETTINGS.copy(room = RoomOptionsDto(0)))
+        assertThat(stored(roomId) - "room").isEqualTo(before - "room")
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("invalidUpdates")
+    fun `settings out of the limits are rejected by the field`(case: String, body: UpdateRoomSettingsRequest, field: String) {
+        val roomId = roomWith(ALICE)
+        val before = stored(roomId)
+
+        updateSettingsRequest(ALICE, roomId, body).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("VALIDATION_ERROR") }
+            jsonPath("$.errors['$field']") { exists() }
+        }
+        assertThat(stored(roomId)).isEqualTo(before)
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("malformedBodies")
+    fun `malformed settings request is rejected`(case: String, body: Any, field: String?) {
+        val roomId = roomWith(ALICE)
+        val before = stored(roomId)
+
+        updateSettingsRequest(ALICE, roomId, body).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("VALIDATION_ERROR") }
+            if (field != null) jsonPath("$.errors['$field']") { exists() }
+        }
+        assertThat(stored(roomId)).isEqualTo(before)
+    }
+
+    @Test
+    fun `a clock turned off when the game requires one is rejected`() {
+        every { nothingGameRules.timeControl } returns TimeControlRules(optional = false, 5..600, 0..60)
+        val roomId = roomWith(ALICE)
+
+        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(advanced = nothingSettings())).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("VALIDATION_ERROR") }
+            jsonPath("$.errors['advanced.timeControl.enabled']") { exists() }
+        }
     }
 
     @ParameterizedTest(name = "{0}")
@@ -126,20 +161,38 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         setup: RoomSetup,
         user: UUID,
         gameCode: String,
-        settings: RoomSettingsDto,
+        body: UpdateRoomSettingsRequest,
         expectedStatus: HttpStatus,
         expectedCode: String,
-        expectedField: String?,
     ) {
         val roomId = with(setup) { prepare() }
-        val before = storedSettings(roomId)
+        val before = stored(roomId)
 
-        updateSettingsRequest(user, roomId, settings, gameCode).andExpect {
+        updateSettingsRequest(user, roomId, body, gameCode).andExpect {
             status { isEqualTo(expectedStatus.value()) }
             jsonPath("$.code") { value(expectedCode) }
-            if (expectedField != null) jsonPath("$.errors['$expectedField']") { exists() }
         }
-        assertThat(storedSettings(roomId)).isEqualTo(before)
+        assertThat(stored(roomId)).isEqualTo(before)
+    }
+
+    @Test
+    fun `simple settings are translated into the advanced ones`() {
+        val simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.INTERNATIONAL, CheckersTime.BLITZ)
+
+        call(HttpMethod.POST, "/api/games/checkers/advanced-settings", ALICE, simple).andExpect {
+            status { isOk() }
+            content { json(jsonMapper.writeValueAsString(checkersAdvanced(CheckersVariant.INTERNATIONAL, TimeControlDto(true, 600, 5))), strict = true) }
+        }
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("rejectedTranslations")
+    fun `translation of simple settings is rejected`(case: String, user: UUID?, gameCode: String, body: Any, status: HttpStatus, code: String, field: String?) {
+        call(HttpMethod.POST, "/api/games/$gameCode/advanced-settings", user, body).andExpect {
+            status { isEqualTo(status.value()) }
+            jsonPath("$.code") { value(code) }
+            if (field != null) jsonPath("$.errors['$field']") { exists() }
+        }
     }
 
     /** Готовит комнату для сценария и возвращает её id. */
@@ -147,65 +200,79 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         fun RoomSettingsScenariosTest.prepare(): UUID
     }
 
-    private data class StoredSettings(val timeControl: TimeControlDto?, val rounds: Int)
+    private fun update(user: UUID, roomId: UUID, body: UpdateRoomSettingsRequest): RoomResponse =
+        updateSettingsRequest(user, roomId, body).andExpect { status { isOk() } }.body()
 
-    /** Настройки из колонки `game_settings`: `{"timeControl": …, "gameSettings": {…}}`. */
-    private fun storedSettings(roomId: UUID): StoredSettings =
-        db {
-            RoomTable.selectAll().where { RoomTable.id eq roomId }.single().let {
-                val column = jsonMapper.readTree(it[RoomTable.gameSettings])
-                val timeControl = column["timeControl"].takeUnless { node -> node.isNull }?.let { node -> jsonMapper.treeToValue(node, TimeControlDto::class.java) }
-                StoredSettings(timeControl, column["gameSettings"]["rounds"].asInt())
-            }
+    /** Колонка `room.settings` как дерево: `{"room": …, "simple": … | null, "advanced": …}`, без кодов игры. */
+    private fun stored(roomId: UUID): Map<String, Any?> = db {
+        RoomTable.selectAll().where { RoomTable.id eq roomId }.single().let {
+            @Suppress("UNCHECKED_CAST")
+            jsonMapper.readValue(it[RoomTable.settings], Map::class.java) as Map<String, Any?>
         }
+    }
 
-    private fun rounds(settings: RoomSettingsDto) =
-        (settings.gameSettings as NothingSettingsDto).rounds
+    /** Ожидаемая колонка `room.settings` для настроек ответа: настройки игры хранятся без кода игры. */
+    private fun tree(settings: RoomSettingsDto): Map<String, Any?> {
+        @Suppress("UNCHECKED_CAST")
+        val dto = jsonMapper.convertValue(settings, Map::class.java) as Map<String, Any?>
+        fun withoutCode(group: Any?) = (group as Map<*, *>?)?.minus("gameCode")
+        return mapOf("room" to dto["room"], "simple" to withoutCode(dto["simple"]), "advanced" to withoutCode(dto["advanced"]))
+    }
 
     companion object {
-        private fun settings(rounds: Int = 3, clockSeconds: Int? = null, incrementSeconds: Int = 0) =
-            RoomSettingsDto(
-                clockSeconds?.let { TimeControlDto(it, incrementSeconds) },
-                NothingSettingsDto(GameCode.NOTHING, rounds),
+        private fun advanced(rounds: Int = 3, clockSeconds: Int? = null, incrementSeconds: Int = 0) =
+            NothingAdvancedSettingsDto(
+                GameCode.NOTHING,
+                rounds,
+                clockSeconds?.let { TimeControlDto(true, it, incrementSeconds) } ?: TimeControlDto(false, 30, 5),
             )
 
-        private fun gameSettingsJson(rounds: Int = 3) = mapOf("gameCode" to "nothing", "rounds" to rounds)
+        private fun simple(rounds: Int = 3) = NothingSimpleSettingsDto(GameCode.NOTHING, rounds, NothingTime.NONE)
 
         @JvmStatic
-        fun validSettings(): Stream<Arguments> = Stream.of(
-            arguments("minimum rounds, no timer", settings(rounds = 1)),
-            arguments("maximum rounds", settings(rounds = 50)),
-            arguments("smallest clock without increment", settings(clockSeconds = 5)),
-            arguments("largest clock and increment", settings(rounds = 7, clockSeconds = 3600, incrementSeconds = 60)),
+        fun validAdvancedSettings(): Stream<Arguments> = Stream.of(
+            arguments("minimum rounds, no timer", advanced(rounds = 1)),
+            arguments("maximum rounds", advanced(rounds = 50)),
+            arguments("smallest clock without increment", advanced(clockSeconds = 5)),
+            arguments("largest clock and increment", advanced(rounds = 7, clockSeconds = 3600, incrementSeconds = 60)),
+            arguments("values of a turned off clock are not checked", advanced().copy(timeControl = TimeControlDto(false, 1, 999))),
         )
 
         @JvmStatic
-        fun invalidSettings(): Stream<Arguments> = Stream.of(
-            arguments("zero rounds", settings(rounds = 0), "gameSettings.rounds"),
-            arguments("too many rounds", settings(rounds = 51), "gameSettings.rounds"),
-            arguments("clock too short", settings(clockSeconds = 4), "timeControl.baseSeconds"),
-            arguments("clock too long", settings(clockSeconds = 3601), "timeControl.baseSeconds"),
-            arguments("negative increment", settings(clockSeconds = 30, incrementSeconds = -1), "timeControl.incrementSeconds"),
-            arguments("increment too large", settings(clockSeconds = 30, incrementSeconds = 61), "timeControl.incrementSeconds"),
+        fun invalidUpdates(): Stream<Arguments> = Stream.of(
+            arguments("no group", UpdateRoomSettingsRequest(), "room"),
+            arguments("simple and advanced together", UpdateRoomSettingsRequest(simple = simple(), advanced = advanced()), "advanced"),
+            arguments("negative spectators limit", UpdateRoomSettingsRequest(room = RoomOptionsDto(-1)), "room.maxSpectators"),
+            arguments("spectators limit too large", UpdateRoomSettingsRequest(room = RoomOptionsDto(13)), "room.maxSpectators"),
+            arguments("zero rounds in simple", UpdateRoomSettingsRequest(simple = simple(rounds = 0)), "simple.rounds"),
+            arguments("zero rounds in advanced", UpdateRoomSettingsRequest(advanced = advanced(rounds = 0)), "advanced.rounds"),
+            arguments("too many rounds", UpdateRoomSettingsRequest(advanced = advanced(rounds = 51)), "advanced.rounds"),
+            arguments("clock too short", UpdateRoomSettingsRequest(advanced = advanced(clockSeconds = 4)), "advanced.timeControl.baseSeconds"),
+            arguments("clock too long", UpdateRoomSettingsRequest(advanced = advanced(clockSeconds = 3601)), "advanced.timeControl.baseSeconds"),
+            arguments(
+                "increment too large",
+                UpdateRoomSettingsRequest(advanced = advanced(clockSeconds = 30, incrementSeconds = 61)),
+                "advanced.timeControl.incrementSeconds",
+            ),
+            arguments(
+                "settings of another game",
+                UpdateRoomSettingsRequest(simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.NONE)),
+                "simple.gameCode",
+            ),
         )
 
         @JvmStatic
-        fun malformedCreateBodies(): Stream<Arguments> = Stream.of(
-            arguments("no settings", emptyMap<String, Any?>(), null),
-            arguments("body with the game code only", mapOf("gameCode" to "nothing"), null),
+        fun malformedBodies(): Stream<Arguments> = Stream.of(
             arguments(
                 "foreign game settings discriminator",
-                mapOf("settings" to mapOf("timeControl" to null, "gameSettings" to mapOf("gameCode" to "chess", "rounds" to 3))),
-                "settings.gameSettings.gameCode",
+                mapOf("advanced" to mapOf("gameCode" to "chess", "rounds" to 3)),
+                "advanced.gameCode",
             ),
-            arguments(
-                "game settings without discriminator",
-                mapOf("settings" to mapOf("timeControl" to null, "gameSettings" to mapOf("rounds" to 3))),
-                "settings.gameSettings.gameCode",
-            ),
+            arguments("game settings without discriminator", mapOf("simple" to mapOf("rounds" to 3, "time" to "NONE")), "simple.gameCode"),
+            arguments("simple without the time", mapOf("simple" to mapOf("gameCode" to "nothing", "rounds" to 3)), null),
             arguments(
                 "clock without the base time",
-                mapOf("settings" to mapOf("timeControl" to mapOf("incrementSeconds" to 5), "gameSettings" to gameSettingsJson())),
+                mapOf("advanced" to mapOf("gameCode" to "nothing", "rounds" to 3, "timeControl" to mapOf("enabled" to true, "incrementSeconds" to 5))),
                 null,
             ),
         )
@@ -213,31 +280,44 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         @JvmStatic
         fun rejectedUpdates(): Stream<Arguments> = Stream.of(
             arguments(
-                "not the owner", RoomSetup { roomWith(ALICE, BOB) }, BOB, "nothing", settings(rounds = 5),
-                HttpStatus.FORBIDDEN, "NOT_ROOM_OWNER", null,
+                "not the owner", RoomSetup { roomWith(ALICE, BOB) }, BOB, "nothing", UpdateRoomSettingsRequest(room = RoomOptionsDto(2)),
+                HttpStatus.FORBIDDEN, "NOT_ROOM_OWNER",
             ),
             arguments(
-                "not in the room", RoomSetup { roomWith(ALICE) }, EVE, "nothing", settings(rounds = 5),
-                HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER", null,
+                "not in the room", RoomSetup { roomWith(ALICE) }, EVE, "nothing", UpdateRoomSettingsRequest(room = RoomOptionsDto(2)),
+                HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER",
             ),
             arguments(
-                "game in progress", RoomSetup { roomWith(ALICE, BOB, started = true) }, ALICE, "nothing", settings(rounds = 5),
-                HttpStatus.CONFLICT, "ROOM_NOT_WAITING", null,
+                "simple during a game", RoomSetup { roomWith(ALICE, BOB, started = true) }, ALICE, "nothing",
+                UpdateRoomSettingsRequest(simple = simple(rounds = 5)), HttpStatus.CONFLICT, "ROOM_NOT_WAITING",
             ),
             arguments(
-                "unknown game code", RoomSetup { roomWith(ALICE) }, ALICE, "chess", settings(rounds = 5),
-                HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null,
+                "advanced with the room settings during a game", RoomSetup { roomWith(ALICE, BOB, started = true) }, ALICE, "nothing",
+                UpdateRoomSettingsRequest(room = RoomOptionsDto(2), advanced = advanced(rounds = 5)), HttpStatus.CONFLICT, "ROOM_NOT_WAITING",
             ),
             arguments(
-                "rounds out of limits", RoomSetup { roomWith(ALICE) }, ALICE, "nothing", settings(rounds = 51),
-                HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "gameSettings.rounds",
+                "unknown game code", RoomSetup { roomWith(ALICE) }, ALICE, "chess", UpdateRoomSettingsRequest(room = RoomOptionsDto(2)),
+                HttpStatus.NOT_FOUND, "GAME_NOT_FOUND",
+            ),
+            arguments(
+                "room of another game", RoomSetup { roomWith(ALICE) }, ALICE, "checkers", UpdateRoomSettingsRequest(room = RoomOptionsDto(2)),
+                HttpStatus.CONFLICT, "GAME_TYPE_MISMATCH",
             ),
             arguments(
                 "owner-spectator sends a clock out of limits",
                 RoomSetup { roomWith(ALICE, BOB).also { changeRole(ALICE, it, RoomRole.SPECTATOR) } },
-                ALICE, "nothing", settings(clockSeconds = 4),
-                HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "timeControl.baseSeconds",
+                ALICE, "nothing", UpdateRoomSettingsRequest(advanced = advanced(clockSeconds = 4)),
+                HttpStatus.BAD_REQUEST, "VALIDATION_ERROR",
             ),
+        )
+
+        @JvmStatic
+        fun rejectedTranslations(): Stream<Arguments> = Stream.of(
+            arguments("guest", null, "nothing", simple(), HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", null),
+            arguments("unknown game", ALICE, "chess", simple(), HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null),
+            arguments("not published game", ALICE, "carcassonne", simple(), HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null),
+            arguments("rounds out of limits", ALICE, "nothing", simple(rounds = 0), HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "rounds"),
+            arguments("settings of another game", ALICE, "checkers", simple(), HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "gameCode"),
         )
     }
 }

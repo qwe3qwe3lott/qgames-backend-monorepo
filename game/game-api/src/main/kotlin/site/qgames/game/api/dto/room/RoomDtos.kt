@@ -1,7 +1,6 @@
 package site.qgames.game.api.dto.room
 
 import io.swagger.v3.oas.annotations.media.Schema
-import jakarta.validation.Valid
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.NotNull
 import site.qgames.game.api.dto.game.GameCode
@@ -31,13 +30,6 @@ enum class SessionStatus {
     FINISHED,
     CANCELLED,
 }
-
-/** Игра — из кода игры в пути. */
-data class CreateRoomRequest(
-    @field:NotNull
-    @field:Valid
-    val settings: RoomSettingsDto,
-)
 
 data class ChangeRoleRequest(
     @field:NotNull

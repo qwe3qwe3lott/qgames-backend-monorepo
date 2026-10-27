@@ -13,7 +13,6 @@ import site.qgames.game.model.room.RoomEventType
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
-import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.RoomSessionStatus
 import site.qgames.game.publisher.room.RoomEventPublisher
@@ -27,7 +26,6 @@ import site.qgames.games.core.MoveOutcome
 import site.qgames.games.core.SessionDocument
 import site.qgames.games.core.SessionEngine
 import site.qgames.games.core.SessionStatus
-import site.qgames.games.core.TimeControl
 import site.qgames.games.core.TimerOutcome
 import tools.jackson.databind.json.JsonMapper
 
@@ -57,7 +55,7 @@ class RoomSessionService(
     private val random = SecureRandom()
 
     /**
-     * Игроки — участники с ролью PLAYER, места — по порядку входа в комнату. Партия получает снимок настроек
+     * Игроки — участники с ролью PLAYER, места — по порядку входа в комнату. Партия получает снимок advanced-настроек
      * комнаты, первое событие журнала — session-started. Игра должна быть доступна для новых партий.
      */
     @Transactional
@@ -78,13 +76,12 @@ class RoomSessionService(
             roomId = roomId,
             gameCode = room.gameCode,
             seed = seed,
-            timeControl = room.timeControl,
-            gameSettings = room.gameSettings,
+            settings = room.advancedSettings,
             players = players,
             now = now,
         )
-        val settings = jsonMapper.readValue(room.gameSettings, rules.settingsClass)
-        val events = sessionEngine.start(rules, players, seed, settings, timeControl(room.timeControl), now)
+        val settings = jsonMapper.readValue(room.advancedSettings, rules.advancedClass)
+        val events = sessionEngine.start(rules, players, seed, settings, now)
         sessionJournalService.record(session, before = null, events, now)
         val updated = room.copy(status = RoomStatus.IN_GAME, currentSessionId = session.id)
         roomRepository.update(updated)
@@ -256,8 +253,5 @@ class RoomSessionService(
 
     companion object {
         private val log = LoggerFactory.getLogger(RoomSessionService::class.java)
-
-        /** Часы комнаты → часы модуля игры; null — без таймера. */
-        fun timeControl(model: RoomTimeControlModel?) = model?.let { TimeControl(it.baseSeconds, it.incrementSeconds) }
     }
 }

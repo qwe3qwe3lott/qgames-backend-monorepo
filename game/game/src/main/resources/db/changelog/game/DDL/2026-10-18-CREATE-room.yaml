@@ -6,8 +6,9 @@ databaseChangeLog:
       comment: >-
         Игровые комнаты. owner_id NULL — у комнаты нет владельца: в комнате никого нет (владельцем станет первый
         вошедший). current_session_id — идущая партия (без FK: room_session ссылается на room). empty_since — с какого момента в комнате
-        нет присутствующих участников (автоудаление). game_settings — настройки, с которыми стартует следующая партия:
-        {"timeControl": шахматные часы или null, "gameSettings": настройки игры (формат задаёт модуль игры)}.
+        нет присутствующих участников (автоудаление). settings — настройки комнаты: {"room": {"maxSpectators"}, "simple":
+        simple-настройки игры или null (advanced-режим), "advanced": advanced-настройки игры, с ними стартует следующая
+        партия}; формат simple и advanced задаёт модуль игры.
       changes:
         - createTable:
             tableName: room
@@ -41,7 +42,7 @@ databaseChangeLog:
                   name: empty_since
                   type: timestamp with time zone
               - column:
-                  name: game_settings
+                  name: settings
                   type: json
                   constraints:
                     nullable: false

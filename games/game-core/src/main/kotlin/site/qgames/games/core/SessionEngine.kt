@@ -24,33 +24,35 @@ import java.util.UUID
  */
 class SessionEngine(private val codec: SessionCodec) {
 
-    /** Первое событие журнала: описание партии и начальное состояние с вариантами ходов и таймером. */
+    /**
+     * Первое событие журнала: описание партии и начальное состояние с вариантами ходов и таймером. [settings] —
+     * проверенные advanced-настройки (GameRules.advancedClass).
+     */
     fun start(
-        rules: GameRules<Any, Any, Any>,
+        rules: GameRules<Any, Any, Any, Any>,
         players: List<UUID>,
         seed: Long,
         settings: Any,
-        timeControl: TimeControl?,
         now: Instant,
     ): List<SessionEvent> {
         val start = rules.start(players, seed, settings)
         checkStartPlayers(rules, players, start.players)
         val initial = SessionState(
             players = Players.initial(players, start.players),
-            timer = Timer.initial(timeControl, players, start.turns.currentPlayerId, now),
+            timer = Timer.initial(rules.clock(settings).toTimeControl(), players, start.turns.currentPlayerId, now),
             turns = start.turns,
             result = null,
             game = start.game,
         )
         val state = initial.copy(players = initial.players.map { it.copy(moveOptions = rules.moveOptions(initial, it.id)) })
         val gameSettings = linkedMapOf<String, Any?>(GAME_CODE to rules.code).apply { putAll(objectTree(settings)) }
-        val meta = SessionMeta(GameMeta(rules.code, SessionRules(timeControl, gameSettings)), codec.toTree(rules.moveRules(settings)))
+        val meta = SessionMeta(GameMeta(rules.code, gameSettings), codec.toTree(rules.advancedRules(settings)))
         val document = linkedMapOf(STATUS to SessionStatus.IN_PROGRESS, META to meta, SessionEvents.STATE to stateTree(state))
         return listOf(tree(SessionEvents.put(SessionEvents.SESSION_STARTED, emptyList(), document)))
     }
 
     /** Ход игрока [playerId] по полному документу [document]. */
-    fun move(rules: GameRules<Any, Any, Any>, document: SessionDocument, playerId: UUID, move: Any, now: Instant): MoveOutcome {
+    fun move(rules: GameRules<Any, Any, Any, Any>, document: SessionDocument, playerId: UUID, move: Any, now: Instant): MoveOutcome {
         val session = document.session
         return when {
             session.status != SessionStatus.IN_PROGRESS -> MoveOutcome.NotInProgress
@@ -63,7 +65,7 @@ class SessionEngine(private val codec: SessionCodec) {
     }
 
     /** Время хода истекло: последствия решает игра. Пустой список — ничего не происходит. */
-    fun timeout(rules: GameRules<Any, Any, Any>, document: SessionDocument, now: Instant): List<SessionEvent> {
+    fun timeout(rules: GameRules<Any, Any, Any, Any>, document: SessionDocument, now: Instant): List<SessionEvent> {
         val session = document.session
         if (session.status != SessionStatus.IN_PROGRESS || Timer.isPaused(session.state.timer)) return emptyList()
         val events = rules.onTimeout(session.state)
@@ -88,7 +90,7 @@ class SessionEngine(private val codec: SessionCodec) {
     }
 
     /** Событие для проекции [viewer]: закрытое для зрителя значение заменяется маской, но событие доставляется. */
-    fun mask(rules: GameRules<Any, Any, Any>, event: SessionEvent, viewer: ViewerKey): SessionEvent {
+    fun mask(rules: GameRules<Any, Any, Any, Any>, event: SessionEvent, viewer: ViewerKey): SessionEvent {
         if (viewer == ViewerKey.Full) return event
         return when (event.code) {
             SessionEvents.SESSION_STARTED -> event.copy(value = maskStart(rules, objectOf(event.value), viewer))
@@ -99,7 +101,7 @@ class SessionEngine(private val codec: SessionCodec) {
     }
 
     /** Типизированное чтение полного документа партии (проверка ходов, таймер, статус). */
-    fun read(rules: GameRules<Any, Any, Any>, document: Map<String, Any?>): SessionDocument {
+    fun read(rules: GameRules<Any, Any, Any, Any>, document: Map<String, Any?>): SessionDocument {
         val state = objectOf(document[SessionEvents.STATE])
         val session = Session(
             meta = codec.fromTree(document[META], SessionMeta::class.java),
@@ -121,7 +123,7 @@ class SessionEngine(private val codec: SessionCodec) {
      * Итог партии (`result-set`) допускается только вместе с концом партии.
      */
     private fun complete(
-        rules: GameRules<Any, Any, Any>,
+        rules: GameRules<Any, Any, Any, Any>,
         document: SessionDocument,
         gameEvents: List<SessionEvent>,
         now: Instant,
@@ -137,14 +139,15 @@ class SessionEngine(private val codec: SessionCodec) {
         val timer = if (finished) {
             after.state.timer?.let { Timer.stop(it, previous, now) }
         } else {
-            Timer.switch(after.state.timer, document.session.meta.game.rules.timeControl, previous, after.state.turns.currentPlayerId, now)
+            val timeControl = rules.clock(settings(rules, document.session)).toTimeControl()
+            Timer.switch(after.state.timer, timeControl, previous, after.state.turns.currentPlayerId, now)
         }
         return own + (players + listOfNotNull(timer) + ending.take(1)).map(::tree)
     }
 
-    /** Настройки игры партии (GameRules.settingsClass) из `meta.game.rules.gameSettings` без кода игры. */
-    private fun settings(rules: GameRules<Any, Any, Any>, session: Session): Any =
-        codec.fromTree(session.meta.game.rules.gameSettings - GAME_CODE, rules.settingsClass)
+    /** Advanced-настройки партии (GameRules.advancedClass) из `meta.game.settings` без кода игры. */
+    private fun settings(rules: GameRules<Any, Any, Any, Any>, session: Session): Any =
+        codec.fromTree(session.meta.game.settings - GAME_CODE, rules.advancedClass)
 
     private fun timerAction(document: SessionDocument, change: (TimerState) -> SessionEvent?): TimerOutcome {
         val session = document.session
@@ -155,7 +158,7 @@ class SessionEngine(private val codec: SessionCodec) {
     }
 
     /** Начальный документ для [viewer]: чужие варианты ходов скрыты, игровая часть — по маске игры. */
-    private fun maskStart(rules: GameRules<Any, Any, Any>, document: Map<String, Any?>, viewer: ViewerKey): Map<String, Any?> {
+    private fun maskStart(rules: GameRules<Any, Any, Any, Any>, document: Map<String, Any?>, viewer: ViewerKey): Map<String, Any?> {
         val state = objectOf(document[SessionEvents.STATE])
         val players = (state[Players.PLAYERS] as List<*>).map { playerTree(Players.mask(readPlayer(rules, it), viewer)) }
         val game = rules.maskGame(codec.fromTree(state - CORE_KEYS, rules.gameStateClass), viewer)
@@ -191,7 +194,7 @@ class SessionEngine(private val codec: SessionCodec) {
     }
 
     /** Игрок из документа: поля core и поля игры (GameRules.playerClass). */
-    private fun readPlayer(rules: GameRules<Any, Any, Any>, tree: Any?): PlayerState {
+    private fun readPlayer(rules: GameRules<Any, Any, Any, Any>, tree: Any?): PlayerState {
         val player = objectOf(tree)
         val core = codec.fromTree(player.filterKeys { it in PlayerState.FIELDS }, PlayerState::class.java)
         val fields = player - PlayerState.FIELDS
@@ -204,7 +207,7 @@ class SessionEngine(private val codec: SessionCodec) {
     }
 
     /** Поля игры у игроков из [GameRules.start] — у каждого игрока партии и класса GameRules.playerClass. */
-    private fun checkStartPlayers(rules: GameRules<Any, Any, Any>, players: List<UUID>, fields: Map<UUID, Any>) {
+    private fun checkStartPlayers(rules: GameRules<Any, Any, Any, Any>, players: List<UUID>, fields: Map<UUID, Any>) {
         val playerClass = rules.playerClass
         if (playerClass == null) {
             check(fields.isEmpty()) { "Game ${rules.code} declares no player class, but sets player fields" }
@@ -226,7 +229,7 @@ class SessionEngine(private val codec: SessionCodec) {
         const val STATUS = "status"
         const val META = "meta"
 
-        /** Поле настроек игры в meta.game.rules.gameSettings с кодом игры (как в настройках комнаты). */
+        /** Поле кода игры в meta.game.settings (как в настройках комнаты). */
         const val GAME_CODE = "gameCode"
 
         /** Блоки core в состоянии; остальные поля состояния — игровые. */

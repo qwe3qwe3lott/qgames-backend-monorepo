@@ -26,6 +26,7 @@ import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SessionStatus
 import site.qgames.games.core.TimeControl
+import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.TimerOutcome
 import site.qgames.games.core.TimerState
 import site.qgames.games.core.TimerStatus
@@ -39,7 +40,7 @@ import site.qgames.games.core.ViewerKey
 class NothingSessionScenariosTest {
 
     @Suppress("UNCHECKED_CAST")
-    private val rules = NothingGameRules() as GameRules<Any, Any, Any>
+    private val rules = NothingGameRules() as GameRules<Any, Any, Any, Any>
 
     private val engine = SessionEngine(JsonSessionCodec())
 
@@ -56,12 +57,13 @@ class NothingSessionScenariosTest {
                 "meta" to mapOf(
                     "game" to mapOf(
                         "code" to "nothing",
-                        "rules" to mapOf(
-                            "timeControl" to mapOf("baseSeconds" to 30, "incrementSeconds" to 0),
-                            "gameSettings" to mapOf("gameCode" to "nothing", "rounds" to 2),
+                        "settings" to mapOf(
+                            "gameCode" to "nothing",
+                            "rounds" to 2,
+                            "timeControl" to mapOf("enabled" to true, "baseSeconds" to 30, "incrementSeconds" to 0),
                         ),
                     ),
-                    "moveRules" to null,
+                    "advancedRules" to null,
                 ),
                 "state" to mapOf(
                     "players" to listOf(player(ALICE, listOf(PASS)), player(BOB, emptyList())),
@@ -130,9 +132,9 @@ class NothingSessionScenariosTest {
     fun `result can be set only once and only together with session-finished`(case: String, events: List<SessionEvent>) {
         val nothing = NothingGameRules()
         @Suppress("UNCHECKED_CAST")
-        val setsResult = object : GameRules<NothingGameState, NothingMove, NothingSettings> by nothing {
-            override fun decide(state: SessionState<NothingGameState>, settings: NothingSettings, playerId: UUID, move: NothingMove) = Decision.Accepted(events)
-        } as GameRules<Any, Any, Any>
+        val setsResult = object : GameRules<NothingGameState, NothingMove, NothingSimpleSettings, NothingAdvancedSettings> by nothing {
+            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove) = Decision.Accepted(events)
+        } as GameRules<Any, Any, Any, Any>
 
         assertThatThrownBy { engine.move(setsResult, fold(journal()), ALICE, NothingMove("PASS"), NOW) }
             .isInstanceOf(IllegalStateException::class.java)
@@ -143,10 +145,10 @@ class NothingSessionScenariosTest {
     fun `result set together with session-finished is the final result of the game`() {
         val nothing = NothingGameRules()
         @Suppress("UNCHECKED_CAST")
-        val drawn = object : GameRules<NothingGameState, NothingMove, NothingSettings> by nothing {
-            override fun decide(state: SessionState<NothingGameState>, settings: NothingSettings, playerId: UUID, move: NothingMove) =
+        val drawn = object : GameRules<NothingGameState, NothingMove, NothingSimpleSettings, NothingAdvancedSettings> by nothing {
+            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove) =
                 Decision.Accepted(listOf(Result.draw("AGREED"), SessionEvents.finished()))
-        } as GameRules<Any, Any, Any>
+        } as GameRules<Any, Any, Any, Any>
         val journal = journal()
 
         val events = (engine.move(drawn, fold(journal), ALICE, NothingMove("PASS"), NOW) as MoveOutcome.Accepted).events
@@ -250,10 +252,10 @@ class NothingSessionScenariosTest {
     fun `clocks switch only when the turn changes`() {
         val nothing = NothingGameRules()
         @Suppress("UNCHECKED_CAST")
-        val keepsTurn = object : GameRules<NothingGameState, NothingMove, NothingSettings> by nothing {
-            override fun decide(state: SessionState<NothingGameState>, settings: NothingSettings, playerId: UUID, move: NothingMove) =
+        val keepsTurn = object : GameRules<NothingGameState, NothingMove, NothingSimpleSettings, NothingAdvancedSettings> by nothing {
+            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove) =
                 Decision.Accepted(listOf(SessionEvents.info("noted", emptyMap<String, Any>())))
-        } as GameRules<Any, Any, Any>
+        } as GameRules<Any, Any, Any, Any>
         val journal = journal(TimeControl(30, 5))
 
         val events = (engine.move(keepsTurn, fold(journal), ALICE, NothingMove("PASS"), NOW.plusSeconds(7)) as MoveOutcome.Accepted).events
@@ -309,7 +311,10 @@ class NothingSessionScenariosTest {
         timeControl: TimeControl? = null,
         rounds: Int = 2,
         players: List<UUID> = listOf(ALICE, BOB),
-    ): List<SessionEvent> = engine.start(rules, players, seed = 1, NothingSettings(rounds), timeControl, NOW)
+    ): List<SessionEvent> {
+        val clock = TimeControlSettings(timeControl != null, timeControl?.baseSeconds ?: 30, timeControl?.incrementSeconds ?: 5)
+        return engine.start(rules, players, seed = 1, NothingAdvancedSettings(rounds, clock), NOW)
+    }
 
     private fun fold(events: List<SessionEvent>): SessionDocument = engine.read(rules, SessionEngine.fold(null, events)!!)
 

@@ -3,7 +3,7 @@ package site.qgames.game.api.dto.session
 import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.Schema
 import site.qgames.game.api.dto.game.GameCode
-import site.qgames.game.api.dto.room.RoomSettingsDto
+import site.qgames.game.api.dto.room.GameAdvancedSettingsDto
 import java.time.Instant
 import java.util.UUID
 
@@ -11,21 +11,22 @@ import java.util.UUID
 data class SessionMetaDto(
     val game: SessionGameDto,
     /**
-     * Правила хода для подсказок ввода (схема — по игре из game.code); null — у игры их нет (например, «игра в
-     * ничто»). Записываются при старте партии и не меняются.
+     * Итоговые правила партии для подсказок ввода (схема — по игре из game.code), выведенные из advanced-настроек;
+     * null — у игры их нет (например, «игра в ничто»). Записываются при старте партии и не меняются.
      */
-    val moveRules: SessionMoveRulesDto?,
+    val advancedRules: SessionAdvancedRulesDto?,
 )
 
 /**
- * Правила хода конкретной игры: по этим флагам клиент подсказывает ввод хода, не зная правил игры. Игра — meta.game.code
- * снапшота; окончательно ход проверяет сервер.
+ * Итоговые правила конкретной игры: по этим флагам клиент подсказывает ввод хода, не зная правил игры. Игра —
+ * meta.game.code снапшота; окончательно ход проверяет сервер.
  */
 @Schema(
-    description = "Правила хода конкретной игры для подсказок ввода (игра — meta.game.code); ход окончательно проверяет сервер",
-    oneOf = [CheckersMoveRulesDto::class],
+    description = "Итоговые правила конкретной игры для подсказок ввода (игра — meta.game.code); ход окончательно " +
+        "проверяет сервер",
+    oneOf = [CheckersAdvancedRulesDto::class],
 )
-sealed interface SessionMoveRulesDto
+sealed interface SessionAdvancedRulesDto
 
 /** Исход партии. */
 enum class SessionResultOutcome {
@@ -51,8 +52,8 @@ data class SessionResultDto(
 /** Игра партии: по [code] клиент выбирает схему состояния. */
 data class SessionGameDto(
     val code: GameCode,
-    /** Правила (настройки) партии на момент старта: время и настройки игры. */
-    val rules: RoomSettingsDto,
+    /** Advanced-настройки партии на момент старта: по ним идёт партия. */
+    val settings: GameAdvancedSettingsDto,
 )
 
 /** Игрок партии (поля core): элемент массива `state.players`, адресуется по id. */
@@ -147,8 +148,8 @@ enum class CheckersPieceKind {
     KING,
 }
 
-/** Правила хода шашек (вариант правил — флагами). */
-data class CheckersMoveRulesDto(
+/** Итоговые правила партии шашек: доска и первый ход — из варианта, флаги — из advanced-настроек. */
+data class CheckersAdvancedRulesDto(
     /** Размер доски. */
     val boardSize: Int,
     /** Кто ходит первым. */
@@ -167,7 +168,7 @@ data class CheckersMoveRulesDto(
     val promoteMidCapture: Boolean,
     /** Турецкий удар: сбитые снимаются после хода, через сбитую шашку второй раз не прыгать. */
     val removeCapturedAfterMove: Boolean,
-) : SessionMoveRulesDto
+) : SessionAdvancedRulesDto
 
 /** Игрок партии шашек: поля core и цвет. */
 data class CheckersPlayerDto(

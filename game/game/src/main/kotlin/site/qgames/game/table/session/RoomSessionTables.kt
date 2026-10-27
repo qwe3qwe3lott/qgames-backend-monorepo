@@ -13,8 +13,8 @@ object RoomSessionTable : Table("room_session") {
     val status = varchar("status", 16)
     val seed = long("seed")
     val lastSeq = long("last_seq")
-    /** Снимок JSON настроек комнаты (часы и настройки игры) на момент старта (RoomSettingsJsonMapper). */
-    val gameSettings = json<String>("game_settings", { it }, { it })
+    /** Снимок JSON advanced-настроек комнаты на момент старта. */
+    val settings = json<String>("settings", { it }, { it })
     /** Проекция таймера для MoveTimeoutJob. */
     val moveDeadline = timestamp("move_deadline").nullable()
     val createdAt = timestamp("created_at")

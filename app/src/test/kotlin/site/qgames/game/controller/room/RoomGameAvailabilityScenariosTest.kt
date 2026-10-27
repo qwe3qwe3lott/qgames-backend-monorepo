@@ -10,13 +10,13 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.http.HttpMethod
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.room.ChangeRoleRequest
-import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.TransferOwnershipRequest
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
-import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
+import site.qgames.game.api.dto.room.RoomOptionsDto
+import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import java.util.stream.Stream
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.and
@@ -42,7 +42,7 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
     fun `room is created only for an available game`(status: String, httpStatus: Int, code: String?) {
         setPublishStatus("nothing", status)
 
-        createRoomRequest(ALICE, CreateRoomRequest(nothingSettings())).andExpect {
+        createRoomRequest(ALICE).andExpect {
             status { isEqualTo(httpStatus) }
             if (code != null) jsonPath("$.code") { value(code) }
         }
@@ -51,18 +51,8 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
     }
 
     @Test
-    fun `game availability is checked before the settings`() {
-        setPublishStatus("nothing", "NOT_PUBLISHED")
-
-        createRoomRequest(ALICE, CreateRoomRequest(nothingSettings(rounds = 0))).andExpect {
-            status { isNotFound() }
-            jsonPath("$.code") { value("GAME_NOT_FOUND") }
-        }
-    }
-
-    @Test
     fun `room of a not published game without rules is not created`() {
-        createRoomRequest(ALICE, CreateRoomRequest(nothingSettings()), gameCode = "carcassonne").andExpect {
+        createRoomRequest(ALICE, gameCode = "carcassonne").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("GAME_NOT_FOUND") }
         }
@@ -95,7 +85,7 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
             status { isConflict() }
             jsonPath("$.code") { value("GAME_TYPE_MISMATCH") }
         }
-        updateSettingsRequest(ALICE, roomId, nothingSettings(), gameCode = "carcassonne").andExpect {
+        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(advanced = nothingSettings()), gameCode = "carcassonne").andExpect {
             status { isConflict() }
             jsonPath("$.code") { value("GAME_TYPE_MISMATCH") }
         }
@@ -135,7 +125,7 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
             arguments("pause", HttpMethod.POST, "/api/rooms/{id}/session/pause", null),
             arguments("resume", HttpMethod.POST, "/api/rooms/{id}/session/resume", null),
             arguments("move", HttpMethod.POST, "/api/games/nothing/rooms/{id}/moves", MoveRequest(PASS)),
-            arguments("update settings", HttpMethod.PUT, "/api/games/nothing/rooms/{id}/settings", NOTHING_DEFAULT_SETTINGS),
+            arguments("update settings", HttpMethod.PUT, "/api/games/nothing/rooms/{id}/settings", UpdateRoomSettingsRequest(room = RoomOptionsDto(8))),
         )
     }
 }

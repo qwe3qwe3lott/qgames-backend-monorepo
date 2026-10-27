@@ -94,7 +94,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
             assertThat(snapshot.path("status").asString()).isEqualTo("IN_PROGRESS")
             assertThat(snapshot.has("serverTime")).isTrue()
             assertThat(snapshot.path("meta").path("game").path("code").asString()).isEqualTo(GameCode.NOTHING.code)
-            assertThat(snapshot.path("meta").path("game").path("rules").path("gameSettings").path("rounds").asInt()).isEqualTo(2)
+            assertThat(snapshot.path("meta").path("game").path("settings").path("rounds").asInt()).isEqualTo(2)
             val state = jsonMapper.treeToValue(snapshot.path("state"), NothingSessionStateDto::class.java)
             assertThat(state.turns).isEqualTo(SessionTurnsDto(ALICE, round = 1, rounds = 2))
             assertThat(state.timer!!.status).isEqualTo(SessionTimerStatus.RUNNING)

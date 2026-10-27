@@ -12,6 +12,8 @@ data class GameDetailsModel(
 data class GameRulesModel(
     val minPlayers: Int,
     val maxPlayers: Int,
+    /** Границы лимита наблюдателей. */
+    val spectators: IntRange,
     /** Можно ли играть без таймера. */
     val timeControlOptional: Boolean,
     /** Границы запаса часов на партию, секунды. */
@@ -20,5 +22,6 @@ data class GameRulesModel(
     val incrementSeconds: IntRange,
     /** Границы настроек игры, формат задаёт модуль игры (GameRules.settingsLimits). */
     val settingsLimits: Any,
+    /** Настройки новой комнаты. */
     val defaultSettings: RoomSettingsModel,
 )

@@ -34,21 +34,21 @@ internal data class LegalMove(
 /**
  * Генерация ходов строго по флагам [rules] (вариантов генератор не знает):
  *
- * - тихий ход простой — на соседнюю клетку вперёд (и назад, если [CheckersMoveRules.menMoveBackward]); дамки — на любое
- *   число свободных клеток ([CheckersMoveRules.flyingKings]) или на одну;
+ * - тихий ход простой — на соседнюю клетку вперёд (и назад, если [CheckersAdvancedRules.menMoveBackward]); дамки — на любое
+ *   число свободных клеток ([CheckersAdvancedRules.flyingKings]) или на одну;
  * - взятие — прыжок через шашку соперника на свободную клетку за ней; простая бьёт вперёд (и назад, если
- *   [CheckersMoveRules.menCaptureBackward]), дальнобойная дамка — через любое число свободных клеток до и после;
+ *   [CheckersAdvancedRules.menCaptureBackward]), дальнобойная дамка — через любое число свободных клеток до и после;
  * - многократное взятие: если можно бить дальше, бить обязательно — путь заканчивается только там, откуда продолжения
  *   нет. Дамка после прыжка встаёт только на те клетки, с которых бой продолжается, если такие есть;
- * - турецкий удар ([CheckersMoveRules.removeCapturedAfterMove]): сбитые остаются на доске до конца хода, через них не
+ * - турецкий удар ([CheckersAdvancedRules.removeCapturedAfterMove]): сбитые остаются на доске до конца хода, через них не
  *   прыгают второй раз и не проходят;
- * - простая, дошедшая до последнего ряда посреди взятия, бьёт дальше как дамка ([CheckersMoveRules.promoteMidCapture]);
+ * - простая, дошедшая до последнего ряда посреди взятия, бьёт дальше как дамка ([CheckersAdvancedRules.promoteMidCapture]);
  *   в конце хода на последнем ряду становится дамкой;
- * - обязательное взятие ([CheckersMoveRules.captureRequired]) и только максимальная ветка
- *   ([CheckersMoveRules.maxCaptureRequired]).
+ * - обязательное взятие ([CheckersAdvancedRules.captureRequired]) и только максимальная ветка
+ *   ([CheckersAdvancedRules.maxCaptureRequired]).
  */
 internal class CheckersBoard(
-    private val rules: CheckersMoveRules,
+    private val rules: CheckersAdvancedRules,
     private val pieces: List<CheckersPiece>,
 ) {
 

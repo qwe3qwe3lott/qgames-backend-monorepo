@@ -17,8 +17,10 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
 
     @ParameterizedTest(name = "{0}: {1}")
     @CsvSource(
-        "GameSettingsDto, NothingSettingsDto, nothing, rounds",
-        "GameSettingsDto, CheckersSettingsDto, checkers, variant",
+        "GameSimpleSettingsDto, NothingSimpleSettingsDto, nothing, time",
+        "GameSimpleSettingsDto, CheckersSimpleSettingsDto, checkers, variant",
+        "GameAdvancedSettingsDto, NothingAdvancedSettingsDto, nothing, timeControl",
+        "GameAdvancedSettingsDto, CheckersAdvancedSettingsDto, checkers, removeCapturedAfterMove",
         "GameSettingsLimitsDto, NothingSettingsLimitsDto, nothing, rounds",
         "GameSettingsLimitsDto, CheckersSettingsLimitsDto, checkers, variants",
     )
@@ -43,7 +45,11 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
     fun `checkers settings list all variants`() {
         val schemas = apiDocs().path("components").path("schemas")
 
-        assertThat(strings(schemas.path("CheckersSettingsDto").path("properties").path("variant").path("enum")))
+        assertThat(strings(schemas.path("CheckersSimpleSettingsDto").path("properties").path("variant").path("enum")))
+            .containsExactly("RUSSIAN", "INTERNATIONAL", "ENGLISH")
+        assertThat(strings(schemas.path("CheckersSimpleSettingsDto").path("properties").path("time").path("enum")))
+            .containsExactly("NONE", "CLASSIC", "RAPID", "BLITZ")
+        assertThat(strings(schemas.path("CheckersAdvancedSettingsDto").path("properties").path("variant").path("enum")))
             .containsExactly("RUSSIAN", "INTERNATIONAL", "ENGLISH")
         assertThat(strings(schemas.path("CheckersSettingsLimitsDto").path("properties").path("variants").path("items").path("enum")))
             .containsExactly("RUSSIAN", "INTERNATIONAL", "ENGLISH")
@@ -95,7 +101,7 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(ok.propertyNames().toList()).containsExactly("text/event-stream")
         assertThat(ok.path("text/event-stream").path("schema").path("\$ref").asString())
             .isEqualTo("#/components/schemas/RoomStreamEvent")
-        assertThat(operation.path("responses").propertyNames().toList()).containsExactly("200", "401", "404")
+        assertThat(operation.path("responses").propertyNames().toList()).containsExactly("200", "401", "404", "409")
 
         val schemas = docs.path("components").path("schemas")
         val union = schemas.path("RoomStreamEvent")
@@ -228,7 +234,7 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         "SessionStateDto, CheckersSessionStateDto, " +
             "players|timer|turns|result|pieces|lastMove|quietMoves|materialMoves|positionHistory|drawOfferedBy, " +
             "players|turns|pieces|quietMoves|materialMoves|positionHistory",
-        "SessionMoveRulesDto, CheckersMoveRulesDto, " +
+        "SessionAdvancedRulesDto, CheckersAdvancedRulesDto, " +
             "boardSize|firstColor|menMoveBackward|menCaptureBackward|flyingKings|captureRequired|maxCaptureRequired|" +
             "promoteMidCapture|removeCapturedAfterMove, " +
             "boardSize|firstColor|menMoveBackward|menCaptureBackward|flyingKings|captureRequired|maxCaptureRequired|" +
@@ -245,14 +251,14 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(strings(schema.path("required"))).containsExactlyInAnyOrder(*required.split('|').toTypedArray())
     }
 
-    /** Платформа партии: итог (блок core result), правила хода в meta, поля игры у игрока, схема параметров хода шашек. */
+    /** Платформа партии: итог (блок core result), итоговые правила в meta, поля игры у игрока, схема параметров хода шашек. */
     @Test
-    fun `session result, move rules and checkers schemas are in the contract`() {
+    fun `session result, advanced rules and checkers schemas are in the contract`() {
         val schemas = apiDocs().path("components").path("schemas")
 
         assertThat(strings(schemas.path("SessionResultDto").path("required"))).containsExactlyInAnyOrder("outcome", "winnerIds", "reason")
         assertThat(strings(schemas.path("SessionResultDto").path("properties").path("outcome").path("enum"))).containsExactly("WIN", "DRAW")
-        assertThat(schemas.path("SessionMetaDto").path("properties").propertyNames().toList()).containsExactlyInAnyOrder("game", "moveRules")
+        assertThat(schemas.path("SessionMetaDto").path("properties").propertyNames().toList()).containsExactlyInAnyOrder("game", "advancedRules")
         assertThat(strings(schemas.path("SessionMetaDto").path("required"))).containsExactly("game")
         assertThat(strings(schemas.path("CheckersPlayerDto").path("required"))).containsExactlyInAnyOrder("id", "moveOptions", "color")
         assertThat(strings(schemas.path("CheckersPlayerDto").path("properties").path("color").path("enum"))).containsExactly("WHITE", "BLACK")

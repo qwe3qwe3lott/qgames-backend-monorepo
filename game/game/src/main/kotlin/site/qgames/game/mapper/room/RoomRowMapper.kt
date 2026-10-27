@@ -26,8 +26,9 @@ class RoomRowMapper(private val roomSettingsJsonMapper: RoomSettingsJsonMapper) 
             status = RoomStatus.valueOf(row[RoomTable.status]),
             currentSessionId = row[RoomTable.currentSessionId],
             emptySince = row[RoomTable.emptySince],
-            timeControl = roomSettingsJsonMapper.timeControl(row[RoomTable.gameSettings]),
-            gameSettings = roomSettingsJsonMapper.gameSettings(row[RoomTable.gameSettings]),
+            options = roomSettingsJsonMapper.options(row[RoomTable.settings]),
+            simpleSettings = roomSettingsJsonMapper.simple(row[RoomTable.settings]),
+            advancedSettings = roomSettingsJsonMapper.advanced(row[RoomTable.settings]),
             createdAt = row[RoomTable.createdAt],
         )
     }

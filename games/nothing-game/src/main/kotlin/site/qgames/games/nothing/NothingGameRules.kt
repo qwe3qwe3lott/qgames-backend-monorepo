@@ -10,11 +10,14 @@ import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SettingsViolation
 import site.qgames.games.core.TimeControlRules
+import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.Turns
 
 /**
- * «Игра в ничто»: игроки по очереди делают ход PASS, после [NothingSettings.rounds] кругов партия заканчивается
+ * «Игра в ничто»: игроки по очереди делают ход PASS, после [NothingAdvancedSettings.rounds] кругов партия заканчивается
  * без победителя. Нужна, чтобы проверить движок целиком: очерёдность, журнал, таймеры, конец партии.
+ *
+ * Настройки: simple — число кругов и пресет времени ([NothingTime]), advanced — число кругов и часы.
  *
  * Core: варианты ходов (PASS у того, чей ход), очерёдность (ход по кругу, раунды из настроек), часы, итог
  * (итог не ставится: `result` всегда null).
@@ -22,32 +25,41 @@ import site.qgames.games.core.Turns
  * истечении времени — `INFO {playerId, timeout: true}` (состояние игры не меняется). Скрытой информации нет, маски не
  * нужны.
  */
-class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSettings> {
+class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSimpleSettings, NothingAdvancedSettings> {
 
     override val code = CODE
     override val minPlayers = 1
     override val maxPlayers = 4
     override val gameStateClass = NothingGameState::class.java
     override val moveClass = NothingMove::class.java
-    override val settingsClass = NothingSettings::class.java
+    override val simpleClass = NothingSimpleSettings::class.java
+    override val advancedClass = NothingAdvancedSettings::class.java
 
-    override val timeControl = TimeControlRules(optional = true, baseSeconds = 5..3600, incrementSeconds = 0..60, default = null)
+    override val timeControl = TimeControlRules(optional = true, baseSeconds = 5..3600, incrementSeconds = 0..60)
 
-    override val defaultSettings = NothingSettings(rounds = 3)
+    override val defaultSimple = NothingSimpleSettings(rounds = 3, time = NothingTime.NONE)
 
-    override val settingsLimits = NothingSettingsLimits(rounds = ROUNDS)
+    override val settingsLimits = NothingSettingsLimits(rounds = ROUNDS, timePresets = TIME_PRESETS)
 
-    override fun validateSettings(settings: NothingSettings): List<SettingsViolation> =
-        if (settings.rounds in ROUNDS) {
-            emptyList()
-        } else {
-            listOf(SettingsViolation("rounds", "must be between ${ROUNDS.first} and ${ROUNDS.last}"))
-        }
+    override fun validateSimple(settings: NothingSimpleSettings): List<SettingsViolation> = validateRounds(settings.rounds)
 
-    override fun start(players: List<UUID>, seed: Long, settings: NothingSettings) =
+    override fun validateAdvanced(settings: NothingAdvancedSettings): List<SettingsViolation> = validateRounds(settings.rounds)
+
+    /** Без таймера часы заполняются значениями пресета CLASSIC — на случай включения в advanced. */
+    override fun toAdvanced(settings: NothingSimpleSettings): NothingAdvancedSettings {
+        val preset = TIME_PRESETS.single { it.time == NothingTime.CLASSIC }
+        return NothingAdvancedSettings(
+            rounds = settings.rounds,
+            timeControl = TimeControlSettings(settings.time != NothingTime.NONE, preset.baseSeconds, preset.incrementSeconds),
+        )
+    }
+
+    override fun clock(settings: NothingAdvancedSettings) = settings.timeControl
+
+    override fun start(players: List<UUID>, seed: Long, settings: NothingAdvancedSettings) =
         GameStart(NothingGameState(moves = 0), Turns.initial(players, settings.rounds, first = players.first()))
 
-    override fun decide(state: SessionState<NothingGameState>, settings: NothingSettings, playerId: UUID, move: NothingMove): Decision {
+    override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove): Decision {
         val current = state.turns.currentPlayerId
         return when {
             current == null -> Decision.Rejected("GAME_FINISHED", "The game is already finished")
@@ -71,6 +83,13 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
     override fun moveOptions(state: SessionState<NothingGameState>, playerId: UUID): List<MoveOption> =
         if (state.turns.currentPlayerId == playerId) listOf(MoveOption(PASS)) else emptyList()
 
+    private fun validateRounds(rounds: Int): List<SettingsViolation> =
+        if (rounds in ROUNDS) {
+            emptyList()
+        } else {
+            listOf(SettingsViolation("rounds", "must be between ${ROUNDS.first} and ${ROUNDS.last}"))
+        }
+
     private fun pass(state: SessionState<NothingGameState>, passed: SessionEvent): List<SessionEvent> {
         val turns = Turns.next(state.turns, state.players.map { it.id })
         return buildList {
@@ -89,17 +108,42 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSetting
 
         private const val MOVES = "moves"
         private val ROUNDS = 1..50
+
+        /** Пресеты времени simple-настроек. */
+        val TIME_PRESETS = listOf(NothingTimePreset(NothingTime.CLASSIC, baseSeconds = 30, incrementSeconds = 5))
     }
 }
 
-/** Настройки партии. */
-data class NothingSettings(
+/** Пресет времени simple-настроек. */
+enum class NothingTime {
+    /** Без таймера. */
+    NONE,
+    CLASSIC,
+}
+
+/** Simple-настройки: число кругов и пресет времени. */
+data class NothingSimpleSettings(
     val rounds: Int,
+    val time: NothingTime,
 )
 
-/** Границы настроек для формы. */
+/** Advanced-настройки партии: число кругов и часы. */
+data class NothingAdvancedSettings(
+    val rounds: Int,
+    val timeControl: TimeControlSettings,
+)
+
+/** Часы пресета [time]. */
+data class NothingTimePreset(
+    val time: NothingTime,
+    val baseSeconds: Int,
+    val incrementSeconds: Int,
+)
+
+/** Границы настроек для формы и часы пресетов. */
 data class NothingSettingsLimits(
     val rounds: IntRange,
+    val timePresets: List<NothingTimePreset>,
 )
 
 /** Игровая часть состояния (в документе — поле `state.moves`). */

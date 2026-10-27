@@ -14,6 +14,8 @@ import site.qgames.game.api.dto.game.GameSummaryDto
 import site.qgames.game.api.dto.game.TimeControlLimitsDto
 import site.qgames.game.api.dto.room.IntRangeDto
 import site.qgames.game.api.dto.room.NothingSettingsLimitsDto
+import site.qgames.game.api.dto.room.NothingTime
+import site.qgames.game.api.dto.room.NothingTimePresetDto
 import site.qgames.game.support.TestData.CARCASSONNE_DESCRIPTION
 import site.qgames.game.support.TestData.CARCASSONNE_TITLE
 import site.qgames.game.support.TestData.CHECKERS_DESCRIPTION
@@ -84,8 +86,13 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
                 rules = GameRulesDto(
                     minPlayers = 1,
                     maxPlayers = 4,
+                    spectators = IntRangeDto(0, 12),
                     timeControl = TimeControlLimitsDto(optional = true, IntRangeDto(5, 3600), IntRangeDto(0, 60)),
-                    gameSettingsLimits = NothingSettingsLimitsDto(GameCode.NOTHING, IntRangeDto(1, 50)),
+                    gameSettingsLimits = NothingSettingsLimitsDto(
+                        GameCode.NOTHING,
+                        IntRangeDto(1, 50),
+                        listOf(NothingTimePresetDto(NothingTime.CLASSIC, 30, 5)),
+                    ),
                     defaultSettings = NOTHING_DEFAULT_SETTINGS,
                 ),
             ),

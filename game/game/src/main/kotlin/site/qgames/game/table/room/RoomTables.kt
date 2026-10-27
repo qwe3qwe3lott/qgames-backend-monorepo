@@ -13,8 +13,8 @@ object RoomTable : Table("room") {
     val status = varchar("status", 16)
     val currentSessionId = javaUUID("current_session_id").nullable()
     val emptySince = timestamp("empty_since").nullable()
-    /** JSON настроек комнаты: часы и настройки игры как есть (RoomSettingsJsonMapper). */
-    val gameSettings = json<String>("game_settings", { it }, { it })
+    /** JSON настроек комнаты: room, simple и advanced (RoomSettingsJsonMapper). */
+    val settings = json<String>("settings", { it }, { it })
     val createdAt = timestamp("created_at")
 
     override val primaryKey = PrimaryKey(id)

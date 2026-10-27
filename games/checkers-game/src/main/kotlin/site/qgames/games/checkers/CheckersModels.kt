@@ -1,8 +1,9 @@
 package site.qgames.games.checkers
 
 import java.util.UUID
+import site.qgames.games.core.TimeControlSettings
 
-/** Вариант правил: настройка комнаты (флаги — [CheckersMoveRules.of]). */
+/** Вариант правил: база advanced-правил (доска, первый ход, флаги по умолчанию — [CheckersAdvancedRules.of]). */
 enum class CheckersVariant {
     RUSSIAN,
     INTERNATIONAL,
@@ -25,37 +26,63 @@ enum class CheckersPieceKind {
     KING,
 }
 
-/** Настройки партии. */
-data class CheckersSettings(
+/** Пресет времени simple-настроек: официальный контроль времени варианта или без таймера. */
+enum class CheckersTime {
+    /** Без таймера. */
+    NONE,
+
+    /** Классика. */
+    CLASSIC,
+
+    /** Быстрые шашки. */
+    RAPID,
+
+    /** Блиц. */
+    BLITZ,
+}
+
+/** Simple-настройки: вариант правил и пресет времени. */
+data class CheckersSimpleSettings(
     val variant: CheckersVariant,
+    val time: CheckersTime,
 )
 
-/** Границы настроек для формы: доступные варианты правил и их официальные контроли времени. */
+/**
+ * Advanced-настройки партии: вариант (доска, первый ход, правила ничьих), часы и флаги правил хода, которые задаёт
+ * владелец комнаты. Итоговые правила хода — [CheckersAdvancedRules.of].
+ */
+data class CheckersAdvancedSettings(
+    val variant: CheckersVariant,
+    val timeControl: TimeControlSettings,
+    val menMoveBackward: Boolean,
+    val menCaptureBackward: Boolean,
+    val flyingKings: Boolean,
+    val captureRequired: Boolean,
+    val maxCaptureRequired: Boolean,
+    val promoteMidCapture: Boolean,
+    val removeCapturedAfterMove: Boolean,
+)
+
+/** Границы настроек для формы: доступные варианты правил и часы их пресетов. */
 data class CheckersSettingsLimits(
     val variants: List<CheckersVariant>,
     val timePresets: List<CheckersTimePreset>,
 )
 
-/** Вид официального контроля времени. */
-enum class CheckersTimePresetKind {
-    CLASSIC,
-    RAPID,
-    BLITZ,
-}
-
-/** Официальный контроль времени варианта: значения шахматных часов (TimeControl) для формы, не отдельный вид таймера. */
+/** Официальный контроль времени варианта: часы пресета [time] (кроме NONE). */
 data class CheckersTimePreset(
     val variant: CheckersVariant,
-    val kind: CheckersTimePresetKind,
+    val time: CheckersTime,
     val baseSeconds: Int,
     val incrementSeconds: Int,
 )
 
 /**
- * Правила хода варианта (`meta.moveRules`): по этим флагам клиент подсказывает путь, а сервер генерирует и проверяет
- * ходы. Клиент вариантов не знает — только флаги.
+ * Итоговые правила хода (`meta.advancedRules`): по этим флагам клиент подсказывает путь, а сервер генерирует и
+ * проверяет ходы. Клиент вариантов не знает — только флаги. Доска и первый ход выводятся из варианта, флаги — из
+ * advanced-настроек.
  */
-data class CheckersMoveRules(
+data class CheckersAdvancedRules(
     /** Размер доски. */
     val boardSize: Int,
     /** Кто ходит первым. */
@@ -78,7 +105,7 @@ data class CheckersMoveRules(
     companion object {
 
         /** Русские шашки. */
-        val RUSSIAN = CheckersMoveRules(
+        val RUSSIAN = CheckersAdvancedRules(
             boardSize = 8,
             firstColor = CheckersColor.WHITE,
             menMoveBackward = false,
@@ -91,7 +118,7 @@ data class CheckersMoveRules(
         )
 
         /** Международные шашки (FMJD): доска 10×10, брать максимум, дамкой становятся только в конце хода. */
-        val INTERNATIONAL = CheckersMoveRules(
+        val INTERNATIONAL = CheckersAdvancedRules(
             boardSize = 10,
             firstColor = CheckersColor.WHITE,
             menMoveBackward = false,
@@ -108,7 +135,7 @@ data class CheckersMoveRules(
          * клетку. Отдельный флаг «превращение завершает ход» не нужен: вперёд с последнего ряда бить некуда, а без
          * [promoteMidCapture] простая не продолжает бой дамкой.
          */
-        val ENGLISH = CheckersMoveRules(
+        val ENGLISH = CheckersAdvancedRules(
             boardSize = 8,
             firstColor = CheckersColor.BLACK,
             menMoveBackward = false,
@@ -120,12 +147,23 @@ data class CheckersMoveRules(
             removeCapturedAfterMove = true,
         )
 
-        /** Правила хода варианта. */
-        fun of(variant: CheckersVariant): CheckersMoveRules = when (variant) {
+        /** Правила хода варианта по умолчанию: из них simple-настройки выводят флаги advanced. */
+        fun of(variant: CheckersVariant): CheckersAdvancedRules = when (variant) {
             CheckersVariant.RUSSIAN -> RUSSIAN
             CheckersVariant.INTERNATIONAL -> INTERNATIONAL
             CheckersVariant.ENGLISH -> ENGLISH
         }
+
+        /** Итоговые правила партии: доска и первый ход — из варианта, флаги — из advanced-настроек. */
+        fun of(settings: CheckersAdvancedSettings): CheckersAdvancedRules = of(settings.variant).copy(
+            menMoveBackward = settings.menMoveBackward,
+            menCaptureBackward = settings.menCaptureBackward,
+            flyingKings = settings.flyingKings,
+            captureRequired = settings.captureRequired,
+            maxCaptureRequired = settings.maxCaptureRequired,
+            promoteMidCapture = settings.promoteMidCapture,
+            removeCapturedAfterMove = settings.removeCapturedAfterMove,
+        )
     }
 }
 

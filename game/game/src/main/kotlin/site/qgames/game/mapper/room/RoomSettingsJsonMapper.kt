@@ -1,32 +1,37 @@
 package site.qgames.game.mapper.room
 
 import org.springframework.stereotype.Component
-import site.qgames.game.model.room.RoomTimeControlModel
+import site.qgames.game.model.room.RoomOptionsModel
 import tools.jackson.databind.json.JsonMapper
 
 /**
- * Колонка `game_settings` (`room` и снимок в `room_session`): настройки комнаты целиком —
- * `{"timeControl": {baseSeconds, incrementSeconds} | null, "gameSettings": {…}}`. Настройки игры лежат как есть (формат
- * задаёт модуль игры), в модели — JSON-строкой, часы — [RoomTimeControlModel].
+ * Колонка `room.settings`: настройки комнаты целиком — `{"room": {maxSpectators}, "simple": {…} | null,
+ * "advanced": {…}}`. Настройки игры лежат как есть (формат задаёт модуль игры), в модели — JSON-строками, настройки
+ * комнаты — [RoomOptionsModel].
  */
 @Component
 class RoomSettingsJsonMapper(private val jsonMapper: JsonMapper) {
 
-    fun write(timeControl: RoomTimeControlModel?, gameSettings: String): String =
+    fun write(options: RoomOptionsModel, simple: String?, advanced: String): String =
         jsonMapper.writeValueAsString(
-            mapOf(TIME_CONTROL to timeControl, GAME_SETTINGS to jsonMapper.readTree(gameSettings)),
+            mapOf(
+                ROOM to options,
+                SIMPLE to simple?.let(jsonMapper::readTree),
+                ADVANCED to jsonMapper.readTree(advanced),
+            ),
         )
 
-    fun timeControl(column: String): RoomTimeControlModel? =
-        jsonMapper.readTree(column).get(TIME_CONTROL)
-            ?.takeUnless { it.isNull }
-            ?.let { jsonMapper.treeToValue(it, RoomTimeControlModel::class.java) }
+    fun options(column: String): RoomOptionsModel = jsonMapper.treeToValue(jsonMapper.readTree(column).get(ROOM), RoomOptionsModel::class.java)
 
-    /** JSON настроек игры из колонки. */
-    fun gameSettings(column: String): String = jsonMapper.writeValueAsString(jsonMapper.readTree(column).get(GAME_SETTINGS))
+    /** JSON simple-настроек; null — advanced-режим. */
+    fun simple(column: String): String? =
+        jsonMapper.readTree(column).get(SIMPLE)?.takeUnless { it.isNull }?.let(jsonMapper::writeValueAsString)
+
+    fun advanced(column: String): String = jsonMapper.writeValueAsString(jsonMapper.readTree(column).get(ADVANCED))
 
     private companion object {
-        const val TIME_CONTROL = "timeControl"
-        const val GAME_SETTINGS = "gameSettings"
+        const val ROOM = "room"
+        const val SIMPLE = "simple"
+        const val ADVANCED = "advanced"
     }
 }

@@ -17,10 +17,15 @@ data class RoomModel(
     val currentSessionId: UUID?,
     /** С какого момента в комнате нет присутствующих участников (отсутствующие игроки партии комнату не держат). */
     val emptySince: Instant?,
-    /** Шахматные часы следующей партии; null — без таймера. */
-    val timeControl: RoomTimeControlModel?,
-    /** JSON настроек игры, формат задаёт модуль игры (GameRules.settingsClass). */
-    val gameSettings: String,
+    /** Настройки самой комнаты. */
+    val options: RoomOptionsModel,
+    /** JSON simple-настроек игры (GameRules.simpleClass); null — комната в advanced-режиме. */
+    val simpleSettings: String?,
+    /**
+     * JSON advanced-настроек игры (GameRules.advancedClass), с ними стартует следующая партия. В simple-режиме выведен
+     * из [simpleSettings].
+     */
+    val advancedSettings: String,
     val createdAt: Instant,
 )
 
@@ -36,19 +41,37 @@ data class RoomMemberModel(
     val leftAt: Instant? = null,
 )
 
-/** Шахматные часы: запас на партию и добавка за ход в секундах (как TimeControl из SPI игр). */
-data class RoomTimeControlModel(
-    val baseSeconds: Int,
-    val incrementSeconds: Int,
+/** Настройки самой комнаты (группа room): меняются в любой момент. */
+data class RoomOptionsModel(
+    /** Сколько наблюдателей может войти; при понижении вошедшие остаются. */
+    val maxSpectators: Int,
+) {
+    companion object {
+        /** Границы лимита наблюдателей, одинаковые у всех игр. */
+        val MAX_SPECTATORS = 0..12
+
+        val DEFAULT = RoomOptionsModel(maxSpectators = 8)
+    }
+}
+
+/**
+ * Настройки комнаты целиком: [room], [simple] — объект simple-настроек модуля игры (GameRules.simpleClass; null —
+ * advanced-режим) и [advanced] — объект advanced-настроек (GameRules.advancedClass).
+ */
+data class RoomSettingsModel(
+    val room: RoomOptionsModel,
+    val simple: Any?,
+    val advanced: Any,
 )
 
 /**
- * Настройки комнаты целиком: часы (null — без таймера) и [gameSettings] — объект настроек модуля игры
- * (GameRules.settingsClass).
+ * Замена групп настроек: переданная группа заменяется целиком, null — не меняется. [simple] и [advanced] —
+ * объекты настроек модуля игры, взаимоисключающие.
  */
-data class RoomSettingsModel(
-    val timeControl: RoomTimeControlModel?,
-    val gameSettings: Any,
+data class RoomSettingsUpdateModel(
+    val room: RoomOptionsModel?,
+    val simple: Any?,
+    val advanced: Any?,
 )
 
 enum class RoomStatus {

@@ -9,15 +9,18 @@ import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
+import org.springframework.http.MediaType
+import org.springframework.test.web.servlet.get
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.room.Avatar
 import site.qgames.game.api.dto.room.ChangeRoleRequest
-import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.MoveRequest
+import site.qgames.game.api.dto.room.RoomOptionsDto
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.RoomStatus
 import site.qgames.game.api.dto.room.TransferOwnershipRequest
+import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import site.qgames.game.job.room.EmptyRoomCleanupJob
 import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
@@ -85,7 +88,7 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
 
     @Test
     fun `request without access token is unauthenticated`() {
-        createRoomRequest(null, CreateRoomRequest(nothingSettings())).andExpect {
+        createRoomRequest(null).andExpect {
             status { isUnauthorized() }
             jsonPath("$.code") { value("UNAUTHENTICATED") }
         }
@@ -227,8 +230,49 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
         assertThat(count(RoomTable) { RoomTable.id inList listOf(recentlyEmpty, occupied) }).isEqualTo(2)
     }
 
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("fullRooms")
+    fun `joining is refused when the spectator seats are taken`(case: String, setup: RoomSetup) {
+        val roomId = with(setup) { prepare() }
+
+        mockMvc.get("/api/rooms/$roomId/events") {
+            asUser(EVE)
+            accept = MediaType.TEXT_EVENT_STREAM
+        }.andExpect {
+            status { isConflict() }
+            jsonPath("$.code") { value("NO_SPECTATOR_SEAT") }
+        }
+
+        assertThat(isMember(roomId, EVE)).isFalse()
+        assertThat(streams(EVE, roomId)).isEmpty()
+    }
+
+    @Test
+    fun `lowering the spectator limit keeps the spectators in the room`() {
+        val roomId = roomWith(ALICE, BOB, started = true)
+        join(CAROL, roomId)
+        join(DAVE, roomId)
+
+        limitSpectators(roomId, 1)
+
+        val room = room(roomId, ALICE)
+        assertThat(room.members.filter { it.role == RoomRole.SPECTATOR }.map { it.userId }).containsExactlyInAnyOrder(CAROL, DAVE)
+        assertThat(room.settings.room.maxSpectators).isEqualTo(1)
+        // Ушедший наблюдатель освобождает место, только когда наблюдателей становится меньше лимита.
+        leave(CAROL, roomId)
+        mockMvc.get("/api/rooms/$roomId/events") { asUser(EVE); accept = MediaType.TEXT_EVENT_STREAM }
+            .andExpect { status { isConflict() } }
+        leave(DAVE, roomId)
+        assertThat(join(EVE, roomId).members.single { it.userId == EVE }.role).isEqualTo(RoomRole.SPECTATOR)
+    }
+
     private fun emptySince(roomId: UUID): Boolean =
         count(RoomTable) { (RoomTable.id eq roomId) and RoomTable.emptySince.isNotNull() } == 1L
+
+    /** Владелец ALICE ставит лимит наблюдателей [max]. */
+    private fun limitSpectators(roomId: UUID, max: Int) {
+        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(room = RoomOptionsDto(max))).andExpect { status { isOk() } }
+    }
 
     private fun markEmptyMinutesAgo(roomId: UUID, minutes: Int) {
         db { RoomTable.update({ RoomTable.id eq roomId }) { it[emptySince] = Instant.now().minus(Duration.ofMinutes(minutes.toLong())) } }
@@ -246,7 +290,7 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
             arguments(HttpMethod.POST, "/api/rooms/{id}/session/pause", null),
             arguments(HttpMethod.POST, "/api/rooms/{id}/session/resume", null),
             arguments(HttpMethod.POST, "/api/games/nothing/rooms/{id}/moves", MoveRequest(PASS)),
-            arguments(HttpMethod.PUT, "/api/games/nothing/rooms/{id}/settings", NOTHING_DEFAULT_SETTINGS),
+            arguments(HttpMethod.PUT, "/api/games/nothing/rooms/{id}/settings", UpdateRoomSettingsRequest(room = RoomOptionsDto(2))),
         )
 
         @JvmStatic
@@ -263,6 +307,40 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
                 "repeated join changes nothing",
                 RoomSetup { roomWith(ALICE, BOB).also { changeRole(BOB, it, RoomRole.SPECTATOR) } },
                 BOB, RoomRole.SPECTATOR,
+            ),
+            arguments(
+                "a free player seat does not depend on the spectator limit",
+                RoomSetup { roomWith(ALICE).also { limitSpectators(it, 0) } },
+                BOB, RoomRole.PLAYER,
+            ),
+            arguments(
+                "a spectator takes a free spectator seat",
+                RoomSetup { roomWith(ALICE, started = true).also { limitSpectators(it, 1) } },
+                BOB, RoomRole.SPECTATOR,
+            ),
+            arguments(
+                "player of the running game returns even without spectator seats",
+                RoomSetup { roomWith(ALICE, BOB, started = true).also { limitSpectators(it, 0); leave(BOB, it) } },
+                BOB, RoomRole.PLAYER,
+            ),
+            arguments(
+                "repeated join of a spectator over the lowered limit",
+                RoomSetup { roomWith(ALICE, BOB).also { changeRole(BOB, it, RoomRole.SPECTATOR); limitSpectators(it, 0) } },
+                BOB, RoomRole.SPECTATOR,
+            ),
+        )
+
+        /** EVE не входит: места игрока ей не достаётся, а наблюдатели заняли все места. */
+        @JvmStatic
+        fun fullRooms(): Stream<Arguments> = Stream.of(
+            arguments("game in progress, no spectator seats", RoomSetup { roomWith(ALICE, BOB, started = true).also { limitSpectators(it, 0) } }),
+            arguments(
+                "game in progress, spectator seats taken",
+                RoomSetup { roomWith(ALICE, started = true).also { limitSpectators(it, 1); join(BOB, it) } },
+            ),
+            arguments(
+                "all player seats taken while waiting",
+                RoomSetup { roomWith(ALICE, BOB, CAROL, DAVE).also { limitSpectators(it, 0) } },
             ),
         )
 
@@ -314,6 +392,11 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
                 "no free seat",
                 RoomSetup { roomWith(ALICE, BOB, CAROL, DAVE, EVE) },
                 EVE, RoomRole.PLAYER, HttpStatus.CONFLICT, "NO_FREE_SEAT",
+            ),
+            arguments(
+                "no spectator seat",
+                RoomSetup { roomWith(ALICE, BOB).also { limitSpectators(it, 0) } },
+                BOB, RoomRole.SPECTATOR, HttpStatus.CONFLICT, "NO_SPECTATOR_SEAT",
             ),
             arguments(
                 "game in progress",

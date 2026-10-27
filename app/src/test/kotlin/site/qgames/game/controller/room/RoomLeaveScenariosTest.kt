@@ -8,7 +8,6 @@ import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
 import org.springframework.beans.factory.annotation.Autowired
 import site.qgames.game.GameIntegrationTest
-import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.RoomStatus
@@ -219,7 +218,7 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
     }
 
     private fun create(owner: UUID): RoomResponse =
-        createRoomRequest(owner, CreateRoomRequest(nothingSettings())).andExpect { status { isOk() } }.body()
+        createRoomRequest(owner).andExpect { status { isOk() } }.body()
 
     private fun emptySince(roomId: UUID): Instant? = db { RoomTable.selectAll().where { RoomTable.id eq roomId }.single()[RoomTable.emptySince] }
 

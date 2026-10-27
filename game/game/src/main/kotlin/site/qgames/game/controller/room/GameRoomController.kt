@@ -5,10 +5,9 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
 import site.qgames.common.web.context.RequestUserContext
-import site.qgames.game.api.dto.room.CreateRoomRequest
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomResponse
-import site.qgames.game.api.dto.room.RoomSettingsDto
+import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import site.qgames.game.api.dto.session.SessionStreamEventTypes
 import site.qgames.game.api.web.GameRoomApi
 import site.qgames.game.exception.room.RoomErrors
@@ -36,18 +35,18 @@ class GameRoomController(
     private val requestUserContext: RequestUserContext,
 ) : GameRoomApi {
 
-    override fun createRoom(gameCode: String, request: CreateRoomRequest): RoomResponse =
+    override fun createRoom(gameCode: String): RoomResponse =
         roomResponseMapper.toResponse(
-            roomService.create(gameCode(gameCode), roomSettingsResponseMapper.toModel(request.settings)),
+            roomService.create(gameCode(gameCode)),
         )
 
-    override fun updateRoomSettings(gameCode: String, roomId: UUID, request: RoomSettingsDto): RoomResponse =
+    override fun updateRoomSettings(gameCode: String, roomId: UUID, request: UpdateRoomSettingsRequest): RoomResponse =
         roomResponseMapper.toResponse(
             roomService.updateSettings(
                 userId = requestUserContext.userId(),
                 gameCode = gameCode(gameCode),
                 roomId = roomId,
-                settings = roomSettingsResponseMapper.toModel(request),
+                update = roomSettingsResponseMapper.toModel(request),
             ),
         )
 

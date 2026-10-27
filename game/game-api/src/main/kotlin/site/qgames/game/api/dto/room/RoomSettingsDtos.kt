@@ -10,50 +10,185 @@ import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.game.GameCodes
 
 /**
- * Шахматные часы: у каждого игрока запас на всю партию, после своего хода он получает добавку (0 — без добавки).
- * Границы задаёт игра (TimeControlLimitsDto).
+ * Настройки комнаты из трёх групп:
+ * - [room] — сама комната (лимит наблюдателей), меняется в любой момент;
+ * - [advanced] — корневые правила игры: по ним идёт партия;
+ * - [simple] — короткий выбор для игроков (вариант, пресет времени), из него сервер выводит advanced.
+ *
+ * Режим комнаты — simple или advanced: simple есть только в simple-режиме, advanced есть всегда (в simple-режиме он
+ * выведен из simple).
+ */
+data class RoomSettingsDto(
+    @field:Valid
+    val room: RoomOptionsDto,
+    /** null — комната в advanced-режиме. */
+    @field:Valid
+    val simple: GameSimpleSettingsDto?,
+    @field:Valid
+    val advanced: GameAdvancedSettingsDto,
+)
+
+/**
+ * Замена групп настроек комнаты: переданная группа заменяется целиком, null — группа не меняется. simple и advanced
+ * взаимоисключающие: simple переводит комнату в simple-режим (advanced выводится из него), advanced — в advanced-режим.
+ * Нужна хотя бы одна группа.
+ */
+data class UpdateRoomSettingsRequest(
+    @field:Valid
+    val room: RoomOptionsDto? = null,
+    @field:Valid
+    val simple: GameSimpleSettingsDto? = null,
+    @field:Valid
+    val advanced: GameAdvancedSettingsDto? = null,
+)
+
+/** Настройки самой комнаты. Границы — GameRulesDto.spectators. */
+data class RoomOptionsDto(
+    /** Сколько наблюдателей может войти. Уже вошедшие при понижении лимита остаются. */
+    @field:NotNull
+    val maxSpectators: Int,
+)
+
+/**
+ * Шахматные часы advanced-настроек: у каждого игрока запас на всю партию, после своего хода он получает добавку
+ * (0 — без добавки). Значения заполнены и у выключенных часов. Границы задаёт игра (TimeControlLimitsDto).
  */
 data class TimeControlDto(
+    /** false — партия без таймера (если игра разрешает, TimeControlLimitsDto.optional). */
+    @field:NotNull
+    val enabled: Boolean,
     @field:NotNull
     val baseSeconds: Int,
     @field:NotNull
     val incrementSeconds: Int,
 )
 
-/** Настройки комнаты: часы и настройки конкретной игры. */
-data class RoomSettingsDto(
-    /** Шахматные часы; null — без таймера (если игра разрешает, TimeControlLimitsDto.optional). */
-    @field:Valid
-    val timeControl: TimeControlDto?,
-    @field:NotNull
-    @field:Valid
-    val gameSettings: GameSettingsDto,
-)
-
-/** Настройки конкретной игры. Вид определяется полем gameCode, оно должно совпадать с игрой комнаты. */
+/** Simple-настройки конкретной игры. Вид определяется полем gameCode, оно должно совпадать с игрой комнаты. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameCode", visible = true)
 @JsonSubTypes(
-    JsonSubTypes.Type(value = NothingSettingsDto::class, name = GameCodes.NOTHING),
-    JsonSubTypes.Type(value = CheckersSettingsDto::class, name = GameCodes.CHECKERS),
+    JsonSubTypes.Type(value = NothingSimpleSettingsDto::class, name = GameCodes.NOTHING),
+    JsonSubTypes.Type(value = CheckersSimpleSettingsDto::class, name = GameCodes.CHECKERS),
 )
 @Schema(
-    description = "Настройки конкретной игры, вид — по полю gameCode",
-    oneOf = [NothingSettingsDto::class, CheckersSettingsDto::class],
+    description = "Simple-настройки конкретной игры, вид — по полю gameCode",
+    oneOf = [NothingSimpleSettingsDto::class, CheckersSimpleSettingsDto::class],
     discriminatorProperty = "gameCode",
     discriminatorMapping = [
-        DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSettingsDto::class),
-        DiscriminatorMapping(value = GameCodes.CHECKERS, schema = CheckersSettingsDto::class),
+        DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSimpleSettingsDto::class),
+        DiscriminatorMapping(value = GameCodes.CHECKERS, schema = CheckersSimpleSettingsDto::class),
     ],
 )
-sealed interface GameSettingsDto
+sealed interface GameSimpleSettingsDto
 
-/** Настройки «игры в ничто». */
-data class NothingSettingsDto(
+/** Advanced-настройки конкретной игры. Вид определяется полем gameCode, оно должно совпадать с игрой комнаты. */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameCode", visible = true)
+@JsonSubTypes(
+    JsonSubTypes.Type(value = NothingAdvancedSettingsDto::class, name = GameCodes.NOTHING),
+    JsonSubTypes.Type(value = CheckersAdvancedSettingsDto::class, name = GameCodes.CHECKERS),
+)
+@Schema(
+    description = "Advanced-настройки конкретной игры, вид — по полю gameCode",
+    oneOf = [NothingAdvancedSettingsDto::class, CheckersAdvancedSettingsDto::class],
+    discriminatorProperty = "gameCode",
+    discriminatorMapping = [
+        DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingAdvancedSettingsDto::class),
+        DiscriminatorMapping(value = GameCodes.CHECKERS, schema = CheckersAdvancedSettingsDto::class),
+    ],
+)
+sealed interface GameAdvancedSettingsDto
+
+/** Пресет времени «игры в ничто». */
+enum class NothingTime {
+    /** Без таймера. */
+    NONE,
+
+    /** 30 с + 5 с за ход. */
+    CLASSIC,
+}
+
+/** Simple-настройки «игры в ничто». */
+data class NothingSimpleSettingsDto(
     @field:Schema(type = "string", allowableValues = [GameCodes.NOTHING])
     val gameCode: GameCode,
     /** Число кругов партии. */
     val rounds: Int,
-) : GameSettingsDto
+    /** Пресет времени; часы пресетов — NothingSettingsLimitsDto.timePresets. */
+    val time: NothingTime,
+) : GameSimpleSettingsDto
+
+/** Advanced-настройки «игры в ничто». */
+data class NothingAdvancedSettingsDto(
+    @field:Schema(type = "string", allowableValues = [GameCodes.NOTHING])
+    val gameCode: GameCode,
+    /** Число кругов партии. */
+    val rounds: Int,
+    @field:Valid
+    val timeControl: TimeControlDto,
+) : GameAdvancedSettingsDto
+
+/** Вариант правил шашек. Доступные варианты — в границах настроек игры (CheckersSettingsLimitsDto.variants). */
+enum class CheckersVariant {
+    /** Русские шашки. */
+    RUSSIAN,
+
+    /** Международные (100-клеточные) шашки. */
+    INTERNATIONAL,
+
+    /** Английские шашки (чекерс). */
+    ENGLISH,
+}
+
+/** Пресет времени шашек: официальный контроль времени варианта или без таймера. */
+enum class CheckersTime {
+    /** Без таймера. */
+    NONE,
+
+    /** Классика. */
+    CLASSIC,
+
+    /** Быстрые шашки. */
+    RAPID,
+
+    /** Блиц. */
+    BLITZ,
+}
+
+/** Simple-настройки шашек. */
+data class CheckersSimpleSettingsDto(
+    @field:Schema(type = "string", allowableValues = [GameCodes.CHECKERS])
+    val gameCode: GameCode,
+    /** Вариант правил: один из доступных (CheckersSettingsLimitsDto.variants). */
+    val variant: CheckersVariant,
+    /** Пресет времени; часы пресетов по вариантам — CheckersSettingsLimitsDto.timePresets. */
+    val time: CheckersTime,
+) : GameSimpleSettingsDto
+
+/**
+ * Advanced-настройки шашек: вариант (размер доски, первый ход, правила ничьих), часы и правила хода. Итоговые правила
+ * партии — meta.advancedRules (CheckersAdvancedRulesDto).
+ */
+data class CheckersAdvancedSettingsDto(
+    @field:Schema(type = "string", allowableValues = [GameCodes.CHECKERS])
+    val gameCode: GameCode,
+    /** Вариант правил: один из доступных (CheckersSettingsLimitsDto.variants). */
+    val variant: CheckersVariant,
+    @field:Valid
+    val timeControl: TimeControlDto,
+    /** Тихий ход простой назад. */
+    val menMoveBackward: Boolean,
+    /** Взятие простой назад. */
+    val menCaptureBackward: Boolean,
+    /** Дамка ходит и бьёт на любое число клеток. */
+    val flyingKings: Boolean,
+    /** Взятие обязательно. */
+    val captureRequired: Boolean,
+    /** Брать только ветку с наибольшим числом сбитых. */
+    val maxCaptureRequired: Boolean,
+    /** Ставшая дамкой посреди взятия бьёт дальше как дамка. */
+    val promoteMidCapture: Boolean,
+    /** Турецкий удар: сбитые снимаются после хода, через сбитую шашку второй раз не прыгать. */
+    val removeCapturedAfterMove: Boolean,
+) : GameAdvancedSettingsDto
 
 /** Границы целочисленного параметра, включительно. */
 data class IntRangeDto(
@@ -83,27 +218,16 @@ data class NothingSettingsLimitsDto(
     @field:Schema(type = "string", allowableValues = [GameCodes.NOTHING])
     val gameCode: GameCode,
     val rounds: IntRangeDto,
+    /** Часы пресетов времени (кроме NONE): для подписей в форме. */
+    val timePresets: List<NothingTimePresetDto>,
 ) : GameSettingsLimitsDto
 
-/** Вариант правил шашек. Доступные в настройках варианты — в границах настроек игры (CheckersSettingsLimitsDto.variants). */
-enum class CheckersVariant {
-    /** Русские шашки. */
-    RUSSIAN,
-
-    /** Международные (100-клеточные) шашки. */
-    INTERNATIONAL,
-
-    /** Английские шашки (чекерс). */
-    ENGLISH,
-}
-
-/** Настройки шашек. */
-data class CheckersSettingsDto(
-    @field:Schema(type = "string", allowableValues = [GameCodes.CHECKERS])
-    val gameCode: GameCode,
-    /** Вариант правил: один из доступных (CheckersSettingsLimitsDto.variants). */
-    val variant: CheckersVariant,
-) : GameSettingsDto
+/** Часы пресета времени «игры в ничто». */
+data class NothingTimePresetDto(
+    val time: NothingTime,
+    val baseSeconds: Int,
+    val incrementSeconds: Int,
+)
 
 /** Границы настроек шашек. */
 data class CheckersSettingsLimitsDto(
@@ -111,26 +235,14 @@ data class CheckersSettingsLimitsDto(
     val gameCode: GameCode,
     /** Варианты правил, которые можно выбрать. */
     val variants: List<CheckersVariant>,
-    /** Официальные контроли времени по вариантам: готовые значения шахматных часов для формы. */
+    /** Часы пресетов времени по вариантам (кроме NONE): для подписей в форме. */
     val timePresets: List<CheckersTimePresetDto>,
 ) : GameSettingsLimitsDto
 
-/** Вид официального контроля времени. */
-enum class CheckersTimePreset {
-    /** Классика. */
-    CLASSIC,
-
-    /** Быстрые шашки. */
-    RAPID,
-
-    /** Блиц. */
-    BLITZ,
-}
-
-/** Официальный контроль времени варианта правил: значения шахматных часов (TimeControlDto). */
+/** Официальный контроль времени варианта правил: часы пресета. */
 data class CheckersTimePresetDto(
     val variant: CheckersVariant,
-    val preset: CheckersTimePreset,
+    val time: CheckersTime,
     val baseSeconds: Int,
     val incrementSeconds: Int,
 )

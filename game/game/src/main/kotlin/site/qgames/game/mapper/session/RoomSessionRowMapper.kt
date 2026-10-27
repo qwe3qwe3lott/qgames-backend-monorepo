@@ -3,7 +3,6 @@ package site.qgames.game.mapper.session
 import org.jetbrains.exposed.v1.core.ResultRow
 import org.springframework.stereotype.Component
 import site.qgames.game.model.game.GameCode
-import site.qgames.game.mapper.room.RoomSettingsJsonMapper
 import site.qgames.game.model.session.RoomSessionEventModel
 import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.RoomSessionStatus
@@ -14,7 +13,6 @@ import site.qgames.game.table.session.RoomSessionTable
 @Component
 class RoomSessionRowMapper(
     private val sessionEventJsonMapper: SessionEventJsonMapper,
-    private val roomSettingsJsonMapper: RoomSettingsJsonMapper,
 ) {
 
     fun toSession(row: ResultRow): RoomSessionModel {
@@ -26,8 +24,7 @@ class RoomSessionRowMapper(
             status = RoomSessionStatus.valueOf(row[RoomSessionTable.status]),
             seed = row[RoomSessionTable.seed],
             lastSeq = row[RoomSessionTable.lastSeq],
-            timeControl = roomSettingsJsonMapper.timeControl(row[RoomSessionTable.gameSettings]),
-            gameSettings = roomSettingsJsonMapper.gameSettings(row[RoomSessionTable.gameSettings]),
+            settings = row[RoomSessionTable.settings],
             moveDeadline = row[RoomSessionTable.moveDeadline],
             createdAt = row[RoomSessionTable.createdAt],
             finishedAt = row[RoomSessionTable.finishedAt],

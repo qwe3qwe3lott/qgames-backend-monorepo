@@ -12,6 +12,7 @@ import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomSettingsModel
+import site.qgames.game.model.room.RoomSettingsUpdateModel
 import site.qgames.game.model.room.RoomStatus
 import site.qgames.game.model.room.RoomUsersModel
 import site.qgames.game.publisher.room.RoomEventPublisher
@@ -55,30 +56,32 @@ class RoomService(
 ) {
 
     /**
-     * Игра должна быть доступна для новых комнат (проверяется до настроек). Настройки проверяются по правилам игры;
-     * ошибки — по полям тела запроса создания (`settings.…`). Создатель участником не становится: комната создаётся
-     * пустой и без владельца. Подключившись к потоку комнаты первым, он входит игроком и становится владельцем; если не
-     * подключится, пустую комнату удалит EmptyRoomCleanupJob.
+     * Комната с настройками игры по умолчанию (GameService.defaultSettings). Игра должна быть доступна для новых комнат.
+     * Создатель участником не становится: комната создаётся пустой и без владельца. Подключившись к потоку комнаты
+     * первым, он входит игроком и становится владельцем; если не подключится, пустую комнату удалит EmptyRoomCleanupJob.
      */
     @Transactional
-    fun create(gameCode: GameCode, settings: RoomSettingsModel): RoomDetailsModel {
+    fun create(gameCode: GameCode): RoomDetailsModel {
         gameService.checkAccessible(gameCode)
-        roomSettingsValidator.check(gameCode, settings, fieldPrefix = "settings.")
+        val settings = gameService.defaultSettings(gameCode)
         val room = roomRepository.insert(
             gameCode = gameCode,
-            timeControl = settings.timeControl,
-            gameSettings = jsonMapper.writeValueAsString(settings.gameSettings),
+            options = settings.room,
+            simpleSettings = jsonMapper.writeValueAsString(settings.simple),
+            advancedSettings = jsonMapper.writeValueAsString(settings.advanced),
             now = clock.instant(),
         )
         return roomDetailsService.details(room)
     }
 
     /**
-     * Заменяет настройки комнаты целиком: только владелец и только между партиями. Идущую партию не меняет — у неё
-     * свой снимок настроек. Ошибки настроек — по полям тела запроса (`timeControl.…`, `gameSettings.…`).
+     * Заменяет переданные группы настроек целиком, только владелец. room — в любой момент (понижение лимита наблюдателей
+     * вошедших не выводит); simple и advanced — только между партиями: simple переводит комнату в simple-режим
+     * (advanced выводится из него), advanced — в advanced-режим. Идущую партию не меняет — у неё свой снимок advanced.
+     * Ошибки настроек — по полям тела запроса (`room.…`, `simple.…`, `advanced.…`).
      */
     @Transactional
-    fun updateSettings(userId: UUID, gameCode: GameCode, roomId: UUID, settings: RoomSettingsModel): RoomDetailsModel {
+    fun updateSettings(userId: UUID, gameCode: GameCode, roomId: UUID, update: RoomSettingsUpdateModel): RoomDetailsModel {
         val room = lock(roomId)
         if (room.gameCode != gameCode) {
             throw RoomErrors.gameTypeMismatch()
@@ -89,13 +92,25 @@ class RoomService(
         if (room.ownerId != userId) {
             throw RoomErrors.notRoomOwner()
         }
-        if (room.status != RoomStatus.WAITING) {
+        roomSettingsValidator.checkUpdate(gameCode, update)
+        if ((update.simple != null || update.advanced != null) && room.status != RoomStatus.WAITING) {
             throw RoomErrors.roomNotWaiting()
         }
-        roomSettingsValidator.check(gameCode, settings, fieldPrefix = "")
-        val updated = room.copy(timeControl = settings.timeControl, gameSettings = jsonMapper.writeValueAsString(settings.gameSettings))
-        roomRepository.update(updated)
-        roomEventPublisher.publish(roomId, RoomEventType.SETTINGS_CHANGED)
+        val rules = gameRegistry.rules(gameCode)
+        val simple = update.simple
+        val advanced = update.advanced
+        val updated = when {
+            simple != null -> room.copy(
+                simpleSettings = jsonMapper.writeValueAsString(simple),
+                advancedSettings = jsonMapper.writeValueAsString(rules.toAdvanced(simple)),
+            )
+            advanced != null -> room.copy(simpleSettings = null, advancedSettings = jsonMapper.writeValueAsString(advanced))
+            else -> room
+        }.copy(options = update.room ?: room.options)
+        if (updated != room) {
+            roomRepository.update(updated)
+            roomEventPublisher.publish(roomId, RoomEventType.SETTINGS_CHANGED)
+        }
         return roomDetailsService.details(updated)
     }
 
@@ -194,6 +209,9 @@ class RoomService(
             if (role == RoomRole.PLAYER && members.count { it.role == RoomRole.PLAYER } >= maxPlayers(room)) {
                 throw RoomErrors.noFreeSeat()
             }
+            if (role == RoomRole.SPECTATOR && !hasSpectatorSeat(room, members)) {
+                throw RoomErrors.noSpectatorSeat()
+            }
             roomMemberRepository.updateRole(roomId, userId, role)
             roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
         }
@@ -243,16 +261,13 @@ class RoomService(
 
     /** Настройки комнаты (данные события settings-changed); null — комнаты уже нет. */
     @Transactional(readOnly = true)
-    fun findSettings(roomId: UUID): RoomSettingsModel? {
-        val room = roomRepository.findById(roomId) ?: return null
-        val rules = gameRegistry.rules(room.gameCode)
-        return RoomSettingsModel(room.timeControl, jsonMapper.readValue(room.gameSettings, rules.settingsClass))
-    }
+    fun findSettings(roomId: UUID): RoomSettingsModel? = roomRepository.findById(roomId)?.let(roomDetailsService::settings)
 
     /**
      * Вход под блокировкой [room]:
      * - отсутствующий игрок идущей партии снова присутствует, на своём месте;
-     * - новый участник — игрок, если партии нет и есть место, игрок идущей партии — на своё место, иначе наблюдатель;
+     * - новый участник — игрок, если партии нет и есть место, игрок идущей партии — на своё место, иначе наблюдатель,
+     *   если наблюдателей меньше лимита комнаты (иначе 409 NO_SPECTATOR_SEAT);
      * - повторный вход присутствующего ничего не меняет.
      *
      * Владение: в комнате без владельца (никого не было) владельцем становится вошедший.
@@ -263,7 +278,13 @@ class RoomService(
         val members = roomMemberRepository.findAll(room.id)
         val member = members.firstOrNull { it.userId == userId }
         when {
-            member == null -> roomMemberRepository.insert(RoomMemberModel(room.id, userId, roleOnJoin(room, members, userId), now))
+            member == null -> {
+                val role = roleOnJoin(room, members, userId)
+                if (role == RoomRole.SPECTATOR && !hasSpectatorSeat(room, members)) {
+                    throw RoomErrors.noSpectatorSeat()
+                }
+                roomMemberRepository.insert(RoomMemberModel(room.id, userId, role, now))
+            }
             member.leftAt != null -> roomMemberRepository.updateLeftAt(room.id, userId, null)
         }
         val updated = room.copy(ownerId = room.ownerId ?: userId, emptySince = null)
@@ -333,6 +354,10 @@ class RoomService(
     }
 
     private fun maxPlayers(room: RoomModel) = gameRegistry.rules(room.gameCode).maxPlayers
+
+    /** Наблюдателей меньше лимита комнаты: после понижения лимита их может быть и больше, новые тогда не входят. */
+    private fun hasSpectatorSeat(room: RoomModel, members: List<RoomMemberModel>) =
+        members.count { it.role == RoomRole.SPECTATOR } < room.options.maxSpectators
 
     /** Комната под блокировкой. С комнатой неопубликованной игры работать нельзя (404 GAME_NOT_FOUND). */
     private fun lock(roomId: UUID): RoomModel {

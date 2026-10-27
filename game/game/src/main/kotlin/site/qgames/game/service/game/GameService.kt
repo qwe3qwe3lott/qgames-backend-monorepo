@@ -8,9 +8,10 @@ import site.qgames.game.model.game.GameDetailsModel
 import site.qgames.game.model.game.GameModel
 import site.qgames.game.model.game.GamePublishStatus
 import site.qgames.game.model.game.GameRulesModel
+import site.qgames.game.model.room.RoomOptionsModel
 import site.qgames.game.model.room.RoomSettingsModel
-import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.repository.game.GameRepository
+import site.qgames.game.service.room.RoomSettingsValidator
 
 /**
  * Каталог игр и доступность игры: описание и статус публикации — из таблицы game, параметры правил — из модуля игры
@@ -20,6 +21,7 @@ import site.qgames.game.repository.game.GameRepository
 class GameService(
     private val gameRepository: GameRepository,
     private val gameRegistry: GameRegistry,
+    private val roomSettingsValidator: RoomSettingsValidator,
 ) {
 
     /** Игры каталога в порядке показа, без скрытых (HIDDEN) и неопубликованных (NOT_PUBLISHED). */
@@ -31,6 +33,23 @@ class GameService(
     fun details(code: GameCode): GameDetailsModel {
         val game = accessible(code)
         return GameDetailsModel(game = game, rules = rules(code))
+    }
+
+    /**
+     * Advanced-настройки, выведенные из simple-настроек [simple] (класс модуля игры). Игра должна быть доступна;
+     * ошибки simple-настроек — по полям тела (`variant`).
+     */
+    @Transactional(readOnly = true)
+    fun toAdvanced(code: GameCode, simple: Any): Any {
+        accessible(code)
+        roomSettingsValidator.checkSimple(code, simple)
+        return gameRegistry.rules(code).toAdvanced(simple)
+    }
+
+    /** Настройки новой комнаты: simple по умолчанию и выведенный из них advanced. */
+    fun defaultSettings(code: GameCode): RoomSettingsModel {
+        val rules = gameRegistry.rules(code)
+        return RoomSettingsModel(room = RoomOptionsModel.DEFAULT, simple = rules.defaultSimple, advanced = rules.toAdvanced(rules.defaultSimple))
     }
 
     /**
@@ -60,14 +79,12 @@ class GameService(
         return GameRulesModel(
             minPlayers = rules.minPlayers,
             maxPlayers = rules.maxPlayers,
+            spectators = RoomOptionsModel.MAX_SPECTATORS,
             timeControlOptional = timeControl.optional,
             baseSeconds = timeControl.baseSeconds,
             incrementSeconds = timeControl.incrementSeconds,
             settingsLimits = rules.settingsLimits,
-            defaultSettings = RoomSettingsModel(
-                timeControl = timeControl.default?.let { RoomTimeControlModel(it.baseSeconds, it.incrementSeconds) },
-                gameSettings = rules.defaultSettings,
-            ),
+            defaultSettings = defaultSettings(code),
         )
     }
 }

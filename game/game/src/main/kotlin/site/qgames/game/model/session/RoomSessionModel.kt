@@ -1,7 +1,6 @@
 package site.qgames.game.model.session
 
 import site.qgames.game.model.game.GameCode
-import site.qgames.game.model.room.RoomTimeControlModel
 import java.time.Instant
 import java.util.UUID
 
@@ -14,10 +13,8 @@ data class RoomSessionModel(
     val seed: Long,
     /** seq последнего события журнала. */
     val lastSeq: Long,
-    /** Снимок часов комнаты на момент старта; null — без таймера. */
-    val timeControl: RoomTimeControlModel?,
-    /** Снимок JSON настроек игры на момент старта. */
-    val gameSettings: String,
+    /** Снимок JSON advanced-настроек комнаты на момент старта (GameRules.advancedClass). */
+    val settings: String,
     /** Проекция таймера: дедлайн идущего таймера хода; null — без таймера, на паузе или партия не идёт. */
     val moveDeadline: Instant?,
     val createdAt: Instant,

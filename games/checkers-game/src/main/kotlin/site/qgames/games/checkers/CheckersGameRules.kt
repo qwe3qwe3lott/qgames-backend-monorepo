@@ -12,13 +12,14 @@ import site.qgames.games.core.SessionEvent
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SettingsViolation
-import site.qgames.games.core.TimeControl
 import site.qgames.games.core.TimeControlRules
+import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.Turns
 
 /**
- * Шашки. Вариант правил — настройка комнаты ([CheckersSettings.variant]); ходы генерируются и проверяются только по
- * флагам [CheckersMoveRules] варианта ([CheckersBoard]), они же уходят клиенту в `meta.moveRules`.
+ * Шашки. Simple-настройки — вариант правил и пресет времени ([CheckersSimpleSettings]), advanced — вариант, часы и флаги
+ * правил хода ([CheckersAdvancedSettings]). Ходы генерируются и проверяются только по итоговым флагам
+ * [CheckersAdvancedRules] ([CheckersBoard]), они же уходят клиенту в `meta.advancedRules`.
  *
  * Core: варианты ходов (MOVE и RESIGN у того, чей ход, и ACCEPT_DRAW, если соперник предложил ничью; RESIGN у
  * соперника; цвет игрока — поле игры в `players[]`), очерёдность (ход переходит к сопернику, раундов нет), часы
@@ -38,39 +39,55 @@ import site.qgames.games.core.Turns
  * ничья — по соглашению (`DRAW_AGREED`), троекратное повторение позиции (`REPETITION`), правило окончаний варианта
  * (`ENDGAME_RULE`, [CheckersDraws]), [drawQuietMoves] варианта ходов подряд только дамками без взятий (`DRAW_RULE`).
  */
-class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSettings> {
+class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSimpleSettings, CheckersAdvancedSettings> {
 
     override val code = CODE
     override val minPlayers = 2
     override val maxPlayers = 2
     override val gameStateClass = CheckersGameState::class.java
     override val moveClass = CheckersMove::class.java
-    override val settingsClass = CheckersSettings::class.java
+    override val simpleClass = CheckersSimpleSettings::class.java
+    override val advancedClass = CheckersAdvancedSettings::class.java
     override val playerClass = CheckersPlayer::class.java
 
-    override val timeControl = TimeControlRules(
-        optional = true,
-        baseSeconds = 60..10800,
-        incrementSeconds = 0..60,
-        default = TimeControl(baseSeconds = 600, incrementSeconds = 5),
-    )
+    override val timeControl = TimeControlRules(optional = true, baseSeconds = 60..10800, incrementSeconds = 0..60)
 
-    override val defaultSettings = CheckersSettings(CheckersVariant.RUSSIAN)
+    override val defaultSimple = CheckersSimpleSettings(CheckersVariant.RUSSIAN, CheckersTime.RAPID)
 
     override val settingsLimits = CheckersSettingsLimits(VARIANTS, TIME_PRESETS)
 
-    override fun validateSettings(settings: CheckersSettings): List<SettingsViolation> =
-        if (settings.variant in VARIANTS) {
-            emptyList()
-        } else {
-            listOf(SettingsViolation("variant", "must be one of ${VARIANTS.joinToString()}"))
-        }
+    override fun validateSimple(settings: CheckersSimpleSettings): List<SettingsViolation> = validateVariant(settings.variant)
 
-    override fun moveRules(settings: CheckersSettings) = CheckersMoveRules.of(settings.variant)
+    override fun validateAdvanced(settings: CheckersAdvancedSettings): List<SettingsViolation> = validateVariant(settings.variant)
+
+    /**
+     * Флаги — правила варианта по умолчанию, часы — пресет варианта. Без таймера часы заполняются пресетом RAPID — на
+     * случай включения в advanced.
+     */
+    override fun toAdvanced(settings: CheckersSimpleSettings): CheckersAdvancedSettings {
+        val rules = CheckersAdvancedRules.of(settings.variant)
+        val presetTime = if (settings.time == CheckersTime.NONE) CheckersTime.RAPID else settings.time
+        val preset = TIME_PRESETS.single { it.variant == settings.variant && it.time == presetTime }
+        return CheckersAdvancedSettings(
+            variant = settings.variant,
+            timeControl = TimeControlSettings(settings.time != CheckersTime.NONE, preset.baseSeconds, preset.incrementSeconds),
+            menMoveBackward = rules.menMoveBackward,
+            menCaptureBackward = rules.menCaptureBackward,
+            flyingKings = rules.flyingKings,
+            captureRequired = rules.captureRequired,
+            maxCaptureRequired = rules.maxCaptureRequired,
+            promoteMidCapture = rules.promoteMidCapture,
+            removeCapturedAfterMove = rules.removeCapturedAfterMove,
+        )
+    }
+
+    override fun clock(settings: CheckersAdvancedSettings) = settings.timeControl
+
+    override fun advancedRules(settings: CheckersAdvancedSettings) = CheckersAdvancedRules.of(settings)
 
     /** Цвета — случайно по seed; расстановка — на тёмных клетках ближних к игроку рядов; первым ходит firstColor. */
-    override fun start(players: List<UUID>, seed: Long, settings: CheckersSettings): GameStart<CheckersGameState> {
-        val moveRules = moveRules(settings)
+    override fun start(players: List<UUID>, seed: Long, settings: CheckersAdvancedSettings): GameStart<CheckersGameState> {
+        val moveRules = advancedRules(settings)
         val firstSeatColor = if (Random(seed).nextBoolean()) CheckersColor.WHITE else CheckersColor.BLACK
         val colors = mapOf(players[0] to firstSeatColor, players[1] to firstSeatColor.opponent())
         val first = colors.entries.single { it.value == moveRules.firstColor }.key
@@ -89,7 +106,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
         )
     }
 
-    override fun decide(state: SessionState<CheckersGameState>, settings: CheckersSettings, playerId: UUID, move: CheckersMove): Decision {
+    override fun decide(state: SessionState<CheckersGameState>, settings: CheckersAdvancedSettings, playerId: UUID, move: CheckersMove): Decision {
         val current = state.turns.currentPlayerId
         return when {
             current == null || state.result != null -> Decision.Rejected(GAME_FINISHED, "The game is already finished")
@@ -99,7 +116,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
             move.type != MOVE && move.type != ACCEPT_DRAW -> Decision.Rejected(UNKNOWN_MOVE, "Allowed moves are $MOVE, $ACCEPT_DRAW and $RESIGN")
             current != playerId -> Decision.Rejected(NOT_YOUR_TURN, "It is not your turn")
             move.type == ACCEPT_DRAW -> acceptDraw(state, playerId)
-            else -> movePiece(state, settings.variant, playerId, move.data)
+            else -> movePiece(state, settings, playerId, move.data)
         }
     }
 
@@ -131,8 +148,16 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
         else -> listOf(MoveOption(RESIGN))
     }
 
-    private fun movePiece(state: SessionState<CheckersGameState>, variant: CheckersVariant, playerId: UUID, data: CheckersMoveData?): Decision {
-        val moveRules = CheckersMoveRules.of(variant)
+    private fun validateVariant(variant: CheckersVariant): List<SettingsViolation> =
+        if (variant in VARIANTS) {
+            emptyList()
+        } else {
+            listOf(SettingsViolation("variant", "must be one of ${VARIANTS.joinToString()}"))
+        }
+
+    private fun movePiece(state: SessionState<CheckersGameState>, settings: CheckersAdvancedSettings, playerId: UUID, data: CheckersMoveData?): Decision {
+        val variant = settings.variant
+        val moveRules = CheckersAdvancedRules.of(settings)
         val path = data?.path?.map { Square.of(it) ?: return illegal("Every square of the path must be [x, y]") }
             ?: return illegal("The path is required")
         val color = colorOf(state, playerId)
@@ -223,23 +248,23 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSet
          * WCDF нет в открытом доступе). Двухэтапные контроли (90 мин на 45 ходов + …) часы не выражают.
          */
         val TIME_PRESETS = listOf(
-            preset(CheckersVariant.RUSSIAN, CheckersTimePresetKind.CLASSIC, 1800, 30),
-            preset(CheckersVariant.RUSSIAN, CheckersTimePresetKind.RAPID, 480, 4),
-            preset(CheckersVariant.RUSSIAN, CheckersTimePresetKind.BLITZ, 180, 2),
-            preset(CheckersVariant.INTERNATIONAL, CheckersTimePresetKind.CLASSIC, 4800, 60),
-            preset(CheckersVariant.INTERNATIONAL, CheckersTimePresetKind.RAPID, 1200, 10),
-            preset(CheckersVariant.INTERNATIONAL, CheckersTimePresetKind.BLITZ, 600, 5),
-            preset(CheckersVariant.ENGLISH, CheckersTimePresetKind.CLASSIC, 1800, 0),
-            preset(CheckersVariant.ENGLISH, CheckersTimePresetKind.RAPID, 720, 5),
-            preset(CheckersVariant.ENGLISH, CheckersTimePresetKind.BLITZ, 180, 3),
+            preset(CheckersVariant.RUSSIAN, CheckersTime.CLASSIC, 1800, 30),
+            preset(CheckersVariant.RUSSIAN, CheckersTime.RAPID, 480, 4),
+            preset(CheckersVariant.RUSSIAN, CheckersTime.BLITZ, 180, 2),
+            preset(CheckersVariant.INTERNATIONAL, CheckersTime.CLASSIC, 4800, 60),
+            preset(CheckersVariant.INTERNATIONAL, CheckersTime.RAPID, 1200, 10),
+            preset(CheckersVariant.INTERNATIONAL, CheckersTime.BLITZ, 600, 5),
+            preset(CheckersVariant.ENGLISH, CheckersTime.CLASSIC, 1800, 0),
+            preset(CheckersVariant.ENGLISH, CheckersTime.RAPID, 720, 5),
+            preset(CheckersVariant.ENGLISH, CheckersTime.BLITZ, 180, 3),
         )
 
-        private fun preset(variant: CheckersVariant, kind: CheckersTimePresetKind, baseSeconds: Int, incrementSeconds: Int) =
-            CheckersTimePreset(variant, kind, baseSeconds, incrementSeconds)
+        private fun preset(variant: CheckersVariant, time: CheckersTime, baseSeconds: Int, incrementSeconds: Int) =
+            CheckersTimePreset(variant, time, baseSeconds, incrementSeconds)
 
         /**
          * Ничья: столько ходов подряд (обеих сторон в сумме) только дамками без взятий — по 15 у каждой в русских, по 25
-         * в международных, по 40 в английских. Клиенту не нужен, поэтому не в [CheckersMoveRules].
+         * в международных, по 40 в английских. Клиенту не нужен, поэтому не в [CheckersAdvancedRules].
          */
         fun drawQuietMoves(variant: CheckersVariant): Int = when (variant) {
             CheckersVariant.RUSSIAN -> 30

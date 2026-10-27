@@ -39,6 +39,7 @@ class GameResponseMapper(private val roomSettingsResponseMapper: RoomSettingsRes
     private fun toDto(rules: GameRulesModel) = GameRulesDto(
         minPlayers = rules.minPlayers,
         maxPlayers = rules.maxPlayers,
+        spectators = roomSettingsResponseMapper.toDto(rules.spectators),
         timeControl = TimeControlLimitsDto(
             optional = rules.timeControlOptional,
             baseSeconds = roomSettingsResponseMapper.toDto(rules.baseSeconds),

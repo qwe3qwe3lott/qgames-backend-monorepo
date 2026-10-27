@@ -29,10 +29,20 @@ class RoomDetailsService(
             room = room,
             minPlayers = rules.minPlayers,
             maxPlayers = rules.maxPlayers,
-            settings = RoomSettingsModel(room.timeControl, jsonMapper.readValue(room.gameSettings, rules.settingsClass)),
+            settings = settings(room),
             members = roomMemberRepository.findAllWithProfiles(room.id),
             session = room.currentSessionId?.let(roomSessionRepository::findById) ?: roomSessionRepository.findLatest(room.id),
             serverTime = clock.instant(),
+        )
+    }
+
+    /** Настройки комнаты; настройки игры разобраны в классы модуля игры. */
+    fun settings(room: RoomModel): RoomSettingsModel {
+        val rules = gameRegistry.rules(room.gameCode)
+        return RoomSettingsModel(
+            room = room.options,
+            simple = room.simpleSettings?.let { jsonMapper.readValue(it, rules.simpleClass) },
+            advanced = jsonMapper.readValue(room.advancedSettings, rules.advancedClass),
         )
     }
 }

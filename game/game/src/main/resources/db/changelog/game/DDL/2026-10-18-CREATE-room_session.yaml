@@ -6,7 +6,7 @@ databaseChangeLog:
       comment: >-
         Партия любой игры. Состояние не хранится: это свёртка журнала room_session_event (формат событий задаёт модуль игры).
         last_seq — seq последнего события журнала, новые события пишутся с last_seq + 1 под блокировкой комнаты.
-        game_settings — снимок настроек комнаты (часы и настройки игры, как room.game_settings) на момент старта.
+        settings — снимок advanced-настроек комнаты (room.settings.advanced) на момент старта.
         move_deadline — проекция таймера для MoveTimeoutJob: дедлайн идущего таймера; NULL — без таймера, на паузе или
         партия закончена или отменена.
       changes:
@@ -53,7 +53,7 @@ databaseChangeLog:
                   constraints:
                     nullable: false
               - column:
-                  name: game_settings
+                  name: settings
                   type: json
                   constraints:
                     nullable: false

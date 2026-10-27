@@ -49,19 +49,22 @@ data class GameDetailsResponse(
     val rules: GameRulesDto,
 )
 
-/** Параметры правил игры: по ним строится форма создания комнаты и смены настроек. */
+/** Параметры правил игры: по ним строится форма настроек комнаты. */
 data class GameRulesDto(
     val minPlayers: Int,
     val maxPlayers: Int,
+    /** Границы лимита наблюдателей (RoomOptionsDto.maxSpectators), одинаковые у всех игр. */
+    val spectators: IntRangeDto,
+    /** Границы часов advanced-настроек. */
     val timeControl: TimeControlLimitsDto,
     val gameSettingsLimits: GameSettingsLimitsDto,
-    /** Настройки, которыми заполняется форма создания комнаты. */
+    /** Настройки, с которыми создаётся комната (simple-режим). */
     val defaultSettings: RoomSettingsDto,
 )
 
-/** Какие шахматные часы разрешает игра. */
+/** Какие шахматные часы разрешает игра в advanced-настройках. */
 data class TimeControlLimitsDto(
-    /** Можно ли играть без таймера (timeControl = null). */
+    /** Можно ли играть без таймера (TimeControlDto.enabled = false). */
     val optional: Boolean,
     /** Границы запаса на партию в секундах. */
     val baseSeconds: IntRangeDto,

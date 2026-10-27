@@ -2,7 +2,6 @@ package site.qgames.game.repository.session
 
 import org.springframework.stereotype.Repository
 import site.qgames.game.model.game.GameCode
-import site.qgames.game.model.room.RoomTimeControlModel
 import site.qgames.game.model.session.RoomSessionModel
 import site.qgames.game.model.session.RoomSessionStatus
 import site.qgames.game.util.newId
@@ -16,14 +15,13 @@ class RoomSessionRepository(
 
     /**
      * Новая партия ([RoomSessionStatus.IN_PROGRESS]) с пустым журналом; места игроков — по порядку в [players].
-     * [timeControl] и [gameSettings] (JSON) — снимок настроек комнаты на момент старта.
+     * [settings] — JSON снимка advanced-настроек комнаты на момент старта.
      */
     fun insert(
         roomId: UUID,
         gameCode: GameCode,
         seed: Long,
-        timeControl: RoomTimeControlModel?,
-        gameSettings: String,
+        settings: String,
         players: List<UUID>,
         now: Instant,
     ): RoomSessionModel = roomSessionExposedRepository.insert(
@@ -34,8 +32,7 @@ class RoomSessionRepository(
             status = RoomSessionStatus.IN_PROGRESS,
             seed = seed,
             lastSeq = 0,
-            timeControl = timeControl,
-            gameSettings = gameSettings,
+            settings = settings,
             moveDeadline = null,
             createdAt = now,
             finishedAt = null,

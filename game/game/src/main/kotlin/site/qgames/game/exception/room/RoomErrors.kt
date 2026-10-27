@@ -34,6 +34,9 @@ object RoomErrors {
 
     fun noFreeSeat() = ConflictException("NO_FREE_SEAT", "All player seats are taken")
 
+    /** Наблюдатели заняли все места по лимиту комнаты (settings.room.maxSpectators). */
+    fun noSpectatorSeat() = ConflictException("NO_SPECTATOR_SEAT", "All spectator seats are taken")
+
     fun notEnoughPlayers(min: Int, max: Int) =
         ConflictException("NOT_ENOUGH_PLAYERS", "The game needs from $min to $max players")
 

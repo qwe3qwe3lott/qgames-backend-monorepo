@@ -4,7 +4,7 @@ import java.time.Instant
 import org.springframework.stereotype.Component
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.SessionStatus
-import site.qgames.game.api.dto.session.CheckersMoveRulesDto
+import site.qgames.game.api.dto.session.CheckersAdvancedRulesDto
 import site.qgames.game.api.dto.session.CheckersSessionStateDto
 import site.qgames.game.api.dto.session.DeleteData
 import site.qgames.game.api.dto.session.NothingSessionStateDto
@@ -17,7 +17,7 @@ import site.qgames.game.api.dto.session.SessionEventPatch
 import site.qgames.game.api.dto.session.SessionEventPut
 import site.qgames.game.api.dto.session.SessionGameDto
 import site.qgames.game.api.dto.session.SessionMetaDto
-import site.qgames.game.api.dto.session.SessionMoveRulesDto
+import site.qgames.game.api.dto.session.SessionAdvancedRulesDto
 import site.qgames.game.api.dto.session.SessionPatchEvent
 import site.qgames.game.api.dto.session.SessionSnapshotDto
 import site.qgames.game.api.dto.session.SessionStateDto
@@ -72,16 +72,16 @@ class SessionEventResponseMapper(
     }
 
     /**
-     * meta разбирается строго, а правила хода — схемой игры из game.code: у union без дискриминатора Jackson вид сам не
+     * meta разбирается строго, а итоговые правила — схемой игры из game.code: у union без дискриминатора Jackson вид сам не
      * выберет.
      */
     private fun meta(tree: Any?): SessionMetaDto {
         @Suppress("UNCHECKED_CAST")
         val meta = tree as? Map<String, Any?> ?: error("Session meta must be an object")
-        val unknown = meta.keys - setOf(GAME, MOVE_RULES)
+        val unknown = meta.keys - setOf(GAME, ADVANCED_RULES)
         check(unknown.isEmpty()) { "Unknown fields $unknown in the session meta" }
         val game = strict(meta[GAME], SessionGameDto::class.java)
-        return SessionMetaDto(game, meta[MOVE_RULES]?.let { strict(it, moveRulesClass(game.code)) })
+        return SessionMetaDto(game, meta[ADVANCED_RULES]?.let { strict(it, advancedRulesClass(game.code)) })
     }
 
     private fun stateClass(gameCode: GameCode): Class<out SessionStateDto> = when (gameCode) {
@@ -90,9 +90,9 @@ class SessionEventResponseMapper(
         else -> error("No DTO for the state of game $gameCode")
     }
 
-    private fun moveRulesClass(gameCode: GameCode): Class<out SessionMoveRulesDto> = when (gameCode) {
-        GameCode.CHECKERS -> CheckersMoveRulesDto::class.java
-        else -> error("No DTO for the move rules of game $gameCode")
+    private fun advancedRulesClass(gameCode: GameCode): Class<out SessionAdvancedRulesDto> = when (gameCode) {
+        GameCode.CHECKERS -> CheckersAdvancedRulesDto::class.java
+        else -> error("No DTO for the advanced rules of game $gameCode")
     }
 
     private fun <T : Any> strict(tree: Any?, type: Class<T>): T =
@@ -106,6 +106,6 @@ class SessionEventResponseMapper(
 
     private companion object {
         const val GAME = "game"
-        const val MOVE_RULES = "moveRules"
+        const val ADVANCED_RULES = "advancedRules"
     }
 }

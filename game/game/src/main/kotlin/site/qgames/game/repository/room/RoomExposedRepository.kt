@@ -74,6 +74,6 @@ class RoomExposedRepository(
         statement[status] = room.status.name
         statement[currentSessionId] = room.currentSessionId
         statement[emptySince] = room.emptySince
-        statement[gameSettings] = roomSettingsJsonMapper.write(room.timeControl, room.gameSettings)
+        statement[settings] = roomSettingsJsonMapper.write(room.options, room.simpleSettings, room.advancedSettings)
     }
 }

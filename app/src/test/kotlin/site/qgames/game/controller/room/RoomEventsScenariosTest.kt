@@ -10,7 +10,10 @@ import org.springframework.transaction.support.TransactionTemplate
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
+import site.qgames.game.api.dto.room.RoomOptionsDto
 import site.qgames.game.api.dto.room.RoomSettingsChangedDto
+import site.qgames.game.api.dto.room.RoomSettingsDto
+import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import site.qgames.game.api.dto.room.RoomUsersDto
 import site.qgames.game.job.game.NotPublishedGameCleanupJob
 import site.qgames.game.job.room.RoomConnectionHeartbeatJob
@@ -84,7 +87,7 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
         join(BOB, roomId)
 
         changeRole(BOB, roomId, RoomRole.SPECTATOR)
-        updateSettingsRequest(ALICE, roomId, nothingSettings(rounds = 7)).andExpect { status { isOk() } }
+        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(advanced = nothingSettings(rounds = 7))).andExpect { status { isOk() } }
         changeRole(BOB, roomId, RoomRole.PLAYER)
         start(ALICE, roomId)
 
@@ -98,7 +101,7 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
         assertThat(jsonMapper.readValue(events[2].second, RoomUsersDto::class.java).members.single { it.userId == BOB }.role)
             .isEqualTo(RoomRole.SPECTATOR)
         assertThat(jsonMapper.readValue(events[3].second, RoomSettingsChangedDto::class.java).settings)
-            .isEqualTo(nothingSettings(rounds = 7))
+            .isEqualTo(RoomSettingsDto(RoomOptionsDto(8), simple = null, advanced = nothingSettings(rounds = 7)))
         assertThat(events[5].second).isEqualTo("{}")
     }
 
@@ -143,7 +146,7 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
         val snapshot = jsonMapper.readValue(events(stream).first().second, RoomResponse::class.java)
         assertThat(snapshot.members.single { it.userId == BOB }.role).isEqualTo(RoomRole.SPECTATOR)
 
-        updateSettingsRequest(ALICE, roomId, nothingSettings(rounds = 2)).andExpect { status { isOk() } }
+        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(advanced = nothingSettings(rounds = 2))).andExpect { status { isOk() } }
 
         assertThat(awaitEvents(stream, 2).map { it.first }).containsExactly("snapshot", "settings-changed")
         executor.shutdown()
