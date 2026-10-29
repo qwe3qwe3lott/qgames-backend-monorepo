@@ -12,6 +12,7 @@ import site.qgames.common.web.context.RequestUserContext
 import site.qgames.common.web.openapi.DiscriminatedUnionCustomizer
 import site.qgames.common.web.openapi.KotlinRequiredPropertiesConverter
 import site.qgames.common.web.openapi.ProblemDetailResponsesCustomizer
+import site.qgames.common.web.openapi.SortedTagsCustomizer
 
 @AutoConfiguration
 @PropertySource("classpath:common-web-defaults.properties")
@@ -35,6 +36,9 @@ class CommonWebAutoConfiguration {
 
         @Bean
         fun discriminatedUnionCustomizer() = DiscriminatedUnionCustomizer()
+
+        @Bean
+        fun sortedTagsCustomizer() = SortedTagsCustomizer()
 
         /** springdoc подхватывает бины ModelConverter сам. */
         @Bean

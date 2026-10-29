@@ -86,7 +86,8 @@ class AdminOpenApiContractScenariosTest : BaseIntegrationTest() {
 
     /**
      * Имена тегов — латиница kebab-case (из них Orval в режиме tags-split строит имена файлов), русское название —
-     * в описании. У каждой операции тег объявлен, одноимённых тегов нет.
+     * в описании. Теги отсортированы по имени (стабильный клиент Orval). У каждой операции тег объявлен, одноимённых
+     * тегов нет.
      */
     @Test
     fun `tags are latin kebab-case with russian descriptions`() {
@@ -94,7 +95,7 @@ class AdminOpenApiContractScenariosTest : BaseIntegrationTest() {
         val tags = docs.path("tags")
         val names = (0 until tags.size()).map { tags.get(it).path("name").asString() }
 
-        assertThat(names).containsExactlyInAnyOrder("auth", "admins")
+        assertThat(names).containsExactly("admins", "auth")
         (0 until tags.size()).map(tags::get).forEach { tag ->
             assertThat(tag.path("name").asString()).matches(TAG_NAME)
             assertThat(tag.path("description").asString()).describedAs(tag.path("name").asString()).containsPattern("\\p{IsCyrillic}")
