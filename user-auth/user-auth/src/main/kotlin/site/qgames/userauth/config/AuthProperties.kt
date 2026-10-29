@@ -25,7 +25,7 @@ data class AuthProperties(
 
     /**
      * Куки сессии (имена и пути — в контракте, [site.qgames.userauth.api.cookie.AuthCookieNames]).
-     * Браузеры считают localhost безопасным контекстом, поэтому Secure-куки работают и по http://localhost.
+     * Secure и локально: фронт открывается по HTTPS на локальном домене, как в проде (README фронтенда).
      */
     data class Cookies(
         val secure: Boolean = true,

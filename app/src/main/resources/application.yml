@@ -64,7 +64,7 @@ qgames:
       jwk-set-uri: https://www.googleapis.com/oauth2/v3/certs
       issuers: https://accounts.google.com,accounts.google.com
     cookies:
-      # Браузеры считают localhost безопасным контекстом, поэтому Secure-куки работают и по http://localhost.
+      # Secure и локально: фронт открывается по HTTPS на локальном домене, как в проде (README фронтенда).
       secure: ${COOKIES_SECURE:true}
 
   # --- Модуль admin-auth: администраторы, вход, JWT админки (свой ключ и issuer) ---

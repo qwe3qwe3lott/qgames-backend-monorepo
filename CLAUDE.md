@@ -35,7 +35,7 @@
 
 **Портал и админка — два фронта одного приложения:**
 - портал — `/api/**` (кроме `/api/admin/**`), OpenAPI-группа `portal` (`/v3/api-docs/portal`); админка — `/api/admin/**`, группа `admin` (`/v3/api-docs/admin`). Swagger UI один, с выбором группы. Фронт генерирует по каждой группе свой клиент Orval;
-- портал — `http://localhost:3000`, админка (CSR SPA) — `http://localhost:3001`; в проде портал — `https://<домен>`, админка — поддомен `https://admin.<домен>` (same-site). **Каждый фронт ходит в API своего origin:** reverse proxy (nginx, образ `web` фронтенда) отдаёт статику и проксирует в app `/api/**` с хоста портала и только `/api/admin/**` с хоста админки, локально в `pnpm dev` — dev-proxy rsbuild. CORS нет (`adr/security/session-tokens.md`);
+- портал — `https://<домен>`, админка (CSR SPA) — поддомен `https://admin.<домен>` (same-site): в проде `qgames.duckdns.org`, локально — `LOCAL_DOMAIN` фронта (`local.qgames.duckdns.org`, mkcert и hosts — README фронта; в `pnpm dev` с портами :3000 и :3001). **Каждый фронт ходит в API своего origin:** reverse proxy (nginx, образ `web` фронтенда) отдаёт статику и проксирует в app `/api/**` с хоста портала и только `/api/admin/**` с хоста админки, локально в `pnpm dev` — dev-proxy rsbuild. CORS нет (`adr/security/session-tokens.md`);
 - соглашения у обеих групп одинаковые (§3): REST/JSON, ошибки — ProblemDetail с `code`, Swagger на русском;
 - пути аутентификации (`…/auth/login`, `…/auth/refresh`, `…/auth/logout`) и 401 `UNAUTHENTICATED` устроены одинаково, отличается только префикс (`/api/auth`, `/api/admin/auth`): на этом держится общий fetch-mutator фронта;
 - текущий админ — `GET /api/admin/admins/me` (по нему фронт определяет, вошёл ли админ), список админов — `GET /api/admin/admins`;
@@ -291,7 +291,7 @@ docker compose down -v                # остановить и удалить �
 - Google-вход: заполнить `GOOGLE_CLIENT_IDS` в `.env` (см. `.env.example`).
 - Запуск из IDE: `docker compose up -d postgres`, затем `QgamesApplication` (или `./gradlew :app:bootRun`) с рабочим каталогом `app/` и профилем `local` (без него нет админа и тестовых игроков): значения по умолчанию в `application.yml` смотрят на localhost и `../docker/dev-keys`.
 - Переменные окружения app: `DB_URL`/`DB_USERNAME`/`DB_PASSWORD`, `JWT_KEY_ID`/`JWT_PRIVATE_KEY_LOCATION`/`JWT_PUBLIC_KEY_LOCATION` (игроки), `ADMIN_JWT_KEY_ID`/`ADMIN_JWT_PRIVATE_KEY_LOCATION`/`ADMIN_JWT_PUBLIC_KEY_LOCATION` (админы), `GOOGLE_CLIENT_IDS`, `ADMIN_BOOTSTRAP_LOGIN`/`ADMIN_BOOTSTRAP_PASSWORD`, `COOKIES_SECURE`, `API_DOCS_ENABLED` (OpenAPI и Swagger UI, по умолчанию `true`; при `false` их ручки отвечают 404).
-- Фронты на стенде: образ `web` фронтенда (nginx) — портал на 3000, админка на 3001, `/api` проксируется в app на 8080.
+- Фронты на стенде: образ `web` фронтенда (nginx) — портал `https://<LOCAL_DOMAIN>`, админка `https://admin.<LOCAL_DOMAIN>` (порт 443), `/api` проксируется в app на 8080.
 - Образ: multi-stage `docker/app.Dockerfile` (`:app:bootJar`). Контекст сборки — корень репозитория.
 
 ## 10. Развёртывание (один VPS)
