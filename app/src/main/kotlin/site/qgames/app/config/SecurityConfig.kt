@@ -24,7 +24,9 @@ import org.springframework.security.oauth2.jwt.JwtTimestampValidator
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder
 import org.springframework.security.web.AuthenticationEntryPoint
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.security.web.context.SecurityContextHolderFilter
 import site.qgames.app.security.CookieBearerTokenResolver
+import site.qgames.app.security.FetchMetadataFilter
 import java.security.KeyFactory
 import java.security.interfaces.ECPublicKey
 import java.security.spec.X509EncodedKeySpec
@@ -39,8 +41,8 @@ import site.qgames.userauth.api.cookie.AuthCookieNames as PortalCookies
  *
  * Фронты ходят в API своего origin (reverse proxy отдаёт статику и `/api` с одного хоста), поэтому CORS не нужен и
  * выключен в обеих цепочках явно: заголовков CORS нет. С чужого origin браузер не отправит JSON-запрос (нужен
- * preflight, а он не проходит); простые запросы (POST без тела, GET, в том числе переход по ссылке) уходят, но ответ
- * странице не виден. Принятые риски — CLAUDE.md §5.
+ * preflight, а он не проходит); простые запросы с соседнего поддомена и чужих сайтов (POST без тела, переход по ссылке)
+ * отсекает [FetchMetadataFilter] — он стоит первым в обеих цепочках, до аутентификации.
  *
  * CSRF-токены не используются: куки SameSite=Lax не уходят с кросс-сайтовых POST, а тела запросов — только JSON.
  * Сессий нет — каждый запрос аутентифицируется по JWT.
@@ -57,6 +59,7 @@ class SecurityConfig(
             .securityMatcher("${AdminCookies.ADMIN_PATH}/**")
             .cors { it.disable() }
             .csrf { it.disable() }
+            .addFilterBefore(FetchMetadataFilter(), SecurityContextHolderFilter::class.java)
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it.requestMatchers("${AdminCookies.AUTH_PATH}/**").permitAll()
@@ -77,6 +80,7 @@ class SecurityConfig(
         http
             .cors { it.disable() }
             .csrf { it.disable() }
+            .addFilterBefore(FetchMetadataFilter(), SecurityContextHolderFilter::class.java)
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it.requestMatchers(

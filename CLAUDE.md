@@ -245,7 +245,7 @@ app/src/main/resources/db/changelog/
 ## 5. Аутентификация и безопасность
 
 - Две цепочки Security в app: админка — `/api/admin/**` (токены admin-auth), портал — всё остальное (токены user-auth). JWT — ES256, проверка локально по публичному ключу; без токена — 401 `UNAUTHENTICATED`.
-- Токены — только в HttpOnly-куках (`HttpOnly; Secure; SameSite=Lax`), в теле ответов их нет. Same-origin через reverse proxy, CORS нет; CSRF-токенов нет, тела запросов — только JSON.
+- Токены — только в HttpOnly-куках (`HttpOnly; Secure; SameSite=Lax`), в теле ответов их нет. Same-origin через reverse proxy, CORS нет; CSRF-токенов нет, тела запросов — только JSON. `/api/**` проверяется `FetchMetadataFilter` (403 `CROSS_SITE_REQUEST`, в OpenAPI не документируется); подробности — `adr/security/session-tokens.md`.
 - Подробности (refresh и окно терпимости, сессия админа, первый админ, куки, пароли, Google, профиль и способы входа, ключи) — в **`adr/c4/3-backend-auth.md`**, модель CSRF и принятые риски — в `adr/security/session-tokens.md`: читать, когда трогаешь `user-auth`, `admin-auth`, Security, куки или JWT.
 
 ## 6. Один инстанс
