@@ -5,6 +5,8 @@ plugins {
 dependencies {
     implementation(project(":libs:common-exception"))
     implementation(project(":libs:common-web"))
+    // События-патчи потоков партии и комнаты: модель операции и общий применитель.
+    implementation(project(":libs:doc-patch"))
     api(project(":game:game-api"))
     // Событие профиля (UserProfileChanged) и описание таблицы user для чтения профилей — из публичного контракта
     // user-auth, не из его реализации.

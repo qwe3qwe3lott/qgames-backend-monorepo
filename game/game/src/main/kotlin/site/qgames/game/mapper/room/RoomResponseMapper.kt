@@ -12,7 +12,6 @@ import site.qgames.game.api.dto.room.SessionStatus
 import site.qgames.game.model.room.RoomDetailsModel
 import site.qgames.game.model.room.RoomMemberDetailsModel
 import site.qgames.game.model.session.RoomSessionModel
-import java.util.UUID
 
 /** Модель комнаты → DTO контракта. Только преобразование, без обращений к данным. */
 @Component
@@ -29,7 +28,7 @@ class RoomResponseMapper(
             ownerId = room.ownerId,
             minPlayers = details.minPlayers,
             maxPlayers = details.maxPlayers,
-            members = details.members.map { toResponse(it, room.ownerId) },
+            members = details.members.map(::toResponse),
             session = details.session?.let(::toResponse),
             createdAt = room.createdAt,
             settings = roomSettingsResponseMapper.toResponse(details.settings),
@@ -37,21 +36,20 @@ class RoomResponseMapper(
         )
     }
 
-    /** Участник комнаты с владельцем [ownerId]. */
-    fun toResponse(details: RoomMemberDetailsModel, ownerId: UUID?): RoomMemberResponse {
+    /** Участник комнаты. */
+    fun toResponse(details: RoomMemberDetailsModel): RoomMemberResponse {
         val (member, profile) = details
         return RoomMemberResponse(
-            userId = member.userId,
+            id = member.userId,
             nickname = profile?.nickname,
             avatar = profile?.avatar?.let { Avatar.valueOf(it.name) },
             role = RoomRole.valueOf(member.role.name),
-            owner = member.userId == ownerId,
             leaving = member.leftAt != null,
             joinedAt = member.joinedAt,
         )
     }
 
-    private fun toResponse(session: RoomSessionModel) = SessionResponse(
+    fun toResponse(session: RoomSessionModel) = SessionResponse(
         id = session.id,
         status = SessionStatus.valueOf(session.status.name),
     )

@@ -4,6 +4,7 @@ import org.jetbrains.exposed.v1.core.JoinType
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.less
+import org.jetbrains.exposed.v1.core.plus
 import org.jetbrains.exposed.v1.jdbc.deleteWhere
 import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.select
@@ -32,6 +33,7 @@ class RoomExposedRepository(
         RoomTable.insert {
             it[id] = room.id
             write(it, room)
+            it[eventSeq] = 0L
             it[createdAt] = room.createdAt
         }
         return room
@@ -46,6 +48,14 @@ class RoomExposedRepository(
     fun update(room: RoomModel) {
         RoomTable.update({ RoomTable.id eq room.id }) { write(it, room) }
     }
+
+    fun nextEventSeq(id: UUID): Long {
+        RoomTable.update({ RoomTable.id eq id }) { it.update(eventSeq, eventSeq + 1L) }
+        return findEventSeq(id) ?: error("Room $id not found")
+    }
+
+    fun findEventSeq(id: UUID): Long? =
+        RoomTable.select(RoomTable.eventSeq).where { RoomTable.id eq id }.singleOrNull()?.get(RoomTable.eventSeq)
 
     fun findIdsByGamePublishStatus(status: GamePublishStatus, limit: Int): List<UUID> =
         RoomTable

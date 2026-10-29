@@ -1,46 +1,37 @@
 package site.qgames.game.model.room
 
+import site.qgames.common.docpatch.PatchMethod
+import site.qgames.common.docpatch.PatchOperation
+import site.qgames.common.docpatch.PathSegment
+import java.time.Instant
 import java.util.UUID
 
 /**
- * Событие комнаты (Postgres NOTIFY, канал room_events). Только сигнал: данные для потока диспетчер читает сам, когда
- * раздаёт событие подписчикам, — уже после коммита изменения.
+ * Событие потока комнаты — одна операция над документом потока (комната, как в снапшоте). Значение — JSON-дерево
+ * в форме контракта (участник, настройки), его собирает RoomEventPublisher в транзакции изменения. Коды — RoomEventCodes
+ * контракта.
+ */
+data class RoomEvent(
+    override val code: String,
+    override val method: PatchMethod,
+    override val path: List<PathSegment>,
+    override val value: Any?,
+) : PatchOperation
+
+/**
+ * Опубликованное событие комнаты (Postgres NOTIFY, канал room_events): событие целиком, со своим seq и моментом
+ * изменения. Данные зафиксированы в транзакции изменения, диспетчер в БД не ходит.
  */
 data class RoomEventModel(
     val roomId: UUID,
-    val type: RoomEventType,
-    /** Только у [RoomEventType.SUBSCRIBED]: какой подписчик открыл поток. */
-    val subscriberId: UUID? = null,
+    val seq: Long,
+    val at: Instant,
+    val event: RoomEvent,
 )
 
-/** Значение [code] — тип в JSON уведомления; у событий потока совпадает с типом SSE-события. */
-enum class RoomEventType(val code: String) {
-    USERS_CHANGED("users-changed"),
-    SETTINGS_CHANGED("settings-changed"),
-    SESSION_CHANGED("session-changed"),
-    ROOM_DELETED("room-deleted"),
-
-    /**
-     * Маркер подключения: публикуется в транзакции подключения после чтения снапшота. Всё, что подписчик получил до
-     * своего маркера, уже есть в снапшоте.
-     */
-    SUBSCRIBED("subscribed"),
-    ;
-
-    companion object {
-        fun fromCode(code: String): RoomEventType? = entries.firstOrNull { it.code == code }
-    }
-}
-
-/** Результат подключения к потоку комнаты: id подключения и снапшот комнаты для подключившегося. */
+/** Результат подключения к потоку комнаты: id подключения и снапшот комнаты на seq [seq] для подключившегося. */
 data class RoomConnectionModel(
     val connectionId: UUID,
+    val seq: Long,
     val details: RoomDetailsModel,
-)
-
-/** Владелец и участники комнаты: данные события users-changed. */
-data class RoomUsersModel(
-    val room: RoomModel,
-    /** В порядке входа. */
-    val members: List<RoomMemberDetailsModel>,
 )

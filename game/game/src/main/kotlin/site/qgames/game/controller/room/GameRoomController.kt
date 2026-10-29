@@ -40,14 +40,12 @@ class GameRoomController(
             roomService.create(gameCode(gameCode)),
         )
 
-    override fun updateRoomSettings(gameCode: String, roomId: UUID, request: UpdateRoomSettingsRequest): RoomResponse =
-        roomResponseMapper.toResponse(
-            roomService.updateSettings(
-                userId = requestUserContext.userId(),
-                gameCode = gameCode(gameCode),
-                roomId = roomId,
-                update = roomSettingsResponseMapper.toModel(request),
-            ),
+    override fun updateRoomSettings(gameCode: String, roomId: UUID, request: UpdateRoomSettingsRequest) =
+        roomService.updateSettings(
+            userId = requestUserContext.userId(),
+            gameCode = gameCode(gameCode),
+            roomId = roomId,
+            update = roomSettingsResponseMapper.toModel(request),
         )
 
     override fun makeMove(gameCode: String, roomId: UUID, request: MoveRequest) =

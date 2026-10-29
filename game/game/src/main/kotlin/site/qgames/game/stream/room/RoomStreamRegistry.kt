@@ -25,7 +25,7 @@ class RoomStreamRegistry(
     @Volatile
     private var running = false
 
-    /** Новый подписчик в режиме «ждёт маркер». Эмиттер без таймаута: поток живёт, пока его не закроет одна из сторон. */
+    /** Новый подписчик: до снапшота копит события. Эмиттер без таймаута: поток живёт, пока его не закроет одна из сторон. */
     fun register(roomId: UUID, userId: UUID): RoomStreamSubscriber =
         RoomStreamSubscriber(roomId, userId, SseEmitter(NO_TIMEOUT), ::onClosed).also(rooms::add)
 

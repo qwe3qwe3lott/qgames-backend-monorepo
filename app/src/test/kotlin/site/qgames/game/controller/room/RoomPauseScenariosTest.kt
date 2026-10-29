@@ -125,7 +125,7 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
         leave(CAROL, roomId)
 
         val room = room(roomId, ALICE)
-        assertThat(room.members.map { it.userId to it.leaving }).containsExactly(ALICE to false, BOB to true)
+        assertThat(room.members.map { it.id to it.leaving }).containsExactly(ALICE to false, BOB to true)
     }
 
     @Test

@@ -3,9 +3,14 @@ package site.qgames.game.api.dto.session
 import com.fasterxml.jackson.annotation.JsonSubTypes
 import com.fasterxml.jackson.annotation.JsonTypeInfo
 import com.fasterxml.jackson.annotation.JsonValue
-import io.swagger.v3.oas.annotations.media.ArraySchema
 import io.swagger.v3.oas.annotations.media.DiscriminatorMapping
 import io.swagger.v3.oas.annotations.media.Schema
+import site.qgames.game.api.dto.patch.DeleteData
+import site.qgames.game.api.dto.patch.InfoData
+import site.qgames.game.api.dto.patch.PatchData
+import site.qgames.game.api.dto.patch.PatchEventMethod
+import site.qgames.game.api.dto.patch.PatchEventMethods
+import site.qgames.game.api.dto.patch.PutData
 import site.qgames.game.api.dto.room.SessionStatus
 import java.time.Instant
 
@@ -89,40 +94,17 @@ data class SessionSnapshotDto(
     val state: SessionStateDto,
 )
 
-/** Как событие меняет документ партии. */
-enum class SessionEventMethod {
-    /** Заменить или создать значение по пути целиком. */
-    PUT,
-
-    /** Неглубокое слияние объекта по пути с value. */
-    PATCH,
-
-    /** Удалить поле объекта или элемент массива по id. */
-    DELETE,
-
-    /** Документ не меняется: данные для журнала. */
-    INFO,
-}
-
-/** Методы строками: нужны в аннотациях Jackson и OpenAPI (дискриминатор method). */
-object SessionEventMethods {
-    const val PUT = "PUT"
-    const val PATCH = "PATCH"
-    const val DELETE = "DELETE"
-    const val INFO = "INFO"
-}
-
 /**
  * Событие журнала партии — одна операция над документом партии `{status, meta, state}` (тот же документ, что снапшот
- * без seq и serverTime). Клиент применяет его по [SessionEventMethod], не зная кодов: PUT, PATCH, DELETE по пути
+ * без seq и serverTime). Клиент применяет его по [PatchEventMethod], не зная кодов: PUT, PATCH, DELETE по пути
  * `data.path`, INFO состояние не меняет.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "method", visible = true)
 @JsonSubTypes(
-    JsonSubTypes.Type(value = SessionEventPut::class, name = SessionEventMethods.PUT),
-    JsonSubTypes.Type(value = SessionEventPatch::class, name = SessionEventMethods.PATCH),
-    JsonSubTypes.Type(value = SessionEventDelete::class, name = SessionEventMethods.DELETE),
-    JsonSubTypes.Type(value = SessionEventInfo::class, name = SessionEventMethods.INFO),
+    JsonSubTypes.Type(value = SessionEventPut::class, name = PatchEventMethods.PUT),
+    JsonSubTypes.Type(value = SessionEventPatch::class, name = PatchEventMethods.PATCH),
+    JsonSubTypes.Type(value = SessionEventDelete::class, name = PatchEventMethods.DELETE),
+    JsonSubTypes.Type(value = SessionEventInfo::class, name = PatchEventMethods.INFO),
 )
 @Schema(
     description = "Событие журнала партии {seq, at, method, code, data}: одна операция над документом партии " +
@@ -132,10 +114,10 @@ object SessionEventMethods {
     oneOf = [SessionEventPut::class, SessionEventPatch::class, SessionEventDelete::class, SessionEventInfo::class],
     discriminatorProperty = "method",
     discriminatorMapping = [
-        DiscriminatorMapping(value = SessionEventMethods.PUT, schema = SessionEventPut::class),
-        DiscriminatorMapping(value = SessionEventMethods.PATCH, schema = SessionEventPatch::class),
-        DiscriminatorMapping(value = SessionEventMethods.DELETE, schema = SessionEventDelete::class),
-        DiscriminatorMapping(value = SessionEventMethods.INFO, schema = SessionEventInfo::class),
+        DiscriminatorMapping(value = PatchEventMethods.PUT, schema = SessionEventPut::class),
+        DiscriminatorMapping(value = PatchEventMethods.PATCH, schema = SessionEventPatch::class),
+        DiscriminatorMapping(value = PatchEventMethods.DELETE, schema = SessionEventDelete::class),
+        DiscriminatorMapping(value = PatchEventMethods.INFO, schema = SessionEventInfo::class),
     ],
 )
 sealed interface SessionPatchEvent
@@ -145,8 +127,8 @@ data class SessionEventPut(
     val seq: Long,
     /** Когда событие записано в журнал. */
     val at: Instant,
-    @field:Schema(type = "string", allowableValues = [SessionEventMethods.PUT])
-    val method: SessionEventMethod,
+    @field:Schema(type = "string", allowableValues = [PatchEventMethods.PUT])
+    val method: PatchEventMethod,
     @field:Schema(description = CODE_DESCRIPTION)
     val code: String,
     val data: PutData,
@@ -157,8 +139,8 @@ data class SessionEventPatch(
     val seq: Long,
     /** Когда событие записано в журнал. */
     val at: Instant,
-    @field:Schema(type = "string", allowableValues = [SessionEventMethods.PATCH])
-    val method: SessionEventMethod,
+    @field:Schema(type = "string", allowableValues = [PatchEventMethods.PATCH])
+    val method: PatchEventMethod,
     @field:Schema(description = CODE_DESCRIPTION)
     val code: String,
     val data: PatchData,
@@ -169,8 +151,8 @@ data class SessionEventDelete(
     val seq: Long,
     /** Когда событие записано в журнал. */
     val at: Instant,
-    @field:Schema(type = "string", allowableValues = [SessionEventMethods.DELETE])
-    val method: SessionEventMethod,
+    @field:Schema(type = "string", allowableValues = [PatchEventMethods.DELETE])
+    val method: PatchEventMethod,
     @field:Schema(description = CODE_DESCRIPTION)
     val code: String,
     val data: DeleteData,
@@ -181,60 +163,13 @@ data class SessionEventInfo(
     val seq: Long,
     /** Когда событие записано в журнал. */
     val at: Instant,
-    @field:Schema(type = "string", allowableValues = [SessionEventMethods.INFO])
-    val method: SessionEventMethod,
+    @field:Schema(type = "string", allowableValues = [PatchEventMethods.INFO])
+    val method: PatchEventMethod,
     @field:Schema(description = CODE_DESCRIPTION)
     val code: String,
     @field:Schema(implementation = InfoData::class)
     val data: Map<String, Any?>,
 ) : SessionPatchEvent
-
-@Schema(description = "Данные PUT: путь и новое значение (любой JSON, в том числе null)")
-data class PutData(
-    @field:ArraySchema(schema = Schema(implementation = PathSegment::class), arraySchema = Schema(description = PATH_DESCRIPTION))
-    val path: List<Any>,
-    @field:Schema(description = "Новое значение: любой JSON, в том числе null. Схема — схема состояния игры по пути")
-    val value: Any?,
-)
-
-@Schema(description = "Данные PATCH: путь к объекту и поля для неглубокого слияния")
-data class PatchData(
-    @field:ArraySchema(schema = Schema(implementation = PathSegment::class), arraySchema = Schema(description = PATH_DESCRIPTION))
-    val path: List<Any>,
-    @field:Schema(description = "Поля, которые заменяют поля объекта по пути (вложенные значения — целиком, null — как значение)")
-    val value: Map<String, Any?>,
-)
-
-@Schema(description = "Данные DELETE: путь к полю объекта или элементу массива")
-data class DeleteData(
-    @field:ArraySchema(schema = Schema(implementation = PathSegment::class), arraySchema = Schema(description = PATH_DESCRIPTION))
-    val path: List<Any>,
-)
-
-/** Только схема OpenAPI: данные INFO — произвольный объект (в Kotlin — Map). */
-@Schema(
-    name = "InfoData",
-    description = "Данные INFO: произвольный объект для журнала и логов, состояние не меняет",
-    types = ["object"],
-    additionalProperties = Schema.AdditionalPropertiesValue.TRUE,
-)
-class InfoData
-
-/** Только схема OpenAPI: сегмент пути — строка (ключ объекта) или `{id}` (элемент массива по id). */
-@Schema(
-    name = "PathSegment",
-    description = "Сегмент пути: строка — ключ объекта, {id} — элемент массива с этим id (адрес не зависит от индекса)",
-    oneOf = [String::class, PathSegmentId::class],
-)
-class PathSegment
-
-/** Элемент массива по id. */
-data class PathSegmentId(
-    val id: String,
-)
-
-private const val PATH_DESCRIPTION = "Путь от корня документа {status, meta, state}: [] — весь документ, " +
-    "[\"state\", \"timer\"], [\"state\", \"players\", {\"id\": \"…\"}, \"moveOptions\"]"
 
 private const val CODE_DESCRIPTION = "Что произошло (см. описание SessionPatchEvent); набор кодов зависит от игры и её " +
     "версии, состояние по коду не меняется"

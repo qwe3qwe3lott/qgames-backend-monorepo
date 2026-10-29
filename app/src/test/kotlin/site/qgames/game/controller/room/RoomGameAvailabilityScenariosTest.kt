@@ -61,8 +61,8 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
 
     @ParameterizedTest(name = "{0}")
     @CsvSource(
-        "PUBLISHED, 200, ",
-        "HIDDEN, 200, ",
+        "PUBLISHED, 204, ",
+        "HIDDEN, 204, ",
         "NOT_PUBLISHED, 404, GAME_NOT_FOUND",
     )
     fun `game is started only for an available game`(status: String, httpStatus: Int, code: String?) {

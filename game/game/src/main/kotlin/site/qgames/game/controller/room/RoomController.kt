@@ -38,18 +38,21 @@ class RoomController(
         roomResponseMapper.toResponse(roomService.get(requestUserContext.userId(), roomId))
 
     /**
-     * Поток событий комнаты (SSE). Порядок подключения защищает от гонки снапшота и событий (у событий комнаты нет
-     * seq): подписчик регистрируется до транзакции подключения и отбрасывает события до своего маркера; маркер
-     * публикуется в той же транзакции после чтения снапшота; снапшот уходит первым, следом — события после маркера.
+     * Поток событий комнаты (SSE). Порядок защищён seq, как у потока партии: подписчик регистрируется до транзакции
+     * подключения и копит события; снапшот на seq уходит первым, следом — события новее снапшота.
      */
     override fun roomEvents(roomId: UUID): ResponseEntity<ResponseBodyEmitter> {
         val userId = requestUserContext.userId()
         val subscriber = roomStreamRegistry.register(roomId, userId)
         try {
-            val connection = roomService.connect(userId, roomId, subscriber.id)
+            val connection = roomService.connect(userId, roomId)
             // С этого момента закрытие подписчика отключает пользователя (удаляет подключение, выводит из комнаты).
             subscriber.connected(connection.connectionId)
-            subscriber.snapshot(RoomStreamEventType.SNAPSHOT.code, roomEventResponseMapper.toSnapshot(connection.details))
+            subscriber.snapshot(
+                connection.seq,
+                RoomStreamEventType.SNAPSHOT.code,
+                roomEventResponseMapper.toSnapshot(connection.seq, connection.details),
+            )
         } catch (e: Exception) {
             // Ошибка до начала потока: подписчик убирается, а если подключение уже создано — пользователь отключается
             // (registry.discard закрывает подписчика, закрытие вызывает disconnect). Иначе остался бы эмиттер, который
@@ -60,14 +63,13 @@ class RoomController(
         return SseResponses.stream(subscriber.emitter)
     }
 
-    override fun changeRole(roomId: UUID, request: ChangeRoleRequest): RoomResponse =
-        roomResponseMapper.toResponse(roomService.changeRole(requestUserContext.userId(), roomId, RoomRole.valueOf(request.role.name)))
+    override fun changeRole(roomId: UUID, request: ChangeRoleRequest) =
+        roomService.changeRole(requestUserContext.userId(), roomId, RoomRole.valueOf(request.role.name))
 
-    override fun transferOwnership(roomId: UUID, request: TransferOwnershipRequest): RoomResponse =
-        roomResponseMapper.toResponse(roomService.transferOwnership(requestUserContext.userId(), roomId, request.userId))
+    override fun transferOwnership(roomId: UUID, request: TransferOwnershipRequest) =
+        roomService.transferOwnership(requestUserContext.userId(), roomId, request.userId)
 
-    override fun startSession(roomId: UUID): RoomResponse =
-        roomResponseMapper.toResponse(roomSessionService.start(requestUserContext.userId(), roomId, seedFromHeader()))
+    override fun startSession(roomId: UUID) = roomSessionService.start(requestUserContext.userId(), roomId, seedFromHeader())
 
     override fun cancelSession(roomId: UUID) = roomSessionService.cancel(requestUserContext.userId(), roomId)
 

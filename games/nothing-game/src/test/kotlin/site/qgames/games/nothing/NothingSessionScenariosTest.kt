@@ -13,7 +13,7 @@ import org.junit.jupiter.params.provider.MethodSource
 import site.qgames.games.core.Decision
 import site.qgames.games.core.GameRules
 import site.qgames.games.core.MoveOutcome
-import site.qgames.games.core.PathSegment
+import site.qgames.common.docpatch.PathSegment
 import site.qgames.games.core.PlayerClock
 import site.qgames.games.core.Result
 import site.qgames.games.core.ResultOutcome
@@ -21,7 +21,7 @@ import site.qgames.games.core.ResultState
 import site.qgames.games.core.SessionDocument
 import site.qgames.games.core.SessionEngine
 import site.qgames.games.core.SessionEvent
-import site.qgames.games.core.SessionEventMethod
+import site.qgames.common.docpatch.PatchMethod
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SessionStatus
@@ -49,7 +49,7 @@ class NothingSessionScenariosTest {
         val started = journal(TimeControl(30, 0)).single()
 
         assertThat(started.code).isEqualTo("session-started")
-        assertThat(started.method).isEqualTo(SessionEventMethod.PUT)
+        assertThat(started.method).isEqualTo(PatchMethod.PUT)
         assertThat(started.path).isEmpty()
         assertThat(started.value).isEqualTo(
             mapOf(
@@ -88,11 +88,11 @@ class NothingSessionScenariosTest {
         val events = accepted(fold(journal), ALICE, NOW.plusSeconds(1))
 
         assertThat(events.map { Triple(it.code, it.method, it.path) }).containsExactly(
-            Triple("player-passed", SessionEventMethod.PATCH, listOf(key("state"))),
-            Triple("turn-changed", SessionEventMethod.PUT, listOf(key("state"), key("turns"))),
-            Triple("move-options-changed", SessionEventMethod.PUT, playerOptions(ALICE)),
-            Triple("move-options-changed", SessionEventMethod.PUT, playerOptions(BOB)),
-            Triple("clock-switched", SessionEventMethod.PUT, listOf(key("state"), key("timer"))),
+            Triple("player-passed", PatchMethod.PATCH, listOf(key("state"))),
+            Triple("turn-changed", PatchMethod.PUT, listOf(key("state"), key("turns"))),
+            Triple("move-options-changed", PatchMethod.PUT, playerOptions(ALICE)),
+            Triple("move-options-changed", PatchMethod.PUT, playerOptions(BOB)),
+            Triple("clock-switched", PatchMethod.PUT, listOf(key("state"), key("timer"))),
         )
         assertThat(events.map { it.value }).containsExactly(
             mapOf("moves" to 1),
@@ -116,7 +116,7 @@ class NothingSessionScenariosTest {
         val events = accepted(fold(journal), ALICE, NOW)
 
         assertThat(events.map { it.code }).containsExactly("player-passed", "turn-changed", "move-options-changed", "session-finished")
-        assertThat(events.last().method).isEqualTo(SessionEventMethod.PATCH)
+        assertThat(events.last().method).isEqualTo(PatchMethod.PATCH)
         assertThat(events.last().path).isEmpty()
         assertThat(events.last().value).isEqualTo(mapOf("status" to "FINISHED"))
         val finished = fold(journal + events).session
@@ -213,7 +213,7 @@ class NothingSessionScenariosTest {
 
         val passed = events.first()
         assertThat(passed.code).isEqualTo("player-passed")
-        assertThat(passed.method).isEqualTo(SessionEventMethod.INFO)
+        assertThat(passed.method).isEqualTo(PatchMethod.INFO)
         assertThat(passed.path).isEmpty()
         assertThat(passed.value).isEqualTo(mapOf("playerId" to ALICE.toString(), "timeout" to true))
         assertThat(events.last().code).isEqualTo("clock-switched")
@@ -232,7 +232,7 @@ class NothingSessionScenariosTest {
 
         val paused = (engine.pause(fold(journal), NOW.plusSeconds(5)) as TimerOutcome.Changed).events
         assertThat(paused.map { Triple(it.code, it.method, it.path) })
-            .containsExactly(Triple("game-paused", SessionEventMethod.PATCH, listOf(key("state"), key("timer"))))
+            .containsExactly(Triple("game-paused", PatchMethod.PATCH, listOf(key("state"), key("timer"))))
         assertThat(paused.single().value).isEqualTo(mapOf("status" to "PAUSED", "pausedAt" to "2026-10-21T10:00:05Z"))
         journal += paused
         assertThat(fold(journal).session.state.timer).isEqualTo(TimerState(TimerStatus.PAUSED, NOW.plusSeconds(30), NOW.plusSeconds(5), clocks))
@@ -242,7 +242,7 @@ class NothingSessionScenariosTest {
 
         val resumed = (engine.resume(fold(journal), NOW.plusSeconds(65)) as TimerOutcome.Changed).events
         assertThat(resumed.single().code).isEqualTo("game-resumed")
-        assertThat(resumed.single().method).isEqualTo(SessionEventMethod.PATCH)
+        assertThat(resumed.single().method).isEqualTo(PatchMethod.PATCH)
         journal += resumed
         assertThat(fold(journal).session.state.timer).isEqualTo(TimerState(TimerStatus.RUNNING, NOW.plusSeconds(90), null, clocks))
         assertThat(engine.resume(fold(journal), NOW.plusSeconds(66))).isEqualTo(TimerOutcome.Unchanged)

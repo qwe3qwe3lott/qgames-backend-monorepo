@@ -52,13 +52,14 @@ interface RoomApi {
     @Operation(
         summary = "Поток событий комнаты",
         description = "Server-Sent Events (EventSource с withCredentials): сообщения `event: <тип>` + `data: <json>`, " +
-            "без `id:`, раз в ~5 с комментарий `: ping`. Первое сообщение — snapshot: комната целиком для этого " +
-            "пользователя, как в GET /api/rooms/{roomId}; так же после каждого переподключения. Дальше — users-changed " +
-            "(владелец и полный список участников: вход, выход, уход, смена роли, ника, владельца), settings-changed " +
-            "(настройки комнаты), session-changed (старт, отмена, конец партии — перечитать комнату через GET и " +
-            "подписаться на поток партии session.id; пауза и продолжение — game-paused и game-resumed потока партии) " +
-            "и room-deleted (комната удалена, после него сервер закрывает поток). События несут полное " +
-            "значение, повтор безопасен. Схема пары тип + данные — RoomStreamEvent ({type, data}, дискриминатор type).\n\n" +
+            "без `id:`, раз в ~5 с комментарий `: ping`. Первое сообщение — snapshot: seq и комната целиком (документ " +
+            "потока, как в GET /api/rooms/{roomId}); так же после каждого переподключения. Дальше — события-патчи " +
+            "документа `{seq, at, method, code, data}` (RoomPatchEvent) с непрерывным seq, тип сообщения — метод в " +
+            "нижнем регистре: клиент применяет их по порядку общим применителем (тем же, что у партии), не зная кодов. " +
+            "Разрыв seq или неприменимый патч — рассинхронизация: клиент переподключается за свежим снапшотом. " +
+            "room-deleted (INFO) — последнее событие, после него сервер закрывает поток. Пауза и продолжение партии — " +
+            "game-paused и game-resumed потока партии. Схема пары тип + данные — RoomStreamEvent ({type, data}, " +
+            "дискриминатор type).\n\n" +
             "Открытый поток и есть нахождение в комнате: подключение входит в комнату (игрок идущей партии возвращается " +
             "на своё место; иначе игрок, если партия не идёт и есть место, или наблюдатель; в комнате без владельца — " +
             "владелец; повторное подключение роль и владение не меняет). Наблюдателей не больше лимита комнаты " +
@@ -98,10 +99,11 @@ interface RoomApi {
         summary = "Сменить роль",
         description = "Стать игроком или наблюдателем. Только между партиями; игроком — если есть свободное место, " +
             "наблюдателем — если наблюдателей меньше лимита комнаты (settings.room.maxSpectators). " +
-            "Владелец тоже может стать наблюдателем, владение при этом сохраняется.",
+            "Владелец тоже может стать наблюдателем, владение при этом сохраняется. Ответ без тела: изменение приходит " +
+            "событием role-changed потока комнаты.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Роль изменена"),
+        ApiResponse(responseCode = "204", description = "Роль изменена"),
         ApiResponse(responseCode = "400", description = "Не указана роль (VALIDATION_ERROR)"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(responseCode = "403", description = "Пользователь не в комнате (NOT_ROOM_MEMBER)"),
@@ -116,16 +118,18 @@ interface RoomApi {
         ),
     )
     @PutExchange("/{roomId}/role")
-    fun changeRole(@PathVariable roomId: UUID, @Valid @RequestBody request: ChangeRoleRequest): RoomResponse
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun changeRole(@PathVariable roomId: UUID, @Valid @RequestBody request: ChangeRoleRequest)
 
     @Operation(
         summary = "Передать владение",
         description = "Владелец назначает владельцем другого присутствующего участника комнаты. Работает в любой момент, " +
             "в том числе во время партии и на паузе. Отсутствующий игрок партии (leaving = true) владельцем не " +
-            "становится. Передача самому себе ничего не меняет. В ответе комната, участники получают users-changed.",
+            "становится. Передача самому себе ничего не меняет. Ответ без тела: изменение приходит событием " +
+            "owner-changed потока комнаты.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Владение передано"),
+        ApiResponse(responseCode = "204", description = "Владение передано"),
         ApiResponse(responseCode = "400", description = "Не указан новый владелец (VALIDATION_ERROR)"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(
@@ -142,17 +146,18 @@ interface RoomApi {
         ),
     )
     @PutExchange("/{roomId}/owner")
-    fun transferOwnership(@PathVariable roomId: UUID, @Valid @RequestBody request: TransferOwnershipRequest): RoomResponse
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun transferOwnership(@PathVariable roomId: UUID, @Valid @RequestBody request: TransferOwnershipRequest)
 
     @Operation(
         summary = "Начать партию",
         description = "Стартует партию с текущими игроками комнаты (места — по порядку входа). Только владелец, " +
             "число игроков должно укладываться в ограничения игры (minPlayers–maxPlayers). Игра должна быть доступна " +
-            "(опубликована или скрыта из каталога). В ответе комната; по session.id клиент подписывается на поток " +
-            "партии.",
+            "(опубликована или скрыта из каталога). Ответ без тела: поток комнаты получает session-started, по " +
+            "session.id клиент подписывается на поток партии.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Партия началась"),
+        ApiResponse(responseCode = "204", description = "Партия началась"),
         ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
         ApiResponse(responseCode = "403", description = "Пользователь не владелец (NOT_ROOM_OWNER)"),
         ApiResponse(
@@ -166,13 +171,14 @@ interface RoomApi {
         ),
     )
     @PostExchange("/{roomId}/session")
-    fun startSession(@PathVariable roomId: UUID): RoomResponse
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun startSession(@PathVariable roomId: UUID)
 
     @Operation(
         summary = "Отменить партию",
         description = "Завершает идущую партию без результата и возвращает комнату в ожидание. Работает и на паузе. " +
             "Только владелец. Ответ без тела: поток партии получает session-cancelled и закрывается, поток комнаты — " +
-            "session-changed.",
+            "session-ended.",
     )
     @ApiResponses(
         ApiResponse(responseCode = "204", description = "Партия отменена"),

@@ -8,10 +8,9 @@ import java.util.UUID
  * Один открытый поток комнаты (SSE) пользователя [userId]. Живёт, пока открыт поток; состояние только в памяти
  * процесса (оно привязано к соединению). Запись — через [SseWriter].
  *
- * Порядок событий защищён маркером подключения, потому что у событий комнаты нет seq:
- * 1. подписчик создаётся до транзакции подключения и до своего маркера отбрасывает события — они уже есть в снапшоте;
- * 2. после маркера события копятся, пока не отправлен снапшот;
- * 3. снапшот уходит первым, за ним накопленное, дальше события идут сразу.
+ * Порядок защищён seq, как у потока партии: подписчик регистрируется до транзакции подключения, события до снапшота
+ * копятся, снапшот на seq N уходит первым, из накопленного и последующих событий отбрасываются те, что с seq ≤ N (они
+ * уже в снапшоте). Последнее событие (комната удалена) закрывает поток.
  *
  * Закрытие ([close]) идемпотентно, а [onClose] (отключение от комнаты) вызывается ровно один раз — когда закрыт поток
  * и создано подключение, в каком бы порядке это ни произошло.
@@ -23,17 +22,13 @@ class RoomStreamSubscriber(
     private val onClose: (RoomStreamSubscriber) -> Unit,
 ) {
 
-    /** Id подписчика в маркере подключения. */
-    val id: UUID = UUID.randomUUID()
-
     private val lock = Any()
     private val closeLock = Any()
     private var closed = false
-    private var markerReceived = false
-    private var snapshotSent = false
-    private val pending = mutableListOf<() -> Unit>()
+    private var snapshotSeq: Long? = null
+    private val pending = mutableListOf<Pending>()
 
-    private val writer = SseWriter("room-stream-$id", emitter, ::closed)
+    private val writer = SseWriter("room-stream-${UUID.randomUUID()}", emitter, ::closed)
 
     val emitter: SseEmitter
         get() = writer.emitter
@@ -57,31 +52,20 @@ class RoomStreamSubscriber(
         }
     }
 
-    /** Пришёл собственный маркер подключения: дальше события не отбрасываются. */
-    fun markerReceived() = synchronized(lock) { markerReceived = true }
-
-    /** Событие комнаты: до маркера отбрасывается, до снапшота копится. */
-    fun event(type: String, data: Any) = deliver { writer.event(type, data) }
-
-    /** Последнее событие потока: после него поток закрывается (комната удалена). */
-    fun lastEvent(type: String, data: Any) {
-        val delivered = synchronized(lock) {
-            if (markerReceived) {
-                deliver { writer.event(type, data) }
-                deliver { writer.complete() }
-            }
-            markerReceived
-        }
-        if (!delivered) {
-            close()
+    /** Событие [seq]: до снапшота копится, после — уходит, если оно новее снапшота. [last] — закрыть поток после него. */
+    fun event(seq: Long, type: String, data: Any, last: Boolean) = synchronized(lock) {
+        val sent = snapshotSeq
+        when {
+            sent == null -> pending += Pending(seq, type, data, last)
+            seq > sent -> send(type, data, last)
         }
     }
 
-    /** Снапшот комнаты — первое сообщение потока; следом уходит накопленное после маркера. */
-    fun snapshot(type: String, data: Any) = synchronized(lock) {
+    /** Снапшот на seq [seq] — первое сообщение потока; следом уходит накопленное новее снапшота. */
+    fun snapshot(seq: Long, type: String, data: Any) = synchronized(lock) {
         writer.event(type, data)
-        snapshotSent = true
-        pending.forEach { it() }
+        snapshotSeq = seq
+        pending.filter { it.seq > seq }.forEach { send(it.type, it.data, it.last) }
         pending.clear()
     }
 
@@ -90,6 +74,11 @@ class RoomStreamSubscriber(
 
     /** Закрывает поток и отключает пользователя от комнаты. Повторный вызов ничего не делает. */
     fun close() = writer.close()
+
+    private fun send(type: String, data: Any, last: Boolean) {
+        writer.event(type, data)
+        if (last) writer.complete()
+    }
 
     /** Поток закрыт (сервером или клиентом): если подключение уже создано, пользователь отключается. */
     private fun closed() {
@@ -102,11 +91,5 @@ class RoomStreamSubscriber(
         }
     }
 
-    private fun deliver(send: () -> Unit) = synchronized(lock) {
-        when {
-            !markerReceived -> Unit
-            !snapshotSent -> pending += send
-            else -> send()
-        }
-    }
+    private data class Pending(val seq: Long, val type: String, val data: Any, val last: Boolean)
 }

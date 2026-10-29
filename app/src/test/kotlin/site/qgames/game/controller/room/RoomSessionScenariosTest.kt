@@ -238,7 +238,7 @@ class RoomSessionScenariosTest : GameIntegrationTest() {
         assertThat(room(roomId, ALICE).status).isEqualTo(RoomStatus.IN_GAME)
         assertThat(fullState(roomId).state.players.map { it.id }).containsExactly(ALICE, BOB)
 
-        assertThat(join(BOB, roomId).members.single { it.userId == BOB }.role).isEqualTo(RoomRole.PLAYER)
+        assertThat(join(BOB, roomId).members.single { it.id == BOB }.role).isEqualTo(RoomRole.PLAYER)
         pass(BOB, roomId)
         assertThat(fullState(roomId).state.turns.round).isEqualTo(2)
     }

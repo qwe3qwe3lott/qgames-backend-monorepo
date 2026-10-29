@@ -1,10 +1,13 @@
 package site.qgames.games.core
 
+import site.qgames.common.docpatch.PatchMethod
+import site.qgames.common.docpatch.PatchPaths
+import site.qgames.common.docpatch.PathSegment
 import java.util.UUID
 
 /**
  * Построители событий ([SessionEvent]) и коды событий платформы. Модули и игры только порождают события через
- * [put], [patch], [delete] и [info]; применяет их один общий [SessionPatch]. Значение может быть любым объектом —
+ * [put], [patch], [delete] и [info]; применяет их один общий DocumentPatch. Значение может быть любым объектом —
  * [SessionEngine] переводит его в JSON-дерево.
  *
  * Пути собирает [path]: строка — ключ объекта, [id] — элемент массива по id. Пути состояния начинаются с [STATE].
@@ -26,30 +29,24 @@ object SessionEvents {
     /** Ключ состояния в документе партии. */
     const val STATE = "state"
 
-    fun put(code: String, path: List<PathSegment>, value: Any?) = SessionEvent(code, SessionEventMethod.PUT, path, value)
+    fun put(code: String, path: List<PathSegment>, value: Any?) = SessionEvent(code, PatchMethod.PUT, path, value)
 
     /** [value] — объект: поля сливаются с объектом по пути на один уровень. */
     fun patch(code: String, path: List<PathSegment>, value: Map<String, Any?>) =
-        SessionEvent(code, SessionEventMethod.PATCH, path, value)
+        SessionEvent(code, PatchMethod.PATCH, path, value)
 
-    fun delete(code: String, path: List<PathSegment>) = SessionEvent(code, SessionEventMethod.DELETE, path, null)
+    fun delete(code: String, path: List<PathSegment>) = SessionEvent(code, PatchMethod.DELETE, path, null)
 
     /** Событие для журнала, документ не меняет. [data] — объект. */
-    fun info(code: String, data: Map<String, Any?>) = SessionEvent(code, SessionEventMethod.INFO, emptyList(), data)
+    fun info(code: String, data: Map<String, Any?>) = SessionEvent(code, PatchMethod.INFO, emptyList(), data)
 
     /** Путь: строка — ключ объекта, [PathSegment] — как есть (например, [id]). */
-    fun path(vararg segments: Any): List<PathSegment> = segments.map {
-        when (it) {
-            is String -> PathSegment.Key(it)
-            is PathSegment -> it
-            else -> throw IllegalArgumentException("Path segment must be a String or a PathSegment, got ${it::class.qualifiedName}")
-        }
-    }
+    fun path(vararg segments: Any): List<PathSegment> = PatchPaths.path(*segments)
 
     /** Элемент массива по id. */
-    fun id(id: UUID): PathSegment = PathSegment.Id(id.toString())
+    fun id(id: UUID): PathSegment = PatchPaths.id(id)
 
-    fun id(id: String): PathSegment = PathSegment.Id(id)
+    fun id(id: String): PathSegment = PatchPaths.id(id)
 
     fun finished() = patch(SESSION_FINISHED, emptyList(), mapOf("status" to SessionStatus.FINISHED))
 

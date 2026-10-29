@@ -107,25 +107,37 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         val union = schemas.path("RoomStreamEvent")
         assertThat(union.path("discriminator").path("propertyName").asString()).isEqualTo("type")
         assertThat(union.has("properties")).isFalse()
-        val variants = mapOf(
-            "snapshot" to "RoomSnapshotEvent",
-            "users-changed" to "RoomUsersChangedEvent",
-            "settings-changed" to "RoomSettingsChangedEvent",
-            "session-changed" to "RoomSessionChangedEvent",
-            "room-deleted" to "RoomDeletedEvent",
-        )
         assertThat(strings(union.path("oneOf")) { it.path("\$ref") })
-            .containsExactlyInAnyOrderElementsOf(variants.values.map { "#/components/schemas/$it" })
-        variants.forEach { (type, variant) ->
-            assertThat(union.path("discriminator").path("mapping").path(type).asString()).isEqualTo("#/components/schemas/$variant")
+            .containsExactly("#/components/schemas/RoomSnapshotEvent", "#/components/schemas/RoomPatchStreamEvent")
+        val variants = mapOf(
+            "RoomSnapshotEvent" to (listOf("snapshot") to "RoomSnapshotDto"),
+            "RoomPatchStreamEvent" to (listOf("put", "patch", "delete", "info") to "RoomPatchEvent"),
+        )
+        variants.forEach { (variant, typesAndData) ->
+            val (types, data) = typesAndData
+            types.forEach { type ->
+                assertThat(union.path("discriminator").path("mapping").path(type).asString()).isEqualTo("#/components/schemas/$variant")
+            }
             val schema = schemas.path(variant)
             assertThat(schema.has("allOf")).isFalse()
-            assertThat(strings(schema.path("properties").path("type").path("enum"))).containsExactly(type)
+            assertThat(strings(schema.path("properties").path("type").path("enum"))).containsExactlyInAnyOrderElementsOf(types)
             assertThat(strings(schema.path("required"))).contains("type", "data")
+            assertThat(schema.path("properties").path("data").path("\$ref").asString()).isEqualTo("#/components/schemas/$data")
         }
-        assertThat(schemas.path("RoomSnapshotEvent").path("properties").path("data").path("\$ref").asString())
-            .isEqualTo("#/components/schemas/RoomResponse")
-        assertThat(schemas.path("EmptyEventDataDto").path("type").asString()).isEqualTo("object")
+        assertThat(strings(schemas.path("RoomSnapshotDto").path("required"))).containsExactlyInAnyOrder("seq", "room")
+        val patch = schemas.path("RoomPatchEvent")
+        assertThat(patch.path("discriminator").path("propertyName").asString()).isEqualTo("method")
+        assertThat(strings(patch.path("oneOf")) { it.path("\$ref") }).containsExactly(
+            "#/components/schemas/RoomEventPut",
+            "#/components/schemas/RoomEventPatch",
+            "#/components/schemas/RoomEventDelete",
+            "#/components/schemas/RoomEventInfo",
+        )
+        assertThat(patch.path("description").asString()).contains("member-joined", "owner-changed", "session-ended", "room-deleted")
+        assertThat(strings(schemas.path("RoomMemberResponse").path("required"))).contains("id").doesNotContain("userId", "owner")
+        assertThat(schemas.propertyNames().toList()).doesNotContain(
+            "RoomUsersChangedEvent", "RoomSettingsChangedEvent", "RoomSessionChangedEvent", "RoomDeletedEvent", "EmptyEventDataDto",
+        )
         assertThat(schemas.has("ResponseBodyEmitter")).isFalse()
     }
 
@@ -288,14 +300,16 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
             "/api/rooms/{roomId}/session/pause" to "post",
             "/api/rooms/{roomId}/session/resume" to "post",
             "/api/rooms/{roomId}/session" to "delete",
+            "/api/rooms/{roomId}/session" to "post",
+            "/api/rooms/{roomId}/role" to "put",
+            "/api/rooms/{roomId}/owner" to "put",
+            "/api/games/{gameCode}/rooms/{roomId}/settings" to "put",
         ).forEach { (path, method) ->
             val responses = paths.path(path).path(method).path("responses")
             assertThat(responses.has("204")).describedAs("$method $path").isTrue()
             assertThat(responses.has("200")).describedAs("$method $path").isFalse()
             assertThat(responses.path("204").has("content")).describedAs("$method $path").isFalse()
         }
-        assertThat(paths.path("/api/rooms/{roomId}/session").path("post").path("responses").path("200").path("content")
-            .path("application/json").path("schema").path("\$ref").asString()).isEqualTo("#/components/schemas/RoomResponse")
         val schemas = docs.path("components").path("schemas")
         assertThat(schemas.path("SessionResponse").path("properties").propertyNames().toList()).containsExactlyInAnyOrder("id", "status")
         assertThat(schemas.path("MoveRequest").path("properties").propertyNames().toList()).containsExactlyInAnyOrder("type", "data")

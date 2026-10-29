@@ -36,7 +36,7 @@ class RoomPresenceScenariosTest : GameIntegrationTest() {
 
         openStream(BOB, roomId)
 
-        val bob = room(roomId, BOB).members.single { it.userId == BOB }
+        val bob = room(roomId, BOB).members.single { it.id == BOB }
         assertThat(bob.role).isEqualTo(RoomRole.PLAYER)
         assertThat(bob.leaving).isFalse()
         assertThat(connections(roomId, BOB)).isEqualTo(1)
@@ -58,7 +58,7 @@ class RoomPresenceScenariosTest : GameIntegrationTest() {
 
         assertThat(isMember(roomId, BOB)).isFalse()
         assertThat(connections(roomId, BOB)).isZero()
-        assertThat(room(roomId, ALICE).members.map { it.userId }).containsExactly(ALICE)
+        assertThat(room(roomId, ALICE).members.map { it.id }).containsExactly(ALICE)
     }
 
     @Test

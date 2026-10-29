@@ -63,10 +63,11 @@ interface GameRoomApi {
             "наблюдателей не выводит. simple и advanced взаимоисключающие и меняются только между партиями: simple " +
             "переводит комнату в simple-режим (advanced выводится из simple), advanced — в advanced-режим. Идущую партию " +
             "настройки не меняют — у неё свой снимок advanced. Код игры в пути должен совпадать с игрой комнаты. Ошибки " +
-            "настроек отдаются по полям тела (например, room.maxSpectators, simple.rounds, advanced.timeControl.baseSeconds).",
+            "настроек отдаются по полям тела (например, room.maxSpectators, simple.rounds, advanced.timeControl.baseSeconds). " +
+            "Ответ без тела: изменение приходит событием settings-changed потока комнаты.",
     )
     @ApiResponses(
-        ApiResponse(responseCode = "200", description = "Настройки изменены"),
+        ApiResponse(responseCode = "204", description = "Настройки изменены"),
         ApiResponse(
             responseCode = "400",
             description = "Настройки не подходят игре, переданы и simple, и advanced, не передано ни одной группы или " +
@@ -88,12 +89,13 @@ interface GameRoomApi {
         ),
     )
     @PutExchange("/{gameCode}/rooms/{roomId}/settings")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     fun updateRoomSettings(
         @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: UpdateRoomSettingsRequest,
-    ): RoomResponse
+    )
 
     @Operation(
         summary = "Сделать ход",

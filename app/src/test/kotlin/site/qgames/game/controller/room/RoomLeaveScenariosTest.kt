@@ -57,7 +57,7 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
         val room = room(roomId, ALICE)
         assertThat(room.ownerId).isEqualTo(ALICE)
         assertThat(room.members.map { it.leaving }).containsOnly(false)
-        assertThat(awaitEvents(stream, eventsBefore + 1).last().first).isEqualTo("users-changed")
+        assertThat(awaitCodes(stream, eventsBefore + 1, eventsBefore)).containsExactly("member-left")
     }
 
     @Test
@@ -68,7 +68,7 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
 
         val room = join(DAVE, roomId)
 
-        assertThat(room.members.map { it.userId to it.role }).containsExactly(
+        assertThat(room.members.map { it.id to it.role }).containsExactly(
             ALICE to RoomRole.PLAYER, BOB to RoomRole.PLAYER, CAROL to RoomRole.PLAYER, EVE to RoomRole.PLAYER, DAVE to RoomRole.SPECTATOR,
         )
     }
@@ -84,8 +84,8 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
         assertThat(isMember(roomId, ALICE)).isFalse()
         val room = room(roomId, BOB)
         assertThat(room.ownerId).isEqualTo(BOB)
-        assertThat(room.members.map { it.userId to it.owner }).containsExactly(BOB to true)
-        assertThat(awaitEvents(stream, eventsBefore + 1).last().first).isEqualTo("users-changed")
+        assertThat(room.members.map { it.id }).containsExactly(BOB)
+        assertThat(awaitCodes(stream, eventsBefore + 2, eventsBefore)).containsExactly("member-left", "owner-changed")
     }
 
     @Test
@@ -96,7 +96,7 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
         val room = join(ALICE, roomId)
 
         assertThat(room.ownerId).isEqualTo(BOB)
-        assertThat(room.members.single { it.userId == ALICE }.owner).isFalse()
+        assertThat(room.members.map { it.id }).contains(ALICE)
     }
 
     // --- Создатель комнаты ---
@@ -110,7 +110,7 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
         val room = join(ALICE, created.id)
 
         assertThat(room.ownerId).isEqualTo(ALICE)
-        assertThat(room.members.map { it.userId to it.role }).containsExactly(ALICE to RoomRole.PLAYER)
+        assertThat(room.members.map { it.id to it.role }).containsExactly(ALICE to RoomRole.PLAYER)
         assertThat(emptySince(created.id)).isNull()
     }
 
@@ -143,12 +143,12 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
         leave(BOB, roomId)
 
         assertThat(leftAt(roomId, BOB)).isNotNull()
-        assertThat(room(roomId, ALICE).members.map { it.userId to it.leaving }).containsExactly(ALICE to false, BOB to true)
+        assertThat(room(roomId, ALICE).members.map { it.id to it.leaving }).containsExactly(ALICE to false, BOB to true)
         emptyRoomCleanupJob.run()
         assertThat(isMember(roomId, BOB)).isTrue()
 
         val returned = join(BOB, roomId)
-        assertThat(returned.members.map { Triple(it.userId, it.role, it.leaving) })
+        assertThat(returned.members.map { Triple(it.id, it.role, it.leaving) })
             .containsExactly(Triple(ALICE, RoomRole.PLAYER, false), Triple(BOB, RoomRole.PLAYER, false))
         assertThat(fullState(roomId).state.players.map { it.id }).containsExactly(ALICE, BOB)
     }
@@ -171,7 +171,7 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
         assertThat(leftAt(roomId, ALICE)).isNotNull()
         val room = room(roomId, BOB)
         assertThat(room.ownerId).isEqualTo(BOB)
-        assertThat(room.members.map { Triple(it.userId, it.role, it.leaving) })
+        assertThat(room.members.map { Triple(it.id, it.role, it.leaving) })
             .containsExactly(Triple(ALICE, RoomRole.PLAYER, true), Triple(BOB, RoomRole.PLAYER, false))
         assertThat(fullState(roomId).state.players.map { it.id }).containsExactly(ALICE, BOB)
     }
@@ -188,9 +188,8 @@ class RoomLeaveScenariosTest : GameIntegrationTest() {
 
         val room = room(roomId, ALICE)
         assertThat(room.status).isEqualTo(RoomStatus.WAITING)
-        assertThat(room.members.map { it.userId to it.leaving }).containsExactly(ALICE to false, BOB to false)
-        assertThat(awaitEvents(stream, eventsBefore + 2).drop(eventsBefore).map { it.first })
-            .containsExactly("session-changed", "users-changed")
+        assertThat(room.members.map { it.id to it.leaving }).containsExactly(ALICE to false, BOB to false)
+        assertThat(awaitCodes(stream, eventsBefore + 2, eventsBefore)).containsExactly("session-ended", "member-left")
     }
 
     @Test

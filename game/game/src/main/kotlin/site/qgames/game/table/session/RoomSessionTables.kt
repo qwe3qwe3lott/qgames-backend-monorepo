@@ -36,7 +36,7 @@ object RoomSessionPlayerTable : Table("room_session_player") {
 object RoomSessionEventTable : Table("room_session_event") {
     val sessionId = javaUUID("session_id")
     val seq = long("seq")
-    /** Имя SessionEventMethod. */
+    /** Имя PatchMethod. */
     val method = varchar("method", 8)
     val code = varchar("code", 64)
     /** JSON данных события в форме кадра потока: PUT и PATCH — {path, value}, DELETE — {path}, INFO — объект. */

@@ -11,6 +11,7 @@ rootProject.name = "qgames-backend-monorepo"
 include(":libs:common-exception")
 include(":libs:common-web")
 include(":libs:common-test")
+include(":libs:doc-patch")
 
 // Правила игр: чистый Kotlin без инфраструктуры (см. CLAUDE.md)
 include(":games:game-core")

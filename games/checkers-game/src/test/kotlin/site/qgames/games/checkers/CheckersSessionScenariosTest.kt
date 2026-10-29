@@ -14,13 +14,13 @@ import site.qgames.games.checkers.CheckersColor.WHITE
 import site.qgames.games.core.GameRules
 import site.qgames.games.core.MoveOption
 import site.qgames.games.core.MoveOutcome
-import site.qgames.games.core.PathSegment
+import site.qgames.common.docpatch.PathSegment
 import site.qgames.games.core.ResultOutcome
 import site.qgames.games.core.ResultState
 import site.qgames.games.core.SessionDocument
 import site.qgames.games.core.SessionEngine
 import site.qgames.games.core.SessionEvent
-import site.qgames.games.core.SessionEventMethod
+import site.qgames.common.docpatch.PatchMethod
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionStatus
 import site.qgames.games.core.TimeControl
@@ -336,13 +336,13 @@ class CheckersSessionScenariosTest {
         val events = accepted(journal, white, 3 to 3, 4 to 4)
 
         assertThat(events.map { Triple(it.code, it.method, it.path) }).containsExactly(
-            Triple("piece-moved", SessionEventMethod.PATCH, piecePath("w1")),
-            Triple("last-move-changed", SessionEventMethod.PUT, listOf(key("state"), key("lastMove"))),
-            Triple("counters-changed", SessionEventMethod.PATCH, listOf(key("state"))),
-            Triple("position-recorded", SessionEventMethod.PUT, listOf(key("state"), key("positionHistory"))),
-            Triple("turn-changed", SessionEventMethod.PUT, listOf(key("state"), key("turns"))),
-            Triple("move-options-changed", SessionEventMethod.PUT, playerOptions(ALICE)),
-            Triple("move-options-changed", SessionEventMethod.PUT, playerOptions(BOB)),
+            Triple("piece-moved", PatchMethod.PATCH, piecePath("w1")),
+            Triple("last-move-changed", PatchMethod.PUT, listOf(key("state"), key("lastMove"))),
+            Triple("counters-changed", PatchMethod.PATCH, listOf(key("state"))),
+            Triple("position-recorded", PatchMethod.PUT, listOf(key("state"), key("positionHistory"))),
+            Triple("turn-changed", PatchMethod.PUT, listOf(key("state"), key("turns"))),
+            Triple("move-options-changed", PatchMethod.PUT, playerOptions(ALICE)),
+            Triple("move-options-changed", PatchMethod.PUT, playerOptions(BOB)),
         )
         assertThat(events[0].value).isEqualTo(mapOf("square" to listOf(4, 4)))
         assertThat(events[1].value).isEqualTo(mapOf("pieceId" to "w1", "path" to listOf(listOf(3, 3), listOf(4, 4)), "captured" to emptyList<Any>()))
@@ -376,9 +376,9 @@ class CheckersSessionScenariosTest {
         val events = accepted(journal, white, 3 to 3, 5 to 5)
 
         assertThat(events.take(3).map { Triple(it.code, it.method, it.path) }).containsExactly(
-            Triple("piece-moved", SessionEventMethod.PATCH, piecePath("w1")),
-            Triple("piece-captured", SessionEventMethod.DELETE, piecePath("b1")),
-            Triple("last-move-changed", SessionEventMethod.PUT, listOf(key("state"), key("lastMove"))),
+            Triple("piece-moved", PatchMethod.PATCH, piecePath("w1")),
+            Triple("piece-captured", PatchMethod.DELETE, piecePath("b1")),
+            Triple("last-move-changed", PatchMethod.PUT, listOf(key("state"), key("lastMove"))),
         )
         assertThat(events[2].value).isEqualTo(
             mapOf("pieceId" to "w1", "path" to listOf(listOf(3, 3), listOf(5, 5)), "captured" to listOf(listOf(4, 4))),
@@ -515,7 +515,7 @@ class CheckersSessionScenariosTest {
         val events = (engine.move(rules, fold(journal), black, CheckersMove("RESIGN"), NOW) as MoveOutcome.Accepted).events
 
         assertThat(events.first().code).isEqualTo("player-resigned")
-        assertThat(events.first().method).isEqualTo(SessionEventMethod.INFO)
+        assertThat(events.first().method).isEqualTo(PatchMethod.INFO)
         assertThat(events.first().value).isEqualTo(mapOf("playerId" to black.toString()))
         assertThat(events.map { it.code }.takeLast(2)).containsExactly("timer-stopped", "session-finished")
         assertThat(fold(journal + events).session.state.result).isEqualTo(ResultState(ResultOutcome.WIN, listOf(white), "RESIGN"))
@@ -528,7 +528,7 @@ class CheckersSessionScenariosTest {
         val events = engine.timeout(rules, fold(journal), NOW.plusSeconds(10))
 
         assertThat(events.first().code).isEqualTo("move-timed-out")
-        assertThat(events.first().method).isEqualTo(SessionEventMethod.INFO)
+        assertThat(events.first().method).isEqualTo(PatchMethod.INFO)
         assertThat(events.first().value).isEqualTo(mapOf("playerId" to white.toString()))
         assertThat(events.map { it.code }.takeLast(2)).containsExactly("timer-stopped", "session-finished")
         val finished = fold(journal + events).session

@@ -1,5 +1,6 @@
 package site.qgames.games.core
 
+import site.qgames.common.docpatch.DocumentPatch
 import java.time.Instant
 import java.util.UUID
 
@@ -9,7 +10,7 @@ import java.util.UUID
  *
  * - [start] — первое событие журнала `session-started` (`PUT [] {status, meta, state}`);
  * - [move], [timeout], [pause], [resume], [cancel] — события изменения по полному документу партии;
- * - состояние — свёртка событий общим применителем [SessionPatch] ([fold]) и для полного документа, и для проекций
+ * - состояние — свёртка событий общим применителем DocumentPatch ([fold]) и для полного документа, и для проекций
  *   (маскированные события): снапшот зрителя — свёртка его маскированных событий;
  * - [mask] — событие для проекции зрителя (маскируется только значение);
  * - [read] — типизированное чтение документа.
@@ -248,7 +249,7 @@ class SessionEngine(private val codec: SessionCodec) {
         )
 
         /** Свёртка событий общим применителем; [document] null — журнал с начала. */
-        fun fold(document: Map<String, Any?>?, events: List<SessionEvent>): Map<String, Any?>? = SessionPatch.fold(document, events)
+        fun fold(document: Map<String, Any?>?, events: List<SessionEvent>): Map<String, Any?>? = DocumentPatch.fold(document, events)
     }
 }
 

@@ -51,6 +51,7 @@ libs/                          общие ИНФРАСТРУКТУРНЫЕ мо�
   common-exception             иерархия ошибок (QgamesException → ClientException/ServerException → …) и их обработчики, подключаются автоматически
   common-web                   RequestUserContext, OpenAPI-кастомизация (тянет common-exception через api)
   common-test                  Testcontainers (singleton PostgreSQL), WireMock
+  doc-patch                    патчи JSON-документов: модель операции (PatchOperation, PathSegment) и общий применитель DocumentPatch — события партии и потока комнаты
 games/                         ПРАВИЛА ИГР (бизнес-логика, но без инфраструктуры)
   game-core                    core игр: модель игры (GameRules, SessionEngine) и общие блоки — игроки, очередь, часы, итог
   nothing-game                 «игра в ничто» — тестовая игра для проверки движка
@@ -193,7 +194,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
 ### События модулей
 
 - **Источник** (сейчас user-auth): событие — Kotlin data class в `<m>-api` (`api.event.<фича>`), публикуется `ApplicationEventPublisher` (`UserProfilePublisher`, `@Transactional(MANDATORY)`) в транзакции бизнес-изменения. Сейчас — `UserProfileChanged(id, nickname, avatar)` при создании аккаунта и каждой смене профиля; сохранение без изменений события не публикует. Правки профиля — «последняя запись побеждает», версии строки нет.
-- **Потребитель** (сейчас game): `@TransactionalEventListener(AFTER_COMMIT)` на тип события из `<m>-api` источника, синхронно после коммита источника; читает БД в своей транзакции (`REQUIRES_NEW`). Данные источника потребитель не копирует: сами данные он читает из таблицы источника через описание из `<m>-api`. `UserProfileListener` game рассылает `users-changed` во все комнаты пользователя.
+- **Потребитель** (сейчас game): `@TransactionalEventListener(AFTER_COMMIT)` на тип события из `<m>-api` источника, синхронно после коммита источника; читает БД в своей транзакции (`REQUIRES_NEW`). Данные источника потребитель не копирует: сами данные он читает из таблицы источника через описание из `<m>-api`. `UserProfileListener` game публикует `profile-changed` во все комнаты пользователя (по транзакции на комнату, под её блокировкой — seq потока комнаты).
 
 ### Каталог игр, комнаты и партии (модуль `game`)
 
@@ -264,7 +265,7 @@ app/src/main/resources/db/changelog/
 - **Все интеграционные тесты живут в `app/src/test/kotlin`** в пакетах модулей (`site.qgames.game.controller.room…`, `site.qgames.userauth…`); тесты Security, кук и OpenAPI — в `site.qgames.app…`; границы модулей — `ModularityTest`. Чистые тесты правил игр — в своих модулях `games/*`.
 - Один `site.qgames.BaseIntegrationTest`: в нём все `@MockkSpyBean`, поэтому контекст Spring один на прогон. Модульные базы (`UserAuthIntegrationTest`, `AdminAuthIntegrationTest`, `GameIntegrationTest`) наследуют его и добавляют только хелперы и `@Autowired` — новые `@MockkSpyBean` объявляются только в общей базе. Внешние системы (WireMock) сбрасываются в `@BeforeEach`.
 - **Пользователь в тестах** — настоящий access-JWT, подписанный тестовым ключом модуля (`userAccessToken`, `adminAccessToken`, `asUser`, `asAdmin` в базе). Сессии открываются через настоящие ручки, токены читаются из кук ответа.
-- **События модулей в тестах:** у источника — опубликованные события через `ApplicationEvents` (`@RecordApplicationEvents`); у потребителя — сквозной сценарий через ручку источника (смена профиля → `users-changed` в потоках комнат и новый ник в снапшоте комнаты).
+- **События модулей в тестах:** у источника — опубликованные события через `ApplicationEvents` (`@RecordApplicationEvents`); у потребителя — сквозной сценарий через ручку источника (смена профиля → `profile-changed` в потоках комнат и новый ник в снапшоте комнаты).
 - **Состояние БД в тестах** читается и меняется через Exposed DSL и таблицы модулей (`db { … }`, `count(table) { … }`, `snapshot(table)` в `BaseIntegrationTest`), без сырого SQL.
 - **Тестовые данные:** `app/src/test/resources/init/<модуль>.sql` выполняются перед каждым тестом (`@Sql` на `BaseIntegrationTest`): `TRUNCATE … CASCADE` всех таблиц модуля и вставка базовых фикстур с фиксированными UUID. Константы фикстур — в `support/TestData.kt` модуля и совпадают с его init-скриптом. Новая таблица добавляется в TRUNCATE скрипта своего модуля. Строки таблицы `user` для игроков тестов game — тоже в `init/user-auth.sql` (владелец таблицы — user-auth).
 - Тест, которому нужен готовый пользователь или сущность, берёт фикстуру, а не создаёт её через API. Через API идут только сценарии, которые проверяют сам процесс создания (например, создание аккаунта входом через Google).

@@ -7,7 +7,9 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.SmartLifecycle
 import org.springframework.stereotype.Component
 import site.qgames.game.model.room.RoomEventModel
-import site.qgames.game.model.room.RoomEventType
+import site.qgames.common.docpatch.PatchMethod
+import site.qgames.game.mapper.patch.PatchJsonMapper
+import site.qgames.game.model.room.RoomEvent
 import site.qgames.game.model.session.SessionEventsNotificationModel
 import site.qgames.game.publisher.room.RoomEventPublisher
 import site.qgames.game.publisher.session.SessionEventPublisher
@@ -19,6 +21,7 @@ import tools.jackson.databind.json.JsonMapper
 import java.sql.Connection
 import java.sql.DriverManager
 import java.sql.SQLException
+import java.time.Instant
 import java.util.Properties
 import java.util.UUID
 import java.util.concurrent.CountDownLatch
@@ -39,7 +42,7 @@ import java.util.concurrent.TimeUnit
  * раз в [VALIDATE_INTERVAL_MILLIS] без уведомлений соединение проверяется запросом (`isValid`), плюс включён TCP
  * keepalive. Проверка не прошла — та же ветка, что при ошибке: закрыть потоки и переподключиться.
  *
- * Стартует раньше веб-сервера (и останавливается позже): первые подписчики не должны пропустить свой маркер.
+ * Стартует раньше веб-сервера (и останавливается позже): первые подписчики не должны пропустить свои события.
  */
 @Component
 class RoomEventListener(
@@ -48,6 +51,7 @@ class RoomEventListener(
     private val sessionDispatcher: SessionStreamDispatcher,
     private val sessionRegistry: SessionStreamRegistry,
     private val jsonMapper: JsonMapper,
+    private val patchJsonMapper: PatchJsonMapper,
     @Value("\${spring.datasource.url}") private val url: String,
     @Value("\${spring.datasource.username}") private val username: String,
     @Value("\${spring.datasource.password}") private val password: String,
@@ -159,13 +163,15 @@ class RoomEventListener(
     }
 
     private fun parse(payload: String): RoomEventModel? = try {
-        val node = jsonMapper.readTree(payload)
-        val type = RoomEventType.fromCode(node.path(RoomEventPublisher.TYPE).asString())
-            ?: error("Unknown room event type")
+        val fields = jsonMapper.readValue(payload, Map::class.java)
+        val code = fields[RoomEventPublisher.CODE] as String
+        val method = PatchMethod.valueOf(fields[RoomEventPublisher.METHOD] as String)
+        val (path, value) = patchJsonMapper.read(method, code, fields[RoomEventPublisher.DATA])
         RoomEventModel(
-            roomId = UUID.fromString(node.path(RoomEventPublisher.ROOM_ID).asString()),
-            type = type,
-            subscriberId = node.path(RoomEventPublisher.SUBSCRIBER_ID).takeIf { it.isString }?.let { UUID.fromString(it.asString()) },
+            roomId = UUID.fromString(fields[RoomEventPublisher.ROOM_ID] as String),
+            seq = (fields[RoomEventPublisher.SEQ] as Number).toLong(),
+            at = Instant.parse(fields[RoomEventPublisher.AT] as String),
+            event = RoomEvent(code, method, path, value),
         )
     } catch (e: Exception) {
         log.error("Skipped malformed room event {}", payload, e)

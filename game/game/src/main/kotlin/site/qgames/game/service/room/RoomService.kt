@@ -1,20 +1,18 @@
 package site.qgames.game.service.room
 
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import site.qgames.game.config.GameProperties
 import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.room.RoomConnectionModel
 import site.qgames.game.model.room.RoomDetailsModel
-import site.qgames.game.model.room.RoomEventType
 import site.qgames.game.model.room.RoomMemberModel
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomRole
-import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.model.room.RoomSettingsUpdateModel
 import site.qgames.game.model.room.RoomStatus
-import site.qgames.game.model.room.RoomUsersModel
 import site.qgames.game.publisher.room.RoomEventPublisher
 import site.qgames.game.repository.room.RoomConnectionRepository
 import site.qgames.game.repository.room.RoomMemberRepository
@@ -81,7 +79,7 @@ class RoomService(
      * Ошибки настроек — по полям тела запроса (`room.…`, `simple.…`, `advanced.…`).
      */
     @Transactional
-    fun updateSettings(userId: UUID, gameCode: GameCode, roomId: UUID, update: RoomSettingsUpdateModel): RoomDetailsModel {
+    fun updateSettings(userId: UUID, gameCode: GameCode, roomId: UUID, update: RoomSettingsUpdateModel) {
         val room = lock(roomId)
         if (room.gameCode != gameCode) {
             throw RoomErrors.gameTypeMismatch()
@@ -109,9 +107,8 @@ class RoomService(
         }.copy(options = update.room ?: room.options)
         if (updated != room) {
             roomRepository.update(updated)
-            roomEventPublisher.publish(roomId, RoomEventType.SETTINGS_CHANGED)
+            roomEventPublisher.settingsChanged(roomId, roomDetailsService.settings(updated))
         }
-        return roomDetailsService.details(updated)
     }
 
     @Transactional(readOnly = true)
@@ -123,23 +120,20 @@ class RoomService(
 
     /**
      * Подключение к потоку комнаты — вход в неё (см. [join]). В одной транзакции под блокировкой комнаты: подключение
-     * с арендой, вход, снапшот комнаты для подключившегося и маркер подписчика [subscriberId]. Маркер публикуется после
-     * всех событий, которые уже есть в снапшоте, — по нему поток отсекает их.
+     * с арендой, вход, снапшот комнаты для подключившегося и seq последнего события: события входа уже в снапшоте, по
+     * seq поток отсекает их.
      */
     @Transactional
-    fun connect(userId: UUID, roomId: UUID, subscriberId: UUID): RoomConnectionModel {
+    fun connect(userId: UUID, roomId: UUID): RoomConnectionModel {
         val room = lock(roomId)
         val connectionId = roomConnectionRepository.insert(
             roomId = roomId,
             userId = userId,
             expiresAt = clock.instant() + properties.room.connection.lease,
         )
-        if (join(room, userId)) {
-            roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
-        }
+        join(room, userId)
         val details = roomDetailsService.details(roomRepository.findById(roomId)!!)
-        roomEventPublisher.publishSubscribed(roomId, subscriberId)
-        return RoomConnectionModel(connectionId, details)
+        return RoomConnectionModel(connectionId, roomRepository.findEventSeq(roomId)!!, details)
     }
 
     /**
@@ -150,8 +144,8 @@ class RoomService(
     fun disconnect(connectionId: UUID, roomId: UUID, userId: UUID) {
         roomRepository.lockById(roomId) ?: return
         roomConnectionRepository.delete(connectionId)
-        if (!roomConnectionRepository.existsForUser(roomId, userId) && leave(roomId, userId)) {
-            roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
+        if (!roomConnectionRepository.existsForUser(roomId, userId)) {
+            leave(roomId, userId)
         }
     }
 
@@ -163,10 +157,7 @@ class RoomService(
     fun removeExpiredConnections(roomId: UUID): Int {
         roomRepository.lockById(roomId) ?: return 0
         val users = roomConnectionRepository.deleteExpired(roomId, clock.instant())
-        val left = users.toSet().count { userId -> !roomConnectionRepository.existsForUser(roomId, userId) && leave(roomId, userId) }
-        if (left > 0) {
-            roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
-        }
+        users.toSet().filter { !roomConnectionRepository.existsForUser(roomId, it) }.forEach { leave(roomId, it) }
         return users.size
     }
 
@@ -175,7 +166,7 @@ class RoomService(
      * Отсутствующий игрок партии владельцем не становится. Передача самому себе ничего не меняет.
      */
     @Transactional
-    fun transferOwnership(userId: UUID, roomId: UUID, newOwnerId: UUID): RoomDetailsModel {
+    fun transferOwnership(userId: UUID, roomId: UUID, newOwnerId: UUID) {
         val room = lock(roomId)
         val members = roomMemberRepository.findAll(roomId)
         if (members.none { it.userId == userId }) {
@@ -188,17 +179,15 @@ class RoomService(
             throw RoomErrors.newOwnerNotPresent()
         }
         if (newOwnerId == userId) {
-            return roomDetailsService.details(room)
+            return
         }
-        val updated = room.copy(ownerId = newOwnerId)
-        roomRepository.update(updated)
-        roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
-        return roomDetailsService.details(updated)
+        roomRepository.update(room.copy(ownerId = newOwnerId))
+        roomEventPublisher.ownerChanged(roomId, newOwnerId)
     }
 
     /** Роли меняются только между партиями. */
     @Transactional
-    fun changeRole(userId: UUID, roomId: UUID, role: RoomRole): RoomDetailsModel {
+    fun changeRole(userId: UUID, roomId: UUID, role: RoomRole) {
         val room = lock(roomId)
         val members = roomMemberRepository.findAll(roomId)
         val member = members.firstOrNull { it.userId == userId } ?: throw RoomErrors.notRoomMember()
@@ -213,9 +202,8 @@ class RoomService(
                 throw RoomErrors.noSpectatorSeat()
             }
             roomMemberRepository.updateRole(roomId, userId, role)
-            roomEventPublisher.publish(roomId, RoomEventType.USERS_CHANGED)
+            roomEventPublisher.roleChanged(roomId, userId, role)
         }
-        return roomDetailsService.details(room)
     }
 
     /**
@@ -252,16 +240,21 @@ class RoomService(
         return true
     }
 
-    /** Владелец и участники комнаты (данные события users-changed); null — комнаты уже нет. */
-    @Transactional(readOnly = true)
-    fun findUsers(roomId: UUID): RoomUsersModel? {
-        val room = roomRepository.findById(roomId) ?: return null
-        return RoomUsersModel(room, roomMemberRepository.findAllWithProfiles(roomId))
-    }
+    /** Комнаты, в которых участвует [userId]. Своя транзакция: вызывается после коммита транзакции user-auth. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW, readOnly = true)
+    fun findRoomIdsByUser(userId: UUID): List<UUID> = roomMemberRepository.findRoomIdsByUser(userId)
 
-    /** Настройки комнаты (данные события settings-changed); null — комнаты уже нет. */
-    @Transactional(readOnly = true)
-    fun findSettings(roomId: UUID): RoomSettingsModel? = roomRepository.findById(roomId)?.let(roomDetailsService::settings)
+    /**
+     * Участник [userId] сменил ник или аватар: событие profile-changed в комнату [roomId], под её блокировкой (seq).
+     * Профиль читается здесь же, как его покажет снапшот. Удалённую комнату и ушедшего участника пропускает. Своя
+     * транзакция: вызывается после коммита транзакции user-auth (UserProfileListener), по одной на комнату.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    fun profileChanged(roomId: UUID, userId: UUID) {
+        roomRepository.lockById(roomId) ?: return
+        val member = roomMemberRepository.findAllWithProfiles(roomId).firstOrNull { it.member.userId == userId } ?: return
+        roomEventPublisher.profileChanged(roomId, member)
+    }
 
     /**
      * Вход под блокировкой [room]:
@@ -271,9 +264,9 @@ class RoomService(
      * - повторный вход присутствующего ничего не меняет.
      *
      * Владение: в комнате без владельца (никого не было) владельцем становится вошедший.
-     * Возвращает true, если участники или владелец изменились.
+     * Изменения публикуются событиями потока: member-joined или member-returned, затем owner-changed.
      */
-    private fun join(room: RoomModel, userId: UUID): Boolean {
+    private fun join(room: RoomModel, userId: UUID) {
         val now = clock.instant()
         val members = roomMemberRepository.findAll(room.id)
         val member = members.firstOrNull { it.userId == userId }
@@ -284,14 +277,21 @@ class RoomService(
                     throw RoomErrors.noSpectatorSeat()
                 }
                 roomMemberRepository.insert(RoomMemberModel(room.id, userId, role, now))
+                val joined = roomMemberRepository.findAllWithProfiles(room.id).first { it.member.userId == userId }
+                roomEventPublisher.memberJoined(room.id, joined)
             }
-            member.leftAt != null -> roomMemberRepository.updateLeftAt(room.id, userId, null)
+            member.leftAt != null -> {
+                roomMemberRepository.updateLeftAt(room.id, userId, null)
+                roomEventPublisher.memberReturned(room.id, userId)
+            }
         }
         val updated = room.copy(ownerId = room.ownerId ?: userId, emptySince = null)
         if (updated != room) {
             roomRepository.update(updated)
         }
-        return member == null || member.leftAt != null || updated.ownerId != room.ownerId
+        if (updated.ownerId != room.ownerId) {
+            roomEventPublisher.ownerChanged(room.id, updated.ownerId)
+        }
     }
 
     /**
@@ -300,30 +300,33 @@ class RoomService(
      * присутствующих нет, владельца нет до первого вошедшего. Комната без присутствующих помечается пустой (для
      * автоудаления). Повторный выход ничего не меняет. Комната читается заново: за одну транзакцию могут выйти несколько
      * пользователей ([removeExpiredConnections]).
-     * Возвращает true, если участники изменились.
+     * Изменения публикуются событиями потока: member-leaving или member-left, затем owner-changed.
      */
-    private fun leave(roomId: UUID, userId: UUID): Boolean {
+    private fun leave(roomId: UUID, userId: UUID) {
         val room = roomRepository.findById(roomId)!!
         val members = roomMemberRepository.findAll(roomId)
-        val member = members.firstOrNull { it.userId == userId } ?: return false
+        val member = members.firstOrNull { it.userId == userId } ?: return
         if (member.leftAt != null) {
-            return false
+            return
         }
         val now = clock.instant()
         if (isSessionPlayer(room, userId)) {
             roomMemberRepository.updateLeftAt(roomId, userId, now)
+            roomEventPublisher.memberLeaving(roomId, userId)
         } else {
             roomMemberRepository.delete(roomId, userId)
+            roomEventPublisher.memberLeft(roomId, userId)
         }
         val others = members.filter { it.userId != userId }
         val anyonePresent = others.any { it.leftAt == null }
-        roomRepository.update(
-            room.copy(
-                ownerId = if (room.ownerId == userId) nextOwner(others) else room.ownerId,
-                emptySince = if (anyonePresent) null else room.emptySince ?: now,
-            ),
+        val updated = room.copy(
+            ownerId = if (room.ownerId == userId) nextOwner(others) else room.ownerId,
+            emptySince = if (anyonePresent) null else room.emptySince ?: now,
         )
-        return true
+        roomRepository.update(updated)
+        if (updated.ownerId != room.ownerId) {
+            roomEventPublisher.ownerChanged(roomId, updated.ownerId)
+        }
     }
 
     private fun roleOnJoin(room: RoomModel, members: List<RoomMemberModel>, userId: UUID): RoomRole = when (room.status) {
@@ -349,8 +352,8 @@ class RoomService(
         room.currentSessionId?.let(roomSessionRepository::findById)?.let { session ->
             sessionJournalService.cancel(session, clock.instant())
         }
+        roomEventPublisher.roomDeleted(room.id)
         roomRepository.delete(room.id)
-        roomEventPublisher.publish(room.id, RoomEventType.ROOM_DELETED)
     }
 
     private fun maxPlayers(room: RoomModel) = gameRegistry.rules(room.gameCode).maxPlayers

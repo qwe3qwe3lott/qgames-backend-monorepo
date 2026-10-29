@@ -15,6 +15,8 @@ object RoomTable : Table("room") {
     val emptySince = timestamp("empty_since").nullable()
     /** JSON настроек комнаты: room, simple и advanced (RoomSettingsJsonMapper). */
     val settings = json<String>("settings", { it }, { it })
+    /** seq последнего события потока комнаты (RoomEventPublisher); в модель комнаты не входит. */
+    val eventSeq = long("event_seq")
     val createdAt = timestamp("created_at")
 
     override val primaryKey = PrimaryKey(id)

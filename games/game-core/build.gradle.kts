@@ -4,8 +4,6 @@ plugins {
 }
 
 dependencies {
-    // Общий применитель событий (SessionPatch) проверяется без Spring и контейнеров.
-    testImplementation("org.junit.jupiter:junit-jupiter")
-    testImplementation("org.assertj:assertj-core")
-    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    // События партии — патчи документа: модель операции и общий применитель (DocumentPatch).
+    api(project(":libs:doc-patch"))
 }

@@ -51,6 +51,12 @@ class RoomRepository(
 
     fun update(room: RoomModel) = roomExposedRepository.update(room)
 
+    /** Сдвигает seq событий потока комнаты и возвращает новый; вызывается под блокировкой комнаты. */
+    fun nextEventSeq(id: UUID): Long = roomExposedRepository.nextEventSeq(id)
+
+    /** seq последнего события потока комнаты; null — комнаты нет. */
+    fun findEventSeq(id: UUID): Long? = roomExposedRepository.findEventSeq(id)
+
     /** Комнаты игр с данным статусом публикации (не больше [limit]). Без блокировок. */
     fun findIdsByGamePublishStatus(status: GamePublishStatus, limit: Int): List<UUID> =
         roomExposedRepository.findIdsByGamePublishStatus(status, limit)

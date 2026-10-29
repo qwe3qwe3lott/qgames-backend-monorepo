@@ -61,9 +61,9 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
         assertThat(room.session).isNull()
         assertThat(room.settings).isEqualTo(NOTHING_DEFAULT_SETTINGS)
         val member = room.members.single()
-        assertThat(member.userId).isEqualTo(ALICE)
+        assertThat(member.id).isEqualTo(ALICE)
         assertThat(member.role).isEqualTo(RoomRole.PLAYER)
-        assertThat(member.owner).isTrue()
+        assertThat(room.ownerId).isEqualTo(ALICE)
         assertThat(member.nickname).isEqualTo("Alice")
         assertThat(member.avatar).isEqualTo(Avatar.CAT)
     }
@@ -74,7 +74,7 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
 
         val seenByBob = room(roomId, BOB)
 
-        assertThat(seenByBob.members.map { it.userId }).containsExactly(ALICE)
+        assertThat(seenByBob.members.map { it.id }).containsExactly(ALICE)
     }
 
     @ParameterizedTest(name = "{0} {1}")
@@ -101,8 +101,8 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
 
         val room = join(joiner, roomId)
 
-        assertThat(room.members.single { it.userId == joiner }.role).isEqualTo(expectedRole)
-        assertThat(room.members.map { it.userId }).doesNotHaveDuplicates()
+        assertThat(room.members.single { it.id == joiner }.role).isEqualTo(expectedRole)
+        assertThat(room.members.map { it.id }).doesNotHaveDuplicates()
     }
 
     @ParameterizedTest(name = "{0}")
@@ -116,7 +116,7 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
         // Новый владелец выбирается случайно среди кандидатов; нет кандидатов — владельца нет.
         if (candidates.isEmpty()) assertThat(room.ownerId).isNull() else assertThat(room.ownerId).isIn(candidates)
         // Игрок идущей партии остаётся отсутствующим участником, остальные удаляются.
-        assertThat(room.members.filter { !it.leaving }.map { it.userId }).doesNotContain(leaver)
+        assertThat(room.members.filter { !it.leaving }.map { it.id }).doesNotContain(leaver)
     }
 
     @Test
@@ -144,8 +144,8 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
             if (expectedCode != null) jsonPath("$.code") { value(expectedCode) }
         }
 
-        if (expectedStatus == HttpStatus.OK) {
-            assertThat(room(roomId, user).members.single { it.userId == user }.role).isEqualTo(role)
+        if (expectedStatus == HttpStatus.NO_CONTENT) {
+            assertThat(room(roomId, user).members.single { it.id == user }.role).isEqualTo(role)
         }
     }
 
@@ -156,7 +156,7 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
         val room = changeRole(ALICE, roomId, RoomRole.SPECTATOR)
 
         assertThat(room.ownerId).isEqualTo(ALICE)
-        assertThat(room.members.single { it.userId == ALICE }.role).isEqualTo(RoomRole.SPECTATOR)
+        assertThat(room.members.single { it.id == ALICE }.role).isEqualTo(RoomRole.SPECTATOR)
     }
 
     @ParameterizedTest(name = "{0}")
@@ -176,12 +176,12 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
 
         call(HttpMethod.PUT, "/api/rooms/$roomId/owner", user, TransferOwnershipRequest(newOwner)).andExpect {
             status { isEqualTo(expectedStatus.value()) }
-            if (expectedCode == null) jsonPath("$.ownerId") { value(expectedOwner.toString()) } else jsonPath("$.code") { value(expectedCode) }
+            if (expectedCode != null) jsonPath("$.code") { value(expectedCode) }
         }
 
         assertThat(room(roomId, CAROL).ownerId).isEqualTo(expectedOwner)
         if (expectedOwner != ALICE) {
-            assertThat(awaitEvents(stream, eventsBefore + 1).last().first).isEqualTo("users-changed")
+            assertThat(awaitCodes(stream, eventsBefore + 1, eventsBefore)).containsExactly("owner-changed")
         }
     }
 
@@ -191,7 +191,7 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
         val stream = openStream(BOB, roomId)
         val eventsBefore = events(stream).size
 
-        call(HttpMethod.PUT, "/api/rooms/$roomId/owner", ALICE, TransferOwnershipRequest(ALICE)).andExpect { status { isOk() } }
+        call(HttpMethod.PUT, "/api/rooms/$roomId/owner", ALICE, TransferOwnershipRequest(ALICE)).andExpect { status { isNoContent() } }
 
         assertThat(room(roomId, BOB).ownerId).isEqualTo(ALICE)
         assertThat(events(stream)).hasSize(eventsBefore)
@@ -256,14 +256,14 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
         limitSpectators(roomId, 1)
 
         val room = room(roomId, ALICE)
-        assertThat(room.members.filter { it.role == RoomRole.SPECTATOR }.map { it.userId }).containsExactlyInAnyOrder(CAROL, DAVE)
+        assertThat(room.members.filter { it.role == RoomRole.SPECTATOR }.map { it.id }).containsExactlyInAnyOrder(CAROL, DAVE)
         assertThat(room.settings.room.maxSpectators).isEqualTo(1)
         // Ушедший наблюдатель освобождает место, только когда наблюдателей становится меньше лимита.
         leave(CAROL, roomId)
         mockMvc.get("/api/rooms/$roomId/events") { asUser(EVE); accept = MediaType.TEXT_EVENT_STREAM }
             .andExpect { status { isConflict() } }
         leave(DAVE, roomId)
-        assertThat(join(EVE, roomId).members.single { it.userId == EVE }.role).isEqualTo(RoomRole.SPECTATOR)
+        assertThat(join(EVE, roomId).members.single { it.id == EVE }.role).isEqualTo(RoomRole.SPECTATOR)
     }
 
     private fun emptySince(roomId: UUID): Boolean =
@@ -271,7 +271,7 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
 
     /** Владелец ALICE ставит лимит наблюдателей [max]. */
     private fun limitSpectators(roomId: UUID, max: Int) {
-        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(room = RoomOptionsDto(max))).andExpect { status { isOk() } }
+        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(room = RoomOptionsDto(max))).andExpect { status { isNoContent() } }
     }
 
     private fun markEmptyMinutesAgo(roomId: UUID, minutes: Int) {
@@ -382,11 +382,11 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
 
         @JvmStatic
         fun roleChanges(): Stream<Arguments> = Stream.of(
-            arguments("player becomes spectator", RoomSetup { roomWith(ALICE, BOB) }, BOB, RoomRole.SPECTATOR, HttpStatus.OK, null),
+            arguments("player becomes spectator", RoomSetup { roomWith(ALICE, BOB) }, BOB, RoomRole.SPECTATOR, HttpStatus.NO_CONTENT, null),
             arguments(
                 "spectator takes a free seat",
                 RoomSetup { roomWith(ALICE, BOB).also { changeRole(BOB, it, RoomRole.SPECTATOR) } },
-                BOB, RoomRole.PLAYER, HttpStatus.OK, null,
+                BOB, RoomRole.PLAYER, HttpStatus.NO_CONTENT, null,
             ),
             arguments(
                 "no free seat",
@@ -409,17 +409,17 @@ class RoomMembershipScenariosTest : GameIntegrationTest() {
         /** Владелец — ALICE; CAROL в каждой комнате присутствует (смотрит поток) и остаётся владельцем при отказе. */
         @JvmStatic
         fun ownershipTransfers(): Stream<Arguments> = Stream.of(
-            arguments("to a player while waiting", RoomSetup { roomWith(ALICE, BOB) }, ALICE, BOB, HttpStatus.OK, null, BOB),
+            arguments("to a player while waiting", RoomSetup { roomWith(ALICE, BOB) }, ALICE, BOB, HttpStatus.NO_CONTENT, null, BOB),
             arguments(
                 "to a spectator",
                 RoomSetup { roomWith(ALICE, BOB).also { changeRole(BOB, it, RoomRole.SPECTATOR) } },
-                ALICE, BOB, HttpStatus.OK, null, BOB,
+                ALICE, BOB, HttpStatus.NO_CONTENT, null, BOB,
             ),
-            arguments("during the game", RoomSetup { roomWith(ALICE, BOB, started = true) }, ALICE, BOB, HttpStatus.OK, null, BOB),
+            arguments("during the game", RoomSetup { roomWith(ALICE, BOB, started = true) }, ALICE, BOB, HttpStatus.NO_CONTENT, null, BOB),
             arguments(
                 "during a paused game",
                 RoomSetup { roomWith(ALICE, BOB, started = true, settings = nothingSettings(clockSeconds = 30)).also { pause(ALICE, it) } },
-                ALICE, BOB, HttpStatus.OK, null, BOB,
+                ALICE, BOB, HttpStatus.NO_CONTENT, null, BOB,
             ),
             arguments("not the owner", RoomSetup { roomWith(ALICE, BOB) }, BOB, BOB, HttpStatus.FORBIDDEN, "NOT_ROOM_OWNER", ALICE),
             arguments("caller not in the room", RoomSetup { roomWith(ALICE, BOB) }, DAVE, BOB, HttpStatus.FORBIDDEN, "NOT_ROOM_MEMBER", ALICE),

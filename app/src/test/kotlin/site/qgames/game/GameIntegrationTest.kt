@@ -100,9 +100,9 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
         val created: RoomResponse = createRoomRequest(owner, code).andExpect { status { isOk() } }.body()
         val joined = join(owner, created.id)
         if (settings == null) return joined
-        return updateSettingsRequest(owner, created.id, UpdateRoomSettingsRequest(advanced = settings), code)
-            .andExpect { status { isOk() } }
-            .body()
+        updateSettingsRequest(owner, created.id, UpdateRoomSettingsRequest(advanced = settings), code)
+            .andExpect { status { isNoContent() } }
+        return room(created.id, owner)
     }
 
     protected fun updateSettingsRequest(user: UUID, roomId: UUID, body: Any, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =
@@ -152,6 +152,10 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
         return events(stream)
     }
 
+    /** Коды событий-патчей потока комнаты [stream] после первых [skip] сообщений; ждёт, пока сообщений не станет [total]. */
+    protected fun awaitCodes(stream: MvcResult, total: Int, skip: Int): List<String> =
+        awaitEvents(stream, total).drop(skip).map { jsonMapper.readTree(it.second).path("code").asString() }
+
     protected fun isMember(roomId: UUID, user: UUID): Boolean =
         count(RoomMemberTable) { (RoomMemberTable.roomId eq roomId) and (RoomMemberTable.userId eq user) } == 1L
 
@@ -162,11 +166,17 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
             .single()[RoomMemberTable.leftAt]
     }
 
-    protected fun changeRole(user: UUID, roomId: UUID, role: RoomRole): RoomResponse =
-        call(HttpMethod.PUT, "/api/rooms/$roomId/role", user, ChangeRoleRequest(role)).andExpect { status { isOk() } }.body()
+    /** Меняет роль (ответ без тела) и возвращает комнату глазами [user]. */
+    protected fun changeRole(user: UUID, roomId: UUID, role: RoomRole): RoomResponse {
+        call(HttpMethod.PUT, "/api/rooms/$roomId/role", user, ChangeRoleRequest(role)).andExpect { status { isNoContent() } }
+        return room(roomId, user)
+    }
 
-    protected fun start(owner: UUID, roomId: UUID): RoomResponse =
-        call(HttpMethod.POST, "/api/rooms/$roomId/session", owner).andExpect { status { isOk() } }.body()
+    /** Начинает партию (ответ без тела) и возвращает комнату глазами владельца. */
+    protected fun start(owner: UUID, roomId: UUID): RoomResponse {
+        call(HttpMethod.POST, "/api/rooms/$roomId/session", owner).andExpect { status { isNoContent() } }
+        return room(roomId, owner)
+    }
 
     protected fun cancel(owner: UUID, roomId: UUID) {
         call(HttpMethod.DELETE, "/api/rooms/$roomId/session", owner).andExpect { status { isNoContent() } }

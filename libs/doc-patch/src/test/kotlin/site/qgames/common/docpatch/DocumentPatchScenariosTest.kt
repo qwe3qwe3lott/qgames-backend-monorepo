@@ -1,4 +1,4 @@
-package site.qgames.games.core
+package site.qgames.common.docpatch
 
 import java.util.stream.Stream
 import org.assertj.core.api.Assertions.assertThat
@@ -8,20 +8,16 @@ import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
 import org.junit.jupiter.params.provider.MethodSource
-import site.qgames.games.core.SessionEvents.delete
-import site.qgames.games.core.SessionEvents.id
-import site.qgames.games.core.SessionEvents.info
-import site.qgames.games.core.SessionEvents.patch
-import site.qgames.games.core.SessionEvents.path
-import site.qgames.games.core.SessionEvents.put
+import site.qgames.common.docpatch.PatchPaths.id
+import site.qgames.common.docpatch.PatchPaths.path
 
-/** Общий применитель событий: PUT, PATCH, DELETE, INFO по путям с ключами и `{id}`, ошибки пути. */
-class SessionPatchScenariosTest {
+/** Общий применитель операций: PUT, PATCH, DELETE, INFO по путям с ключами и `{id}`, ошибки пути. */
+class DocumentPatchScenariosTest {
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("changes")
-    fun `event changes the document`(case: String, event: SessionEvent, expected: Map<String, Any?>) {
-        val result = SessionPatch.apply(DOCUMENT, event)
+    fun `event changes the document`(case: String, event: Operation, expected: Map<String, Any?>) {
+        val result = DocumentPatch.apply(DOCUMENT, event)
 
         assertThat(result).isEqualTo(expected)
     }
@@ -30,7 +26,7 @@ class SessionPatchScenariosTest {
     fun `source document is not changed and the key order is kept`() {
         val before = DOCUMENT.toString()
 
-        val result = SessionPatch.apply(DOCUMENT, put("c", path("state", "timer"), mapOf("status" to "STOPPED")))
+        val result = DocumentPatch.apply(DOCUMENT, put("c", path("state", "timer"), mapOf("status" to "STOPPED")))
 
         assertThat(DOCUMENT.toString()).isEqualTo(before)
         assertThat(result.getValue("state").let { (it as Map<*, *>).keys }).containsExactly("players", "timer", "moves")
@@ -40,16 +36,16 @@ class SessionPatchScenariosTest {
     fun `first event replaces the whole document, later events fold on it`() {
         val started = put("session-started", emptyList(), DOCUMENT)
 
-        val folded = SessionPatch.fold(null, listOf(started, patch("session-finished", emptyList(), mapOf("status" to "FINISHED"))))
+        val folded = DocumentPatch.fold(null, listOf(started, patch("session-finished", emptyList(), mapOf("status" to "FINISHED"))))
 
         assertThat(folded).isEqualTo(DOCUMENT + ("status" to "FINISHED"))
     }
 
     @ParameterizedTest(name = "{0}")
     @MethodSource("failures")
-    fun `event that does not fit the document is an error`(case: String, document: Map<String, Any?>?, event: SessionEvent) {
-        assertThatThrownBy { SessionPatch.apply(document, event) }
-            .isInstanceOf(SessionPatchException::class.java)
+    fun `event that does not fit the document is an error`(case: String, document: Map<String, Any?>?, event: Operation) {
+        assertThatThrownBy { DocumentPatch.apply(document, event) }
+            .isInstanceOf(DocumentPatchException::class.java)
             .hasMessageContaining(event.code)
     }
 
@@ -119,7 +115,7 @@ class SessionPatchScenariosTest {
             arguments("PUT replaces the root with a non-object", DOCUMENT, put("c", emptyList(), listOf(1))),
             arguments("PATCH of a missing key", DOCUMENT, patch("c", path("state", "turns"), mapOf("round" to 2))),
             arguments("PATCH of a non-object", DOCUMENT, patch("c", path("state", "moves"), mapOf("x" to 1))),
-            arguments("PATCH with a non-object value", DOCUMENT, SessionEvent("c", SessionEventMethod.PATCH, path("state"), 1)),
+            arguments("PATCH with a non-object value", DOCUMENT, Operation("c", PatchMethod.PATCH, path("state"), 1)),
             arguments("DELETE of a missing key", DOCUMENT, delete("c", path("state", "turns"))),
             arguments("DELETE of a missing id", DOCUMENT, delete("c", path("state", "players", id("x")))),
             arguments("DELETE of the root", DOCUMENT, delete("c", emptyList())),
@@ -127,3 +123,19 @@ class SessionPatchScenariosTest {
         )
     }
 }
+
+/** Операция для тестов применителя. */
+data class Operation(
+    override val code: String,
+    override val method: PatchMethod,
+    override val path: List<PathSegment>,
+    override val value: Any?,
+) : PatchOperation
+
+private fun put(code: String, path: List<PathSegment>, value: Any?) = Operation(code, PatchMethod.PUT, path, value)
+
+private fun patch(code: String, path: List<PathSegment>, value: Map<String, Any?>) = Operation(code, PatchMethod.PATCH, path, value)
+
+private fun delete(code: String, path: List<PathSegment>) = Operation(code, PatchMethod.DELETE, path, null)
+
+private fun info(code: String, data: Map<String, Any?>) = Operation(code, PatchMethod.INFO, emptyList(), data)

@@ -6,13 +6,13 @@ import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.SessionStatus
 import site.qgames.game.api.dto.session.CheckersAdvancedRulesDto
 import site.qgames.game.api.dto.session.CheckersSessionStateDto
-import site.qgames.game.api.dto.session.DeleteData
+import site.qgames.game.api.dto.patch.DeleteData
 import site.qgames.game.api.dto.session.NothingSessionStateDto
-import site.qgames.game.api.dto.session.PatchData
-import site.qgames.game.api.dto.session.PutData
+import site.qgames.game.api.dto.patch.PatchData
+import site.qgames.game.api.dto.patch.PatchEventMethod
+import site.qgames.game.api.dto.patch.PutData
 import site.qgames.game.api.dto.session.SessionEventDelete
 import site.qgames.game.api.dto.session.SessionEventInfo
-import site.qgames.game.api.dto.session.SessionEventMethod
 import site.qgames.game.api.dto.session.SessionEventPatch
 import site.qgames.game.api.dto.session.SessionEventPut
 import site.qgames.game.api.dto.session.SessionGameDto
@@ -61,13 +61,13 @@ class SessionEventResponseMapper(
 
     /** Кадр события журнала `{seq, at, method, code, data}`; [event] уже замаскирован для зрителя. */
     fun toFrame(seq: Long, at: Instant, event: SessionEvent): SessionPatchEvent {
-        val method = SessionEventMethod.valueOf(event.method.name)
+        val method = PatchEventMethod.valueOf(event.method.name)
         val path = sessionEventJsonMapper.path(event.path)
         return when (method) {
-            SessionEventMethod.PUT -> SessionEventPut(seq, at, method, event.code, PutData(path, event.value))
-            SessionEventMethod.PATCH -> SessionEventPatch(seq, at, method, event.code, PatchData(path, objectOf(event)))
-            SessionEventMethod.DELETE -> SessionEventDelete(seq, at, method, event.code, DeleteData(path))
-            SessionEventMethod.INFO -> SessionEventInfo(seq, at, method, event.code, objectOf(event))
+            PatchEventMethod.PUT -> SessionEventPut(seq, at, method, event.code, PutData(path, event.value))
+            PatchEventMethod.PATCH -> SessionEventPatch(seq, at, method, event.code, PatchData(path, objectOf(event)))
+            PatchEventMethod.DELETE -> SessionEventDelete(seq, at, method, event.code, DeleteData(path))
+            PatchEventMethod.INFO -> SessionEventInfo(seq, at, method, event.code, objectOf(event))
         }
     }
 

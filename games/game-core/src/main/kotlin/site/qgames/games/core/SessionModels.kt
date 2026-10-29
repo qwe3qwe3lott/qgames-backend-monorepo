@@ -1,14 +1,17 @@
 package site.qgames.games.core
 
+import site.qgames.common.docpatch.PatchMethod
+import site.qgames.common.docpatch.PatchOperation
+import site.qgames.common.docpatch.PathSegment
 import java.util.UUID
 
 /**
- * Событие журнала партии — одна операция над документом партии `{status, meta, state}` ([SessionPatch]).
+ * Событие журнала партии — одна операция над документом партии `{status, meta, state}` (DocumentPatch).
  *
  * - [code] — что произошло (`player-passed`, `turn-changed`, `game-paused`…): задаёт платформа (core) или игра, набор
  *   кодов свободно расширяется. Состояние по коду не меняется — только по [method];
- * - [method] — как меняется документ: [SessionEventMethod.PUT], [SessionEventMethod.PATCH], [SessionEventMethod.DELETE]
- *   или [SessionEventMethod.INFO] (ничего не меняет, [value] — данные для журнала);
+ * - [method] — как меняется документ: [PatchMethod.PUT], [PatchMethod.PATCH], [PatchMethod.DELETE] или
+ *   [PatchMethod.INFO] (ничего не меняет, [value] — данные для журнала);
  * - [path] — куда: ключи объектов и элементы массивов по id ([PathSegment]); у INFO пустой;
  * - [value] — новое значение (PUT), поля для слияния (PATCH), данные для журнала (INFO); у DELETE null.
  *
@@ -16,36 +19,11 @@ import java.util.UUID
  * оно уходит клиенту и хранится в журнале. У каждого записанного события свой seq и момент записи; их хранит журнал.
  */
 data class SessionEvent(
-    val code: String,
-    val method: SessionEventMethod,
-    val path: List<PathSegment>,
-    val value: Any?,
-)
-
-/** Как событие меняет документ партии. */
-enum class SessionEventMethod {
-    /** Заменить или создать значение по пути целиком; `{id}` в конце пути, которого нет, — добавить в конец массива. */
-    PUT,
-
-    /** Неглубокое слияние: поля значения заменяют поля объекта по пути (вложенные — целиком, null — как значение). */
-    PATCH,
-
-    /** Удалить поле объекта или элемент массива по id. */
-    DELETE,
-
-    /** Ничего не меняет: данные для журнала и логов. */
-    INFO,
-}
-
-/** Сегмент пути: ключ объекта или элемент массива с этим id (адрес не зависит от индекса). */
-sealed interface PathSegment {
-
-    /** Ключ объекта; в JSON — строка. */
-    data class Key(val name: String) : PathSegment
-
-    /** Элемент массива, у которого `id` равен [id]; в JSON — `{"id": "…"}`. */
-    data class Id(val id: String) : PathSegment
-}
+    override val code: String,
+    override val method: PatchMethod,
+    override val path: List<PathSegment>,
+    override val value: Any?,
+) : PatchOperation
 
 /**
  * Документ партии — то, к чему применяются события: `{status, meta, state}` в виде JSON-дерева, ровно как его видит

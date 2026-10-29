@@ -1,5 +1,6 @@
 package site.qgames.games.core
 
+import site.qgames.common.docpatch.PathSegment
 import java.util.UUID
 
 /**

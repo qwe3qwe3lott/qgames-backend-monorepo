@@ -8,8 +8,6 @@ import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.model.game.GameCode
-import site.qgames.game.model.room.RoomDetailsModel
-import site.qgames.game.model.room.RoomEventType
 import site.qgames.game.model.room.RoomModel
 import site.qgames.game.model.room.RoomRole
 import site.qgames.game.model.room.RoomStatus
@@ -21,7 +19,6 @@ import site.qgames.game.repository.room.RoomRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.game.service.game.GameService
-import site.qgames.game.service.room.RoomDetailsService
 import site.qgames.games.core.MoveOutcome
 import site.qgames.games.core.SessionDocument
 import site.qgames.games.core.SessionEngine
@@ -45,7 +42,6 @@ class RoomSessionService(
     private val sessionJournalService: SessionJournalService,
     private val gameRegistry: GameRegistry,
     private val gameService: GameService,
-    private val roomDetailsService: RoomDetailsService,
     private val roomEventPublisher: RoomEventPublisher,
     private val jsonMapper: JsonMapper,
     private val sessionEngine: SessionEngine,
@@ -60,7 +56,7 @@ class RoomSessionService(
      * только e2e-сценариями на локальном стенде, иначе — случайный.
      */
     @Transactional
-    fun start(userId: UUID, roomId: UUID, seed: Long? = null): RoomDetailsModel {
+    fun start(userId: UUID, roomId: UUID, seed: Long? = null) {
         val room = lockAsOwner(userId, roomId)
         gameService.checkAccessible(room.gameCode)
         if (room.status != RoomStatus.WAITING) {
@@ -86,8 +82,7 @@ class RoomSessionService(
         sessionJournalService.record(session, before = null, events, now)
         val updated = room.copy(status = RoomStatus.IN_GAME, currentSessionId = session.id)
         roomRepository.update(updated)
-        roomEventPublisher.publish(roomId, RoomEventType.SESSION_CHANGED)
-        return roomDetailsService.details(updated)
+        roomEventPublisher.sessionStarted(roomId, session)
     }
 
     /**
@@ -214,10 +209,8 @@ class RoomSessionService(
     private fun endInRoom(room: RoomModel) {
         val absent = roomMemberRepository.deleteAbsent(room.id)
         roomRepository.update(room.copy(status = RoomStatus.WAITING, currentSessionId = null))
-        roomEventPublisher.publish(room.id, RoomEventType.SESSION_CHANGED)
-        if (absent.isNotEmpty()) {
-            roomEventPublisher.publish(room.id, RoomEventType.USERS_CHANGED)
-        }
+        roomEventPublisher.sessionEnded(room.id, roomSessionRepository.findById(room.currentSessionId!!)!!)
+        absent.forEach { roomEventPublisher.memberLeft(room.id, it) }
     }
 
     private fun currentSession(room: RoomModel): RoomSessionModel {

@@ -75,13 +75,14 @@ data class RoomResponse(
     val serverTime: Instant,
 )
 
+/** Участник комнаты. Владелец — RoomResponse.ownerId. */
 data class RoomMemberResponse(
-    val userId: UUID,
+    /** Id пользователя: по нему участник адресуется в событиях потока комнаты (`["members", {id}]`). */
+    val id: UUID,
     /** null в первые секунды после регистрации, пока профиль не дошёл до игрового сервиса. */
     val nickname: String?,
     val avatar: Avatar?,
     val role: RoomRole,
-    val owner: Boolean,
     /**
      * Игрок идущей партии не подключён (закрыл последний поток событий комнаты). Он закреплён до конца партии и
      * сохраняет место, подключение снимает признак; конец или отмена партии удаляют отсутствующих. Остальные участники

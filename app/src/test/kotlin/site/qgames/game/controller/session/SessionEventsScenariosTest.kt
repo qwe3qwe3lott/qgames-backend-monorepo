@@ -40,7 +40,7 @@ import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.game.support.TestData.EVE
 import site.qgames.game.table.session.RoomSessionTable
-import site.qgames.games.core.SessionPatch
+import site.qgames.common.docpatch.DocumentPatch
 import site.qgames.games.core.ViewerKey
 import tools.jackson.databind.JsonNode
 
@@ -245,7 +245,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
             val applied = events.drop(1).fold(document(jsonMapper.readTree(events.first().second))) { document, event ->
                 val frame = frame(event)
                 val patch = sessionEventJsonMapper.read(frame.path("method").asString(), frame.path("code").asString(), frame.path("data").toString())
-                SessionPatch.apply(document, patch)
+                DocumentPatch.apply(document, patch)
             }
             assertThat(applied).isEqualTo(final)
         }

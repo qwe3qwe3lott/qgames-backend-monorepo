@@ -10,12 +10,12 @@ import site.qgames.game.model.session.SessionStateModel
 import site.qgames.game.repository.session.RoomSessionEventRepository
 import site.qgames.game.service.game.GameRegistry
 import site.qgames.games.core.SessionEngine
-import site.qgames.games.core.SessionPatch
+import site.qgames.common.docpatch.DocumentPatch
 import site.qgames.games.core.ViewerKey
 
 /**
  * Сборка документа партии для зрителя из журнала. Берёт из [SessionStateCache] последний документ проекции (seq K),
- * дочитывает события K+1…N, применяет к ним `SessionPatch.apply(mask(e, viewer))` и кладёт результат (N) обратно.
+ * дочитывает события K+1…N, применяет к ним `DocumentPatch.apply(mask(e, viewer))` и кладёт результат (N) обратно.
  * В кеше ничего нет — свёртка с нуля. Полный документ (проверка ходов) — проекция [ViewerKey.Full].
  */
 @Service
@@ -40,7 +40,7 @@ class SessionStateService(
         val rules = gameRegistry.rules(session.gameCode)
         val events = roomSessionEventRepository.findRange(session.id, (cached?.seq ?: 0) + 1, target)
         val folded = events.fold(cached?.document) { document, event ->
-            SessionPatch.apply(document, sessionEngine.mask(rules, event.event, viewer))
+            DocumentPatch.apply(document, sessionEngine.mask(rules, event.event, viewer))
         } ?: error("Session ${session.id} has an empty journal")
         return SessionStateModel(target, folded).also { cache.put(session.id, viewer, it) }
     }

@@ -20,7 +20,7 @@ class SessionSeedHeaderScenariosTest : GameIntegrationTest() {
     fun `the seed header sets the seed of the game`() {
         val roomId = roomWith(ALICE, BOB)
 
-        startWithSeed(roomId, "-42").andExpect { status { isOk() } }
+        startWithSeed(roomId, "-42").andExpect { status { isNoContent() } }
 
         assertThat(roomSessionRepository.findById(sessionId(roomId))!!.seed).isEqualTo(-42L)
     }

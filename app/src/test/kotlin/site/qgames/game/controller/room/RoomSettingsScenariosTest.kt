@@ -200,8 +200,11 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         fun RoomSettingsScenariosTest.prepare(): UUID
     }
 
-    private fun update(user: UUID, roomId: UUID, body: UpdateRoomSettingsRequest): RoomResponse =
-        updateSettingsRequest(user, roomId, body).andExpect { status { isOk() } }.body()
+    /** Меняет настройки (ответ без тела) и возвращает комнату глазами [user]. */
+    private fun update(user: UUID, roomId: UUID, body: UpdateRoomSettingsRequest): RoomResponse {
+        updateSettingsRequest(user, roomId, body).andExpect { status { isNoContent() } }
+        return room(roomId, user)
+    }
 
     /** Колонка `room.settings` как дерево: `{"room": …, "simple": … | null, "advanced": …}`, без кодов игры. */
     private fun stored(roomId: UUID): Map<String, Any?> = db {
