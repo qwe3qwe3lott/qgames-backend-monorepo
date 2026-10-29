@@ -51,8 +51,9 @@ data class RoomOptionsDto(
 )
 
 /**
- * Шахматные часы advanced-настроек: у каждого игрока запас на всю партию, после своего хода он получает добавку
- * (0 — без добавки). Значения заполнены и у выключенных часов. Границы задаёт игра (TimeControlLimitsDto).
+ * Часы advanced-настроек: у каждого игрока запас на всю партию и добавочное время bonusSeconds вида bonusType (0 — без
+ * него). Значения заполнены и у выключенных часов. Границы задаёт игра (TimeControlLimitsDto). Simple-настройки всегда
+ * дают инкремент.
  */
 data class TimeControlDto(
     /** false — партия без таймера (если игра разрешает, TimeControlLimitsDto.optional). */
@@ -61,8 +62,19 @@ data class TimeControlDto(
     @field:NotNull
     val baseSeconds: Int,
     @field:NotNull
-    val incrementSeconds: Int,
+    val bonusType: TimeBonusType,
+    @field:NotNull
+    val bonusSeconds: Int,
 )
+
+/** Вид добавочного времени часов. */
+enum class TimeBonusType {
+    /** Инкремент (Фишер): после своего хода игрок получает к запасу bonusSeconds. */
+    INCREMENT,
+
+    /** Задержка: в начале хода сначала тратится bonusSeconds, затем запас; неистраченная задержка не копится. */
+    DELAY,
+}
 
 /** Simple-настройки конкретной игры. Вид определяется полем gameCode, оно должно совпадать с игрой комнаты. */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.EXISTING_PROPERTY, property = "gameCode", visible = true)
@@ -252,7 +264,7 @@ data class NothingSettingsLimitsDto(
 data class NothingTimePresetDto(
     val time: NothingTime,
     val baseSeconds: Int,
-    val incrementSeconds: Int,
+    val bonusSeconds: Int,
 )
 
 /** Границы настроек шашек. */
@@ -292,5 +304,5 @@ data class CheckersTimePresetDto(
     val variant: CheckersVariant,
     val time: CheckersTime,
     val baseSeconds: Int,
-    val incrementSeconds: Int,
+    val bonusSeconds: Int,
 )

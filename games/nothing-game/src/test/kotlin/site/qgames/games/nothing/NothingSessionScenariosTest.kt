@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
 import org.junit.jupiter.params.provider.Arguments.arguments
+import org.junit.jupiter.params.provider.EnumSource
 import org.junit.jupiter.params.provider.MethodSource
 import site.qgames.games.core.Decision
 import site.qgames.games.core.GameRules
@@ -25,6 +26,7 @@ import site.qgames.common.docpatch.PatchMethod
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SessionStatus
+import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControl
 import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.TimerOutcome
@@ -46,7 +48,7 @@ class NothingSessionScenariosTest {
 
     @Test
     fun `start is one PUT of the whole document in the shape of the snapshot`() {
-        val started = journal(TimeControl(30, 0)).single()
+        val started = journal(TimeControl(30, TimeBonusType.INCREMENT, 0)).single()
 
         assertThat(started.code).isEqualTo("session-started")
         assertThat(started.method).isEqualTo(PatchMethod.PUT)
@@ -60,7 +62,7 @@ class NothingSessionScenariosTest {
                         "settings" to mapOf(
                             "gameCode" to "nothing",
                             "rounds" to 2,
-                            "timeControl" to mapOf("enabled" to true, "baseSeconds" to 30, "incrementSeconds" to 0),
+                            "timeControl" to mapOf("enabled" to true, "baseSeconds" to 30, "bonusType" to "INCREMENT", "bonusSeconds" to 0),
                         ),
                     ),
                     "advancedRules" to null,
@@ -83,7 +85,7 @@ class NothingSessionScenariosTest {
 
     @Test
     fun `move produces game and core events in order`() {
-        val journal = journal(TimeControl(30, 5))
+        val journal = journal(TimeControl(30, TimeBonusType.INCREMENT, 5))
 
         val events = accepted(fold(journal), ALICE, NOW.plusSeconds(1))
 
@@ -99,12 +101,31 @@ class NothingSessionScenariosTest {
             mapOf("currentPlayerId" to BOB.toString(), "round" to 1, "rounds" to 2),
             emptyList<Any>(),
             listOf(PASS),
-            // Алиса потратила 1 с из 30 и получила добавку 5 с; у Боба полный запас.
+            // Алиса потратила 1 с из 30 и получила инкремент 5 с; у Боба полный запас.
             mapOf(
                 "status" to "RUNNING",
                 "deadline" to "2026-10-21T10:00:31Z",
                 "pausedAt" to null,
                 "clocks" to listOf(clock(ALICE, 34_000), clock(BOB, 30_000)),
+            ),
+        )
+    }
+
+    /** Задержка тратится первой и не копится: запас уменьшается только на время сверх неё. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("delays")
+    fun `delay is spent before the base time and does not accumulate`(case: String, moveAfterSeconds: Long, aliceMs: Long) {
+        val journal = journal(TimeControl(30, TimeBonusType.DELAY, 5))
+        assertThat(fold(journal).session.state.timer!!.deadline).isEqualTo(NOW.plusSeconds(35))
+
+        val events = accepted(fold(journal), ALICE, NOW.plusSeconds(moveAfterSeconds))
+
+        assertThat(fold(journal + events).session.state.timer).isEqualTo(
+            TimerState(
+                TimerStatus.RUNNING,
+                NOW.plusSeconds(moveAfterSeconds + 35),
+                null,
+                listOf(PlayerClock(ALICE, aliceMs), PlayerClock(BOB, 30_000)),
             ),
         )
     }
@@ -164,7 +185,7 @@ class NothingSessionScenariosTest {
 
     @Test
     fun `end and cancel stop the timer right before the last event`() {
-        val timed = TimeControl(30, 5)
+        val timed = TimeControl(30, TimeBonusType.INCREMENT, 5)
         val finishing = journal(timed, rounds = 1, players = listOf(ALICE))
         val finished = accepted(fold(finishing), ALICE, NOW.plusSeconds(4))
         val cancelled = engine.cancel(fold(journal(timed)), NOW.plusSeconds(10))
@@ -173,7 +194,7 @@ class NothingSessionScenariosTest {
         assertThat(cancelled.map { it.code }).containsExactly("move-options-changed", "timer-stopped", "session-cancelled")
         assertThat(cancelled.first().path).isEqualTo(playerOptions(ALICE))
         assertThat(cancelled.last().value).isEqualTo(mapOf("status" to "CANCELLED"))
-        // Остановленные часы хранят итоговые остатки: у ходившего — без добавки.
+        // Остановленные часы хранят итоговые остатки: у ходившего — без инкремента.
         assertThat(fold(finishing + finished).session.state.timer)
             .isEqualTo(TimerState(TimerStatus.STOPPED, null, null, listOf(PlayerClock(ALICE, 26_000))))
         assertThat(fold(journal(timed) + cancelled).session.state.timer)
@@ -207,7 +228,7 @@ class NothingSessionScenariosTest {
 
     @Test
     fun `timeout passes the move of the current player as INFO, the move counter is not changed`() {
-        val journal = journal(TimeControl(10, 0))
+        val journal = journal(TimeControl(10, TimeBonusType.INCREMENT, 0))
 
         val events = engine.timeout(rules, fold(journal), NOW.plusSeconds(10))
 
@@ -227,7 +248,7 @@ class NothingSessionScenariosTest {
 
     @Test
     fun `pause is a timer action, moves are rejected on pause, resume shifts the deadline`() {
-        val journal = journal(TimeControl(30, 0)).toMutableList()
+        val journal = journal(TimeControl(30, TimeBonusType.INCREMENT, 0)).toMutableList()
         val clocks = listOf(PlayerClock(ALICE, 30_000), PlayerClock(BOB, 30_000))
 
         val paused = (engine.pause(fold(journal), NOW.plusSeconds(5)) as TimerOutcome.Changed).events
@@ -248,6 +269,29 @@ class NothingSessionScenariosTest {
         assertThat(engine.resume(fold(journal), NOW.plusSeconds(66))).isEqualTo(TimerOutcome.Unchanged)
     }
 
+    /**
+     * Пауза считается по меткам времени: 10 циклов «1 с хода, 3 с паузы» сдвигают дедлайн ровно на 30 с паузы,
+     * задержка заново не начисляется, запас тратится только за 10 с хода.
+     */
+    @ParameterizedTest(name = "{0}")
+    @EnumSource(TimeBonusType::class)
+    fun `repeated pause and resume give no extra time`(bonusType: TimeBonusType) {
+        val journal = journal(TimeControl(30, bonusType, 5)).toMutableList()
+        val initialDeadline = fold(journal).session.state.timer!!.deadline!!
+        var now = NOW
+        repeat(10) {
+            now = now.plusSeconds(1)
+            journal += (engine.pause(fold(journal), now) as TimerOutcome.Changed).events
+            now = now.plusSeconds(3)
+            journal += (engine.resume(fold(journal), now) as TimerOutcome.Changed).events
+        }
+
+        assertThat(fold(journal).session.state.timer!!.deadline).isEqualTo(initialDeadline.plusSeconds(30))
+        journal += accepted(fold(journal), ALICE, now)
+        // За 10 с хода: инкремент — 30 − 10 + 5, задержка — первые 5 с покрыла она, запас 30 − 5.
+        assertThat(fold(journal).session.state.timer!!.clocks.first { it.playerId == ALICE }.remainingMs).isEqualTo(25_000)
+    }
+
     @Test
     fun `clocks switch only when the turn changes`() {
         val nothing = NothingGameRules()
@@ -256,7 +300,7 @@ class NothingSessionScenariosTest {
             override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove) =
                 Decision.Accepted(listOf(SessionEvents.info("noted", emptyMap<String, Any>())))
         } as GameRules<Any, Any, Any, Any>
-        val journal = journal(TimeControl(30, 5))
+        val journal = journal(TimeControl(30, TimeBonusType.INCREMENT, 5))
 
         val events = (engine.move(keepsTurn, fold(journal), ALICE, NothingMove("PASS"), NOW.plusSeconds(7)) as MoveOutcome.Accepted).events
 
@@ -289,7 +333,7 @@ class NothingSessionScenariosTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("viewers")
     fun `fold of masked events equals masked full fold`(viewer: ViewerKey) {
-        val journal = journal(TimeControl(30, 5)).toMutableList()
+        val journal = journal(TimeControl(30, TimeBonusType.INCREMENT, 5)).toMutableList()
         journal += accepted(fold(journal), ALICE, NOW)
         journal += (engine.pause(fold(journal), NOW) as TimerOutcome.Changed).events
         journal += (engine.resume(fold(journal), NOW.plusSeconds(3)) as TimerOutcome.Changed).events
@@ -312,7 +356,12 @@ class NothingSessionScenariosTest {
         rounds: Int = 2,
         players: List<UUID> = listOf(ALICE, BOB),
     ): List<SessionEvent> {
-        val clock = TimeControlSettings(timeControl != null, timeControl?.baseSeconds ?: 30, timeControl?.incrementSeconds ?: 5)
+        val clock = TimeControlSettings(
+            timeControl != null,
+            timeControl?.baseSeconds ?: 30,
+            timeControl?.bonusType ?: TimeBonusType.INCREMENT,
+            timeControl?.bonusSeconds ?: 5,
+        )
         return engine.start(rules, players, seed = 1, NothingAdvancedSettings(rounds, clock), NOW)
     }
 
@@ -343,6 +392,13 @@ class NothingSessionScenariosTest {
         fun misplacedResults(): Stream<Arguments> = Stream.of(
             arguments("result without session-finished", listOf(Result.win(ALICE, "X"))),
             arguments("result twice", listOf(Result.win(ALICE, "X"), Result.draw("Y"), SessionEvents.finished())),
+        )
+
+        @JvmStatic
+        fun delays(): Stream<Arguments> = Stream.of(
+            arguments("move within the delay keeps the base time", 1L, 30_000L),
+            arguments("move at the end of the delay keeps the base time", 5L, 30_000L),
+            arguments("longer move spends the base time beyond the delay", 12L, 23_000L),
         )
 
         @JvmStatic

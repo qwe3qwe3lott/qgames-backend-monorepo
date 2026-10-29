@@ -25,6 +25,7 @@ import site.qgames.game.api.dto.room.NothingAdvancedSettingsDto
 import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
+import site.qgames.game.api.dto.room.TimeBonusType
 import site.qgames.game.api.dto.room.TimeControlDto
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.session.SessionJournalService
@@ -71,16 +72,16 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
 
     /**
      * Advanced-настройки «игры в ничто»: по умолчанию — как выводятся из simple по умолчанию (3 круга, без таймера).
-     * [clockSeconds] — запас шахматных часов (null — без таймера), [incrementSeconds] — добавка за ход.
+     * [clockSeconds] — запас часов (null — без таймера), [bonusSeconds] — инкремент.
      */
     protected fun nothingSettings(
         rounds: Int = 3,
         clockSeconds: Int? = null,
-        incrementSeconds: Int = 0,
+        bonusSeconds: Int = 0,
     ) = NothingAdvancedSettingsDto(
         GameCode.NOTHING,
         rounds,
-        clockSeconds?.let { TimeControlDto(true, it, incrementSeconds) } ?: TimeControlDto(false, 30, 5),
+        clockSeconds?.let { TimeControlDto(true, it, TimeBonusType.INCREMENT, bonusSeconds) } ?: TimeControlDto(false, 30, TimeBonusType.INCREMENT, 5),
     )
 
     protected fun createRoomRequest(owner: UUID?, gameCode: String = GameCodes.NOTHING): ResultActionsDsl =

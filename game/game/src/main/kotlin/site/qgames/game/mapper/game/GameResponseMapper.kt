@@ -43,7 +43,7 @@ class GameResponseMapper(private val roomSettingsResponseMapper: RoomSettingsRes
         timeControl = TimeControlLimitsDto(
             optional = rules.timeControlOptional,
             baseSeconds = roomSettingsResponseMapper.toDto(rules.baseSeconds),
-            incrementSeconds = roomSettingsResponseMapper.toDto(rules.incrementSeconds),
+            bonusSeconds = roomSettingsResponseMapper.toDto(rules.bonusSeconds),
         ),
         gameSettingsLimits = roomSettingsResponseMapper.toLimitsResponse(rules.settingsLimits),
         defaultSettings = roomSettingsResponseMapper.toResponse(rules.defaultSettings),

@@ -12,6 +12,7 @@ import site.qgames.games.core.SessionEvent
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SettingsViolation
+import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControlRules
 import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.Turns
@@ -52,7 +53,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
     override val advancedClass = CheckersAdvancedSettings::class.java
     override val playerClass = CheckersPlayer::class.java
 
-    override val timeControl = TimeControlRules(optional = true, baseSeconds = 60..10800, incrementSeconds = 0..60)
+    override val timeControl = TimeControlRules(optional = true, baseSeconds = 60..10800, bonusSeconds = 0..60)
 
     override val defaultSimple = CheckersSimpleSettings(CheckersVariant.RUSSIAN, CheckersTime.RAPID)
 
@@ -80,7 +81,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
             firstColor = rules.firstColor,
             endgameRule = preset.endgameRule,
             drawQuietMoves = preset.drawQuietMoves,
-            timeControl = TimeControlSettings(settings.time != CheckersTime.NONE, clock.baseSeconds, clock.incrementSeconds),
+            timeControl = TimeControlSettings(settings.time != CheckersTime.NONE, clock.baseSeconds, TimeBonusType.INCREMENT, clock.bonusSeconds),
             menMoveBackward = rules.menMoveBackward,
             menCaptureBackward = rules.menCaptureBackward,
             flyingKings = rules.flyingKings,
@@ -248,9 +249,9 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
         val VARIANTS = listOf(CheckersVariant.RUSSIAN, CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH)
 
         /**
-         * Официальные контроли времени (запас + добавка, секунды): русские — ФШР; международные — чемпионаты мира FMJD
-         * (классика) и тай-брейки матча 2024 (быстрые, блиц); английские — неофициально (официального регламента
-         * WCDF нет в открытом доступе). Двухэтапные контроли (90 мин на 45 ходов + …) часы не выражают.
+         * Официальные контроли времени (запас + инкремент Фишера, секунды): русские — ФШР; международные — чемпионаты
+         * мира FMJD (классика) и тай-брейки матча 2024 (быстрые, блиц); английские — неофициально (официального
+         * регламента WCDF нет в открытом доступе). Двухэтапные контроли (90 мин на 45 ходов + …) часы не выражают.
          */
         val TIME_PRESETS = listOf(
             preset(CheckersVariant.RUSSIAN, CheckersTime.CLASSIC, 1800, 30),
@@ -264,8 +265,8 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
             preset(CheckersVariant.ENGLISH, CheckersTime.BLITZ, 180, 3),
         )
 
-        private fun preset(variant: CheckersVariant, time: CheckersTime, baseSeconds: Int, incrementSeconds: Int) =
-            CheckersTimePreset(variant, time, baseSeconds, incrementSeconds)
+        private fun preset(variant: CheckersVariant, time: CheckersTime, baseSeconds: Int, bonusSeconds: Int) =
+            CheckersTimePreset(variant, time, baseSeconds, bonusSeconds)
 
         /** Размеры доски, которые можно выбрать в advanced. */
         val BOARD_SIZES = listOf(8, 10)

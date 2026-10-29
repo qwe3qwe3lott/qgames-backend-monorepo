@@ -62,12 +62,12 @@ data class GameRulesDto(
     val defaultSettings: RoomSettingsDto,
 )
 
-/** Какие шахматные часы разрешает игра в advanced-настройках. */
+/** Какие часы разрешает игра в advanced-настройках. */
 data class TimeControlLimitsDto(
     /** Можно ли играть без таймера (TimeControlDto.enabled = false). */
     val optional: Boolean,
     /** Границы запаса на партию в секундах. */
     val baseSeconds: IntRangeDto,
-    /** Границы добавки за ход в секундах. */
-    val incrementSeconds: IntRangeDto,
+    /** Границы добавочного времени (инкремента или задержки) в секундах. */
+    val bonusSeconds: IntRangeDto,
 )

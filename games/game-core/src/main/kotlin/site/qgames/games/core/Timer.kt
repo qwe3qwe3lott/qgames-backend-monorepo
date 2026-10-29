@@ -5,14 +5,27 @@ import java.time.Instant
 import java.util.UUID
 
 /**
- * Шахматные часы партии — единственный вид таймера: у каждого игрока запас [baseSeconds] на всю партию, после своего
- * хода он получает добавку [incrementSeconds] (Фишер; 0 — без добавки). Таймеры ведёт сервис game, игра объявляет
- * только границы ([TimeControlRules]). Партия без таймера — `timeControl = null`.
+ * Часы партии — единственный вид таймера: у каждого игрока запас [baseSeconds] на всю партию и добавочное время
+ * [bonusSeconds] вида [bonusType] (0 — без него). Таймеры ведёт сервис game, игра объявляет только границы
+ * ([TimeControlRules]). Партия без таймера — `timeControl = null`.
  */
 data class TimeControl(
     val baseSeconds: Int,
-    val incrementSeconds: Int,
+    val bonusType: TimeBonusType,
+    val bonusSeconds: Int,
 )
+
+/** Вид добавочного времени часов. */
+enum class TimeBonusType {
+    /** Инкремент (Фишер): после своего хода игрок получает к запасу bonusSeconds. */
+    INCREMENT,
+
+    /**
+     * Задержка (простая): в начале хода сначала тратится bonusSeconds, затем запас; неистраченная задержка не
+     * копится.
+     */
+    DELAY,
+}
 
 /**
  * Часы в advanced-настройках игры: включены ли ([enabled]) и их значения. Значения заполнены и у выключенных часов:
@@ -21,17 +34,21 @@ data class TimeControl(
 data class TimeControlSettings(
     val enabled: Boolean,
     val baseSeconds: Int,
-    val incrementSeconds: Int,
+    val bonusType: TimeBonusType,
+    val bonusSeconds: Int,
 ) {
     /** Часы партии; null — без таймера. */
-    fun toTimeControl(): TimeControl? = if (enabled) TimeControl(baseSeconds, incrementSeconds) else null
+    fun toTimeControl(): TimeControl? = if (enabled) TimeControl(baseSeconds, bonusType, bonusSeconds) else null
 }
 
-/** Что игра разрешает: можно ли играть без таймера ([optional]) и границы запаса и добавки (в секундах). */
+/**
+ * Что игра разрешает: можно ли играть без таймера ([optional]) и границы запаса и добавочного времени (в секундах).
+ * Оба вида добавочного времени разрешены всем играм.
+ */
 data class TimeControlRules(
     val optional: Boolean,
     val baseSeconds: IntRange,
-    val incrementSeconds: IntRange,
+    val bonusSeconds: IntRange,
 ) {
     /**
      * Нарушения в часах [settings]; поля — внутри часов (`enabled`, `baseSeconds`). Значения выключенных часов не
@@ -45,23 +62,26 @@ data class TimeControlRules(
         if (settings.baseSeconds !in baseSeconds) {
             add(SettingsViolation("baseSeconds", "must be between ${baseSeconds.first} and ${baseSeconds.last}"))
         }
-        if (settings.incrementSeconds !in incrementSeconds) {
-            add(SettingsViolation("incrementSeconds", "must be between ${incrementSeconds.first} and ${incrementSeconds.last}"))
+        if (settings.bonusSeconds !in bonusSeconds) {
+            add(SettingsViolation("bonusSeconds", "must be between ${bonusSeconds.first} and ${bonusSeconds.last}"))
         }
     }
 }
 
-/** Шахматные часы партии. Пауза — часть таймера: у партии без таймера пауз нет. */
+/** Часы партии. Пауза — часть таймера: у партии без таймера пауз нет. */
 data class TimerState(
     val status: TimerStatus,
     /**
-     * Когда кончится запас того, чей ход; null — ход ничей или таймер остановлен. На паузе не меняется: остаток —
-     * deadline − pausedAt.
+     * Когда кончится время того, чей ход: начало хода + его запас (+ задержка, если она есть). null — ход ничей или
+     * таймер остановлен. На паузе не меняется: остаток — deadline − pausedAt.
      */
     val deadline: Instant?,
     /** С какого момента таймер на паузе; null — идёт. */
     val pausedAt: Instant?,
-    /** Запас каждого игрока на момент последней смены хода; у ходящего текущий остаток — deadline − now. */
+    /**
+     * Запас каждого игрока на момент последней смены хода. У ходящего текущий запас — min(remainingMs, deadline − now),
+     * сверх него — остаток задержки.
+     */
     val clocks: List<PlayerClock>,
 )
 
@@ -80,11 +100,12 @@ enum class TimerStatus {
 }
 
 /**
- * Часы партии (`state.timer`) — шахматные часы ([TimeControl]). Старт: у всех запас `baseSeconds`, дедлайн ходящего —
- * `now + запас`. Часы переключаются только при смене очереди: ходивший получает остаток и добавку `incrementSeconds`,
- * следующему ставится дедлайн по его запасу. Ход без смены очереди часы не трогает. Время вышло — последствия решает
- * игра (`GameRules.onTimeout`); запас ходившего тогда 0 (плюс добавка, если очередь сменилась). Пауза запрещает ходы и
- * замораживает дедлайн; продолжение сдвигает его на длительность паузы. Конец и отмена партии останавливают часы
+ * Часы партии (`state.timer`, [TimeControl]). Старт: у всех запас `baseSeconds`, дедлайн ходящего — `now + запас`
+ * (+ задержка). Часы переключаются только при смене очереди: у ходившего остаётся `min(запас, остаток)` (+ инкремент),
+ * следующему ставится дедлайн `now + его запас` (+ задержка). Ход без смены очереди часы не трогает. Время вышло —
+ * последствия решает игра (`GameRules.onTimeout`); запас ходившего тогда 0 (плюс инкремент, если очередь сменилась).
+ * Пауза запрещает ходы и замораживает дедлайн; продолжение сдвигает его ровно на длительность паузы по меткам времени,
+ * поэтому сколько угодно пауз не добавляют времени (задержка заново не начисляется). Конец и отмена партии останавливают часы
  * (STOPPED без дедлайна, у ходившего — его остаток), чтобы финальное состояние было самодостаточным для повтора.
  *
  * События: `clock-switched` и `timer-stopped` — таймер целиком (PUT), `game-paused` и `game-resumed` — изменившиеся
@@ -106,19 +127,20 @@ object Timer {
     fun initial(timeControl: TimeControl?, players: List<UUID>, current: UUID?, now: Instant): TimerState? {
         if (timeControl == null) return null
         val base = timeControl.baseSeconds * MILLIS
-        return TimerState(TimerStatus.RUNNING, current?.let { now.plusMillis(base) }, pausedAt = null, players.map { PlayerClock(it, base) })
+        val deadline = current?.let { now.plusMillis(base + delayMs(timeControl)) }
+        return TimerState(TimerStatus.RUNNING, deadline, pausedAt = null, players.map { PlayerClock(it, base) })
     }
 
     /**
-     * Смена очереди с [previous] на [next] (`clock-switched`): ходивший получает остаток и добавку, следующему —
-     * дедлайн по его запасу. null — таймера нет или очередь не сменилась.
+     * Смена очереди с [previous] на [next] (`clock-switched`): у ходившего остаётся его запас к [now] плюс инкремент,
+     * следующему — дедлайн по его запасу и задержке. null — таймера нет или очередь не сменилась.
      */
     fun switch(timer: TimerState?, timeControl: TimeControl?, previous: UUID?, next: UUID?, now: Instant): SessionEvent? {
         if (timer == null || timeControl == null || previous == next) return null
         val clocks = timer.clocks.map {
-            if (it.playerId == previous) it.copy(remainingMs = remaining(timer, it, now) + timeControl.incrementSeconds * MILLIS) else it
+            if (it.playerId == previous) it.copy(remainingMs = remaining(timer, it, now) + incrementMs(timeControl)) else it
         }
-        val deadline = next?.let { id -> now.plusMillis(clocks.single { it.playerId == id }.remainingMs) }
+        val deadline = next?.let { id -> now.plusMillis(clocks.single { it.playerId == id }.remainingMs + delayMs(timeControl)) }
         return SessionEvents.put(CLOCK_SWITCHED, PATH, TimerState(TimerStatus.RUNNING, deadline, pausedAt = null, clocks))
     }
 
@@ -142,8 +164,8 @@ object Timer {
         timer.pausedAt?.let { Duration.between(it, now).coerceAtLeast(Duration.ZERO) } ?: Duration.ZERO
 
     /**
-     * Остановка часов (`timer-stopped`, конец или отмена партии): у [current] — его остаток к [now] без добавки; null —
-     * уже остановлены.
+     * Остановка часов (`timer-stopped`, конец или отмена партии): у [current] — его запас к [now]; null — уже
+     * остановлены.
      */
     fun stop(timer: TimerState, current: UUID?, now: Instant): SessionEvent? {
         if (timer.status == TimerStatus.STOPPED) return null
@@ -156,12 +178,21 @@ object Timer {
     /** Дедлайн, по которому сервис ищет истёкшее время хода: только у идущего таймера. */
     fun runningDeadline(timer: TimerState?): Instant? = timer?.takeIf { it.status == TimerStatus.RUNNING }?.deadline
 
-    /** Остаток [clock] ходящего к [now] (на паузе — к её началу), не меньше нуля; без дедлайна — сохранённый запас. */
+    /**
+     * Запас [clock] ходящего к [now] (на паузе — к её началу): не больше сохранённого (при задержке она тратится
+     * первой) и не меньше нуля; без дедлайна — сохранённый запас.
+     */
     private fun remaining(timer: TimerState, clock: PlayerClock, now: Instant): Long {
         val deadline = timer.deadline ?: return clock.remainingMs
         val at = timer.pausedAt ?: now
-        return Duration.between(at, deadline).toMillis().coerceAtLeast(0)
+        return Duration.between(at, deadline).toMillis().coerceIn(0, clock.remainingMs)
     }
+
+    private fun delayMs(timeControl: TimeControl): Long =
+        if (timeControl.bonusType == TimeBonusType.DELAY) timeControl.bonusSeconds * MILLIS else 0
+
+    private fun incrementMs(timeControl: TimeControl): Long =
+        if (timeControl.bonusType == TimeBonusType.INCREMENT) timeControl.bonusSeconds * MILLIS else 0
 
     private const val MILLIS = 1000L
 }

@@ -9,6 +9,7 @@ import site.qgames.games.core.SessionEvent
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SettingsViolation
+import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControlRules
 import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.Turns
@@ -35,7 +36,7 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSimpleS
     override val simpleClass = NothingSimpleSettings::class.java
     override val advancedClass = NothingAdvancedSettings::class.java
 
-    override val timeControl = TimeControlRules(optional = true, baseSeconds = 5..3600, incrementSeconds = 0..60)
+    override val timeControl = TimeControlRules(optional = true, baseSeconds = 5..3600, bonusSeconds = 0..60)
 
     override val defaultSimple = NothingSimpleSettings(rounds = 3, time = NothingTime.NONE)
 
@@ -50,7 +51,7 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSimpleS
         val preset = TIME_PRESETS.single { it.time == NothingTime.CLASSIC }
         return NothingAdvancedSettings(
             rounds = settings.rounds,
-            timeControl = TimeControlSettings(settings.time != NothingTime.NONE, preset.baseSeconds, preset.incrementSeconds),
+            timeControl = TimeControlSettings(settings.time != NothingTime.NONE, preset.baseSeconds, TimeBonusType.INCREMENT, preset.bonusSeconds),
         )
     }
 
@@ -73,7 +74,7 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSimpleS
 
     /**
      * Время вышло — ход пропускается: очередь переходит дальше, счётчик ходов не меняется. У игрока без запаса (и без
-     * добавки) следующие ходы тоже пропускаются по таймауту.
+     * добавочного времени) следующие ходы тоже пропускаются по таймауту.
      */
     override fun onTimeout(state: SessionState<NothingGameState>): List<SessionEvent> {
         val current = state.turns.currentPlayerId ?: return emptyList()
@@ -110,7 +111,7 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSimpleS
         private val ROUNDS = 1..50
 
         /** Пресеты времени simple-настроек. */
-        val TIME_PRESETS = listOf(NothingTimePreset(NothingTime.CLASSIC, baseSeconds = 30, incrementSeconds = 5))
+        val TIME_PRESETS = listOf(NothingTimePreset(NothingTime.CLASSIC, baseSeconds = 30, bonusSeconds = 5))
     }
 }
 
@@ -137,7 +138,7 @@ data class NothingAdvancedSettings(
 data class NothingTimePreset(
     val time: NothingTime,
     val baseSeconds: Int,
-    val incrementSeconds: Int,
+    val bonusSeconds: Int,
 )
 
 /** Границы настроек для формы и часы пресетов. */

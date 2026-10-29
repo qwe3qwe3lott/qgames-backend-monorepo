@@ -183,7 +183,7 @@ object SessionEventCodes {
         "- move-options-changed — PUT [\"state\", \"players\", {id}, \"moveOptions\"]: варианты ходов игрока " +
         "(чужим зрителям — пустой список);\n" +
         "- turn-changed — PUT [\"state\", \"turns\"]: сменился текущий игрок или раунд;\n" +
-        "- clock-switched — PUT [\"state\", \"timer\"]: шахматные часы после смены очереди (запас ходившего с добавкой, " +
+        "- clock-switched — PUT [\"state\", \"timer\"]: часы после смены очереди (запас ходившего с инкрементом, если он есть, " +
         "дедлайн следующего);\n" +
         "- game-paused — PATCH [\"state\", \"timer\"] {status: PAUSED, pausedAt}: пауза;\n" +
         "- game-resumed — PATCH [\"state\", \"timer\"] {status: RUNNING, deadline, pausedAt: null}: продолжение;\n" +

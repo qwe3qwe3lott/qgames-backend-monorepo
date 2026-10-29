@@ -83,7 +83,7 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
         assertThat(type).isEqualTo("snapshot")
         val snapshot = jsonMapper.readValue(data, RoomSnapshotDto::class.java)
         val current = room(roomId, BOB)
-        assertThat(snapshot.room.copy(serverTime = current.serverTime)).isEqualTo(current)
+        assertThat(snapshot.room).isEqualTo(current)
         assertThat(snapshot.room.members.single { it.id == BOB }.role).isEqualTo(RoomRole.SPECTATOR)
         assertThat(snapshot.seq).isEqualTo(eventSeq(roomId))
         assertThat(stream.response.contentType).startsWith(MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -146,7 +146,7 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
         )
         val folded = DocumentPatch.fold(tree(snapshot.room), events.map(::operation))!!
         val current = room(roomId, ALICE)
-        assertThat(folded - SERVER_TIME).isEqualTo(tree(current) - SERVER_TIME)
+        assertThat(folded).isEqualTo(tree(current))
     }
 
     @Test
@@ -328,9 +328,5 @@ class RoomEventsScenariosTest : GameIntegrationTest() {
     /** Системное представление PostgreSQL с активностью соединений — только для теста ожидания блокировки. */
     private object PgStatActivity : Table("pg_stat_activity") {
         val waitEventType = varchar("wait_event_type", 64).nullable()
-    }
-
-    private companion object {
-        const val SERVER_TIME = "serverTime"
     }
 }

@@ -71,8 +71,6 @@ data class RoomResponse(
     val createdAt: Instant,
     /** Текущие настройки комнаты: новая партия стартует с ними. */
     val settings: RoomSettingsDto,
-    /** Время сервера на момент ответа: по нему клиент поправляет свои часы для обратного отсчёта хода. */
-    val serverTime: Instant,
 )
 
 /** Участник комнаты. Владелец — RoomResponse.ownerId. */

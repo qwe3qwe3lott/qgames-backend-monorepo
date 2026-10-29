@@ -8,7 +8,6 @@ import site.qgames.game.repository.room.RoomMemberRepository
 import site.qgames.game.repository.session.RoomSessionRepository
 import site.qgames.game.service.game.GameRegistry
 import tools.jackson.databind.json.JsonMapper
-import java.time.Clock
 
 /**
  * Собирает комнату целиком: участники с профилями (join с таблицей user модуля user-auth), настройки, текущая (или последняя) партия кратко —
@@ -20,7 +19,6 @@ class RoomDetailsService(
     private val roomSessionRepository: RoomSessionRepository,
     private val gameRegistry: GameRegistry,
     private val jsonMapper: JsonMapper,
-    private val clock: Clock,
 ) {
 
     fun details(room: RoomModel): RoomDetailsModel {
@@ -32,7 +30,6 @@ class RoomDetailsService(
             settings = settings(room),
             members = roomMemberRepository.findAllWithProfiles(room.id),
             session = room.currentSessionId?.let(roomSessionRepository::findById) ?: roomSessionRepository.findLatest(room.id),
-            serverTime = clock.instant(),
         )
     }
 

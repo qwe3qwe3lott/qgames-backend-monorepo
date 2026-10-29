@@ -18,8 +18,8 @@ data class GameRulesModel(
     val timeControlOptional: Boolean,
     /** Границы запаса часов на партию, секунды. */
     val baseSeconds: IntRange,
-    /** Границы добавки за ход, секунды. */
-    val incrementSeconds: IntRange,
+    /** Границы добавочного времени (инкремента или задержки), секунды. */
+    val bonusSeconds: IntRange,
     /** Границы настроек игры, формат задаёт модуль игры (GameRules.settingsLimits). */
     val settingsLimits: Any,
     /** Настройки новой комнаты. */

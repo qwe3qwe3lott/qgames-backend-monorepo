@@ -23,6 +23,7 @@ import site.qgames.games.core.SessionEvent
 import site.qgames.common.docpatch.PatchMethod
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionStatus
+import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControl
 import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.TurnsState
@@ -68,7 +69,7 @@ class CheckersSessionScenariosTest {
                         "firstColor" to "WHITE",
                         "endgameRule" to "RUSSIAN",
                         "drawQuietMoves" to 30,
-                        "timeControl" to mapOf("enabled" to false, "baseSeconds" to 480, "incrementSeconds" to 4),
+                        "timeControl" to mapOf("enabled" to false, "baseSeconds" to 480, "bonusType" to "INCREMENT", "bonusSeconds" to 4),
                         "menMoveBackward" to false,
                         "menCaptureBackward" to true,
                         "flyingKings" to true,
@@ -156,7 +157,7 @@ class CheckersSessionScenariosTest {
         CheckersVariant.entries.forEach { variant ->
             assertThat(presets.filter { it.variant == variant }.map { it.time }).containsExactly(CheckersTime.CLASSIC, CheckersTime.RAPID, CheckersTime.BLITZ)
         }
-        assertThat(presets).allMatch { it.baseSeconds in checkers.timeControl.baseSeconds && it.incrementSeconds in checkers.timeControl.incrementSeconds }
+        assertThat(presets).allMatch { it.baseSeconds in checkers.timeControl.baseSeconds && it.bonusSeconds in checkers.timeControl.bonusSeconds }
         assertThat(presets.single { it.variant == CheckersVariant.RUSSIAN && it.time == CheckersTime.CLASSIC })
             .isEqualTo(CheckersTimePreset(CheckersVariant.RUSSIAN, CheckersTime.CLASSIC, 1800, 30))
     }
@@ -433,7 +434,7 @@ class CheckersSessionScenariosTest {
         assertThat(CheckersAdvancedRules.of(advanced)).isEqualTo(rules.rules)
         assertThat(advanced.endgameRule).isEqualTo(rules.endgameRule)
         assertThat(advanced.drawQuietMoves).isEqualTo(rules.drawQuietMoves)
-        assertThat(advanced.timeControl).isEqualTo(TimeControlSettings(time != CheckersTime.NONE, preset.baseSeconds, preset.incrementSeconds))
+        assertThat(advanced.timeControl).isEqualTo(TimeControlSettings(time != CheckersTime.NONE, preset.baseSeconds, TimeBonusType.INCREMENT, preset.bonusSeconds))
         assertThat(checkers.validateAdvanced(advanced) + checkers.timeControl.validate(advanced.timeControl)).isEmpty()
     }
 
@@ -533,7 +534,7 @@ class CheckersSessionScenariosTest {
 
     @Test
     fun `either player can resign at any time`() {
-        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(30, 0))
+        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(30, TimeBonusType.INCREMENT, 0))
 
         val events = (engine.move(rules, fold(journal), black, CheckersMove("RESIGN"), NOW) as MoveOutcome.Accepted).events
 
@@ -546,7 +547,7 @@ class CheckersSessionScenariosTest {
 
     @Test
     fun `timeout loses the game`() {
-        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(10, 0))
+        val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(10, TimeBonusType.INCREMENT, 0))
 
         val events = engine.timeout(rules, fold(journal), NOW.plusSeconds(10))
 
@@ -586,7 +587,7 @@ class CheckersSessionScenariosTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("viewers")
     fun `fold of masked events equals masked full fold`(viewer: ViewerKey) {
-        val journal = startOf(RUSSIAN, TimeControl(30, 0), SEED).toMutableList()
+        val journal = startOf(RUSSIAN, TimeControl(30, TimeBonusType.INCREMENT, 0), SEED).toMutableList()
         val whiteId = idOf(fold(journal), WHITE)
         val blackId = idOf(fold(journal), BLACK)
         journal += moved(journal, whiteId, 3 to 3, 4 to 4)
@@ -631,7 +632,7 @@ class CheckersSessionScenariosTest {
 
     /** Начальный журнал партии с advanced-настройками [settings] и часами [timeControl] (null — без таймера). */
     private fun startOf(settings: CheckersAdvancedSettings, timeControl: TimeControl?, seed: Long): List<SessionEvent> {
-        val clock = timeControl?.let { TimeControlSettings(true, it.baseSeconds, it.incrementSeconds) }
+        val clock = timeControl?.let { TimeControlSettings(true, it.baseSeconds, it.bonusType, it.bonusSeconds) }
             ?: settings.timeControl.copy(enabled = false)
         return engine.start(rules, listOf(ALICE, BOB), seed, settings.copy(timeControl = clock), NOW)
     }

@@ -30,6 +30,7 @@ import site.qgames.games.checkers.CheckersSettingsLimits
 import site.qgames.games.checkers.CheckersSimpleSettings
 import site.qgames.games.checkers.CheckersTime
 import site.qgames.games.checkers.CheckersVariant
+import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.nothing.NothingAdvancedSettings
 import site.qgames.games.nothing.NothingSettingsLimits
@@ -39,6 +40,7 @@ import site.qgames.game.api.dto.room.CheckersEndgameRule as CheckersEndgameRuleD
 import site.qgames.game.api.dto.room.CheckersTime as CheckersTimeDto
 import site.qgames.game.api.dto.room.CheckersVariant as CheckersVariantDto
 import site.qgames.game.api.dto.room.NothingTime as NothingTimeDto
+import site.qgames.game.api.dto.room.TimeBonusType as TimeBonusTypeDto
 import site.qgames.game.api.dto.session.CheckersColor as CheckersColorDto
 
 /**
@@ -115,7 +117,7 @@ class RoomSettingsResponseMapper {
             gameCode = GameCode.NOTHING,
             rounds = toDto(limits.rounds),
             timePresets = limits.timePresets.map {
-                NothingTimePresetDto(NothingTimeDto.valueOf(it.time.name), it.baseSeconds, it.incrementSeconds)
+                NothingTimePresetDto(NothingTimeDto.valueOf(it.time.name), it.baseSeconds, it.bonusSeconds)
             },
         )
         is CheckersSettingsLimits -> CheckersSettingsLimitsDto(
@@ -126,7 +128,7 @@ class RoomSettingsResponseMapper {
                     variant = CheckersVariantDto.valueOf(it.variant.name),
                     time = CheckersTimeDto.valueOf(it.time.name),
                     baseSeconds = it.baseSeconds,
-                    incrementSeconds = it.incrementSeconds,
+                    bonusSeconds = it.bonusSeconds,
                 )
             },
             boardSizes = limits.boardSizes,
@@ -167,8 +169,14 @@ class RoomSettingsResponseMapper {
         removeCapturedAfterMove = preset.rules.removeCapturedAfterMove,
     )
 
-    private fun toModel(dto: TimeControlDto) = TimeControlSettings(dto.enabled, dto.baseSeconds, dto.incrementSeconds)
+    private fun toModel(dto: TimeControlDto) =
+        TimeControlSettings(dto.enabled, dto.baseSeconds, TimeBonusType.valueOf(dto.bonusType.name), dto.bonusSeconds)
 
     private fun toDto(settings: TimeControlSettings) =
-        TimeControlDto(settings.enabled, settings.baseSeconds, settings.incrementSeconds)
+        TimeControlDto(
+            settings.enabled,
+            settings.baseSeconds,
+            TimeBonusTypeDto.valueOf(settings.bonusType.name),
+            settings.bonusSeconds,
+        )
 }

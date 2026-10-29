@@ -82,7 +82,7 @@ class GameService(
             spectators = RoomOptionsModel.MAX_SPECTATORS,
             timeControlOptional = timeControl.optional,
             baseSeconds = timeControl.baseSeconds,
-            incrementSeconds = timeControl.incrementSeconds,
+            bonusSeconds = timeControl.bonusSeconds,
             settingsLimits = rules.settingsLimits,
             defaultSettings = defaultSettings(code),
         )

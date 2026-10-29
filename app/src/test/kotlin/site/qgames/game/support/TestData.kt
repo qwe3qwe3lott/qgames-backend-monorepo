@@ -11,6 +11,7 @@ import site.qgames.game.api.dto.room.NothingSimpleSettingsDto
 import site.qgames.game.api.dto.room.NothingTime
 import site.qgames.game.api.dto.room.RoomOptionsDto
 import site.qgames.game.api.dto.room.RoomSettingsDto
+import site.qgames.game.api.dto.room.TimeBonusType
 import site.qgames.game.api.dto.room.TimeControlDto
 import site.qgames.game.api.dto.session.CheckersColor
 import java.util.UUID
@@ -50,18 +51,18 @@ object TestData {
     val NOTHING_DEFAULT_SETTINGS = RoomSettingsDto(
         room = RoomOptionsDto(8),
         simple = NothingSimpleSettingsDto(GameCode.NOTHING, rounds = 3, time = NothingTime.NONE),
-        advanced = NothingAdvancedSettingsDto(GameCode.NOTHING, rounds = 3, timeControl = TimeControlDto(false, 30, 5)),
+        advanced = NothingAdvancedSettingsDto(GameCode.NOTHING, rounds = 3, timeControl = TimeControlDto(false, 30, TimeBonusType.INCREMENT, 5)),
     )
 
     /** Настройки шашек по умолчанию (из их правил): русские, быстрые 8 мин + 4 с. */
     val CHECKERS_DEFAULT_SETTINGS = RoomSettingsDto(
         room = RoomOptionsDto(8),
         simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.RAPID),
-        advanced = checkersAdvanced(CheckersVariant.RUSSIAN, TimeControlDto(true, 480, 4)),
+        advanced = checkersAdvanced(CheckersVariant.RUSSIAN, TimeControlDto(true, 480, TimeBonusType.INCREMENT, 4)),
     )
 
     /** Advanced-настройки шашек с правилами пресета варианта [variant]. */
-    fun checkersAdvanced(variant: CheckersVariant, timeControl: TimeControlDto = TimeControlDto(false, 480, 4)) = when (variant) {
+    fun checkersAdvanced(variant: CheckersVariant, timeControl: TimeControlDto = TimeControlDto(false, 480, TimeBonusType.INCREMENT, 4)) = when (variant) {
         CheckersVariant.RUSSIAN -> CheckersAdvancedSettingsDto(
             GameCode.CHECKERS, 8, CheckersColor.WHITE, CheckersEndgameRule.RUSSIAN, 30, timeControl, false, true, true, true, false, true, true,
         )

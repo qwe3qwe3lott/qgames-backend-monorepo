@@ -32,7 +32,6 @@ class RoomResponseMapper(
             session = details.session?.let(::toResponse),
             createdAt = room.createdAt,
             settings = roomSettingsResponseMapper.toResponse(details.settings),
-            serverTime = details.serverTime,
         )
     }
 

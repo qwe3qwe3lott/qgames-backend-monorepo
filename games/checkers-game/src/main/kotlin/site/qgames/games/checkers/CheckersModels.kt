@@ -109,7 +109,7 @@ data class CheckersTimePreset(
     val variant: CheckersVariant,
     val time: CheckersTime,
     val baseSeconds: Int,
-    val incrementSeconds: Int,
+    val bonusSeconds: Int,
 )
 
 /**

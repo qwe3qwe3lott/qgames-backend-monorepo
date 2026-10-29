@@ -26,6 +26,7 @@ import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomRole
 import site.qgames.game.api.dto.room.RoomSettingsDto
 import site.qgames.game.api.dto.room.RoomStatus
+import site.qgames.game.api.dto.room.TimeBonusType
 import site.qgames.game.api.dto.room.TimeControlDto
 import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import site.qgames.game.support.TestData.ALICE
@@ -39,8 +40,8 @@ import site.qgames.games.core.TimeControlRules
 /**
  * Настройки комнаты: комната создаётся с настройками игры по умолчанию (POST /api/games/{gameCode}/rooms), владелец
  * меняет группы ручкой PUT …/settings — room в любой момент, simple или advanced между партиями. Перевод simple в
- * advanced — POST /api/games/{gameCode}/advanced-settings. Границы — из правил «игры в ничто»: 1–50 кругов, шахматные
- * часы — запас 5–3600 с, добавка 0–60 с, можно без таймера; лимит наблюдателей — 0–12.
+ * advanced — POST /api/games/{gameCode}/advanced-settings. Границы — из правил «игры в ничто»: 1–50 кругов, часы —
+ * запас 5–3600 с, добавочное время 0–60 с, можно без таймера; лимит наблюдателей — 0–12.
  */
 class RoomSettingsScenariosTest : GameIntegrationTest() {
 
@@ -81,7 +82,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         val updated = update(ALICE, roomId, UpdateRoomSettingsRequest(simple = simple))
 
         assertThat(updated.settings).isEqualTo(
-            RoomSettingsDto(RoomOptionsDto(8), simple, NothingAdvancedSettingsDto(GameCode.NOTHING, 4, TimeControlDto(true, 30, 5))),
+            RoomSettingsDto(RoomOptionsDto(8), simple, NothingAdvancedSettingsDto(GameCode.NOTHING, 4, TimeControlDto(true, 30, TimeBonusType.INCREMENT, 5))),
         )
         assertThat(stored(roomId)).isEqualTo(tree(updated.settings))
     }
@@ -89,7 +90,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
     @Test
     fun `owner changes the settings between games and the next game uses the advanced ones`() {
         val roomId = roomWith(ALICE, BOB)
-        val advanced = nothingSettings(rounds = 1, clockSeconds = 45, incrementSeconds = 2)
+        val advanced = nothingSettings(rounds = 1, clockSeconds = 45, bonusSeconds = 2)
 
         update(ALICE, roomId, UpdateRoomSettingsRequest(advanced = advanced))
 
@@ -98,7 +99,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         assertThat(fullState(roomId).state.timer).isNotNull()
         val session = roomSessionRepository.findLatest(roomId)!!
         assertThat(jsonMapper.readTree(session.settings)).isEqualTo(
-            jsonMapper.readTree("""{"rounds": 1, "timeControl": {"enabled": true, "baseSeconds": 45, "incrementSeconds": 2}}"""),
+            jsonMapper.readTree("""{"rounds": 1, "timeControl": {"enabled": true, "baseSeconds": 45, "bonusType": "INCREMENT", "bonusSeconds": 2}}"""),
         )
     }
 
@@ -181,7 +182,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
 
         call(HttpMethod.POST, "/api/games/checkers/advanced-settings", ALICE, simple).andExpect {
             status { isOk() }
-            content { json(jsonMapper.writeValueAsString(checkersAdvanced(CheckersVariant.INTERNATIONAL, TimeControlDto(true, 600, 5))), strict = true) }
+            content { json(jsonMapper.writeValueAsString(checkersAdvanced(CheckersVariant.INTERNATIONAL, TimeControlDto(true, 600, TimeBonusType.INCREMENT, 5))), strict = true) }
         }
     }
 
@@ -223,11 +224,16 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
     }
 
     companion object {
-        private fun advanced(rounds: Int = 3, clockSeconds: Int? = null, incrementSeconds: Int = 0) =
+        private fun advanced(
+            rounds: Int = 3,
+            clockSeconds: Int? = null,
+            bonusSeconds: Int = 0,
+            bonusType: TimeBonusType = TimeBonusType.INCREMENT,
+        ) =
             NothingAdvancedSettingsDto(
                 GameCode.NOTHING,
                 rounds,
-                clockSeconds?.let { TimeControlDto(true, it, incrementSeconds) } ?: TimeControlDto(false, 30, 5),
+                clockSeconds?.let { TimeControlDto(true, it, bonusType, bonusSeconds) } ?: TimeControlDto(false, 30, TimeBonusType.INCREMENT, 5),
             )
 
         private fun simple(rounds: Int = 3) = NothingSimpleSettingsDto(GameCode.NOTHING, rounds, NothingTime.NONE)
@@ -236,9 +242,10 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         fun validAdvancedSettings(): Stream<Arguments> = Stream.of(
             arguments("minimum rounds, no timer", advanced(rounds = 1)),
             arguments("maximum rounds", advanced(rounds = 50)),
-            arguments("smallest clock without increment", advanced(clockSeconds = 5)),
-            arguments("largest clock and increment", advanced(rounds = 7, clockSeconds = 3600, incrementSeconds = 60)),
-            arguments("values of a turned off clock are not checked", advanced().copy(timeControl = TimeControlDto(false, 1, 999))),
+            arguments("smallest clock without bonus", advanced(clockSeconds = 5)),
+            arguments("largest clock and increment", advanced(rounds = 7, clockSeconds = 3600, bonusSeconds = 60)),
+            arguments("clock with delay", advanced(clockSeconds = 30, bonusSeconds = 5, bonusType = TimeBonusType.DELAY)),
+            arguments("values of a turned off clock are not checked", advanced().copy(timeControl = TimeControlDto(false, 1, TimeBonusType.INCREMENT, 999))),
         )
 
         @JvmStatic
@@ -253,9 +260,9 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             arguments("clock too short", UpdateRoomSettingsRequest(advanced = advanced(clockSeconds = 4)), "advanced.timeControl.baseSeconds"),
             arguments("clock too long", UpdateRoomSettingsRequest(advanced = advanced(clockSeconds = 3601)), "advanced.timeControl.baseSeconds"),
             arguments(
-                "increment too large",
-                UpdateRoomSettingsRequest(advanced = advanced(clockSeconds = 30, incrementSeconds = 61)),
-                "advanced.timeControl.incrementSeconds",
+                "bonus too large",
+                UpdateRoomSettingsRequest(advanced = advanced(clockSeconds = 30, bonusSeconds = 61)),
+                "advanced.timeControl.bonusSeconds",
             ),
             arguments(
                 "settings of another game",
@@ -275,7 +282,12 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             arguments("simple without the time", mapOf("simple" to mapOf("gameCode" to "nothing", "rounds" to 3)), null),
             arguments(
                 "clock without the base time",
-                mapOf("advanced" to mapOf("gameCode" to "nothing", "rounds" to 3, "timeControl" to mapOf("enabled" to true, "incrementSeconds" to 5))),
+                mapOf("advanced" to mapOf("gameCode" to "nothing", "rounds" to 3, "timeControl" to mapOf("enabled" to true, "bonusType" to "INCREMENT", "bonusSeconds" to 5))),
+                null,
+            ),
+            arguments(
+                "clock without the bonus type",
+                mapOf("advanced" to mapOf("gameCode" to "nothing", "rounds" to 3, "timeControl" to mapOf("enabled" to true, "baseSeconds" to 30, "bonusSeconds" to 5))),
                 null,
             ),
         )

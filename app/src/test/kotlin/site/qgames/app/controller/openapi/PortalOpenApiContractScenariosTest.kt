@@ -69,6 +69,7 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         "RoomResponse, gameCode, nothing|carcassonne|checkers",
         "GameSummaryDto, code, nothing|carcassonne|checkers",
         "GameDetailsResponse, code, nothing|carcassonne|checkers",
+        "TimeControlDto, bonusType, INCREMENT|DELAY",
     )
     fun `game enums expose their public values`(schema: String, property: String, values: String) {
         val node = apiDocs().path("components").path("schemas").path(schema).path("properties").path(property)
