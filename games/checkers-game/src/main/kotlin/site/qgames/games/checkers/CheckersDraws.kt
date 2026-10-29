@@ -1,7 +1,8 @@
 package site.qgames.games.checkers
 
 /**
- * Ничьи по правилам (кроме соглашения): троекратное повторение позиции и правила окончаний вариантов. Счёт ходов
+ * Ничьи по правилам (кроме соглашения): троекратное повторение позиции и правила окончаний ([CheckersEndgameRule],
+ * выбираются в advanced-настройках независимо от доски). Счёт ходов
  * окончаний — [CheckersGameState.materialMoves]: ходов обеих сторон с последнего взятия или превращения, то есть с
  * момента установления соотношения сил.
  *
@@ -12,7 +13,7 @@ package site.qgames.games.checkers
  *   по 30, в 6–7 — по 60.
  * - Международные (FMJD): одинокая дамка против трёх фигур хотя бы с одной дамкой — по 16 ходов, против двух фигур и
  *   меньше хотя бы с одной дамкой — по 5 ходов.
- * - Английские — особых правил окончаний нет.
+ * - Нет (так у английских) — особых правил окончаний нет.
  *
  * «По N ходов» — обе стороны сделали по N ходов; «N-й ход сильнейшей стороны» — проверяется после её хода.
  */
@@ -29,10 +30,10 @@ internal object CheckersDraws {
      * Ничья по правилу окончаний после хода стороны [mover]: [pieces] — позиция после хода, [materialMoves] — счётчик с
      * этим ходом.
      */
-    fun endgame(variant: CheckersVariant, pieces: List<CheckersPiece>, mover: CheckersColor, materialMoves: Int): Boolean = when (variant) {
-        CheckersVariant.RUSSIAN -> russian(pieces, mover, materialMoves)
-        CheckersVariant.INTERNATIONAL -> international(pieces, materialMoves)
-        CheckersVariant.ENGLISH -> false
+    fun endgame(rule: CheckersEndgameRule, pieces: List<CheckersPiece>, mover: CheckersColor, materialMoves: Int): Boolean = when (rule) {
+        CheckersEndgameRule.RUSSIAN -> russian(pieces, mover, materialMoves)
+        CheckersEndgameRule.INTERNATIONAL -> international(pieces, materialMoves)
+        CheckersEndgameRule.NONE -> false
     }
 
     private fun russian(pieces: List<CheckersPiece>, mover: CheckersColor, materialMoves: Int): Boolean {

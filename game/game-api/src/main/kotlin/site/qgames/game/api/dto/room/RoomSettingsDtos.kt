@@ -8,6 +8,7 @@ import jakarta.validation.Valid
 import jakarta.validation.constraints.NotNull
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.game.GameCodes
+import site.qgames.game.api.dto.session.CheckersColor
 
 /**
  * Настройки комнаты из трёх групп:
@@ -126,7 +127,10 @@ data class NothingAdvancedSettingsDto(
     val timeControl: TimeControlDto,
 ) : GameAdvancedSettingsDto
 
-/** Вариант правил шашек. Доступные варианты — в границах настроек игры (CheckersSettingsLimitsDto.variants). */
+/**
+ * Вариант правил шашек simple-настроек. Доступные варианты — CheckersSettingsLimitsDto.variants, их правила для кнопок
+ * пресетов advanced — CheckersSettingsLimitsDto.rulePresets.
+ */
 enum class CheckersVariant {
     /** Русские шашки. */
     RUSSIAN,
@@ -163,15 +167,37 @@ data class CheckersSimpleSettingsDto(
     val time: CheckersTime,
 ) : GameSimpleSettingsDto
 
+/** Правила окончаний шашек: при каком соотношении сил и через сколько ходов партия — ничья. */
+enum class CheckersEndgameRule {
+    /** Особых правил окончаний нет (как у английских). */
+    NONE,
+
+    /** Правила русских шашек. */
+    RUSSIAN,
+
+    /** Правила международных шашек (FMJD). */
+    INTERNATIONAL,
+}
+
 /**
- * Advanced-настройки шашек: вариант (размер доски, первый ход, правила ничьих), часы и правила хода. Итоговые правила
- * партии — meta.advancedRules (CheckersAdvancedRulesDto).
+ * Advanced-настройки шашек: доска, первый ход, правила ничьих, часы и правила хода. Варианта нет: его правила
+ * подставляют кнопки пресетов (CheckersSettingsLimitsDto.rulePresets). Итоговые правила партии — meta.advancedRules
+ * (CheckersAdvancedRulesDto).
  */
 data class CheckersAdvancedSettingsDto(
     @field:Schema(type = "string", allowableValues = [GameCodes.CHECKERS])
     val gameCode: GameCode,
-    /** Вариант правил: один из доступных (CheckersSettingsLimitsDto.variants). */
-    val variant: CheckersVariant,
+    /** Размер доски: один из CheckersSettingsLimitsDto.boardSizes. */
+    val boardSize: Int,
+    /** Кто ходит первым. */
+    val firstColor: CheckersColor,
+    /** Правила окончаний. */
+    val endgameRule: CheckersEndgameRule,
+    /**
+     * Ничья после стольких ходов подряд (обеих сторон в сумме) только дамками без взятий: одно из
+     * CheckersSettingsLimitsDto.drawQuietMoves.
+     */
+    val drawQuietMoves: Int,
     @field:Valid
     val timeControl: TimeControlDto,
     /** Тихий ход простой назад. */
@@ -235,9 +261,31 @@ data class CheckersSettingsLimitsDto(
     val gameCode: GameCode,
     /** Варианты правил, которые можно выбрать. */
     val variants: List<CheckersVariant>,
-    /** Часы пресетов времени по вариантам (кроме NONE): для подписей в форме. */
+    /** Часы пресетов времени по вариантам (кроме NONE): для подписей и кнопок времени в форме. */
     val timePresets: List<CheckersTimePresetDto>,
+    /** Размеры доски, которые можно выбрать в advanced. */
+    val boardSizes: List<Int>,
+    /** Значения CheckersAdvancedSettingsDto.drawQuietMoves, которые можно выбрать. */
+    val drawQuietMoves: List<Int>,
+    /** Правила вариантов: кнопка пресета в форме advanced подставляет их в поля. */
+    val rulePresets: List<CheckersRulePresetDto>,
 ) : GameSettingsLimitsDto
+
+/** Правила варианта для кнопки пресета advanced: все поля CheckersAdvancedSettingsDto, кроме часов. */
+data class CheckersRulePresetDto(
+    val variant: CheckersVariant,
+    val boardSize: Int,
+    val firstColor: CheckersColor,
+    val endgameRule: CheckersEndgameRule,
+    val drawQuietMoves: Int,
+    val menMoveBackward: Boolean,
+    val menCaptureBackward: Boolean,
+    val flyingKings: Boolean,
+    val captureRequired: Boolean,
+    val maxCaptureRequired: Boolean,
+    val promoteMidCapture: Boolean,
+    val removeCapturedAfterMove: Boolean,
+)
 
 /** Официальный контроль времени варианта правил: часы пресета. */
 data class CheckersTimePresetDto(

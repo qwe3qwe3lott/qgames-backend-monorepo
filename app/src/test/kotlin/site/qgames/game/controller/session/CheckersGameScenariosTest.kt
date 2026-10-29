@@ -13,6 +13,7 @@ import site.qgames.game.api.dto.game.GameDetailsResponse
 import site.qgames.game.api.dto.game.GameListResponse
 import site.qgames.game.api.dto.game.TimeControlLimitsDto
 import site.qgames.game.api.dto.room.CheckersAdvancedSettingsDto
+import site.qgames.game.api.dto.room.CheckersRulePresetDto
 import site.qgames.game.api.dto.room.CheckersSettingsLimitsDto
 import site.qgames.game.api.dto.room.CheckersTime
 import site.qgames.game.api.dto.room.CheckersTimePresetDto
@@ -20,6 +21,7 @@ import site.qgames.game.api.dto.room.CheckersVariant
 import site.qgames.game.api.dto.room.IntRangeDto
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.RoomStatus
+import site.qgames.game.api.dto.room.UpdateRoomSettingsRequest
 import site.qgames.game.api.dto.session.CheckersColor
 import site.qgames.game.api.dto.session.CheckersAdvancedRulesDto
 import site.qgames.game.api.dto.session.CheckersSessionStateDto
@@ -57,18 +59,46 @@ class CheckersGameScenariosTest : GameIntegrationTest() {
         assertThat(limits.variants).containsExactly(CheckersVariant.RUSSIAN, CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH)
         assertThat(limits.timePresets).hasSize(9)
         assertThat(limits.timePresets.first()).isEqualTo(CheckersTimePresetDto(CheckersVariant.RUSSIAN, CheckersTime.CLASSIC, 1800, 30))
+        assertThat(limits.boardSizes).containsExactly(8, 10)
+        assertThat(limits.drawQuietMoves).containsExactly(30, 50, 80)
+        assertThat(limits.rulePresets.map { it.variant }).containsExactly(CheckersVariant.RUSSIAN, CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH)
+        // Пресет варианта — те же правила, что simple выводит в advanced.
+        CheckersVariant.entries.forEach { variant ->
+            val preset = limits.rulePresets.single { it.variant == variant }
+            val advanced = checkersAdvanced(variant)
+            assertThat(preset).isEqualTo(
+                CheckersRulePresetDto(
+                    variant, advanced.boardSize, advanced.firstColor, advanced.endgameRule, advanced.drawQuietMoves,
+                    advanced.menMoveBackward, advanced.menCaptureBackward, advanced.flyingKings, advanced.captureRequired,
+                    advanced.maxCaptureRequired, advanced.promoteMidCapture, advanced.removeCapturedAfterMove,
+                ),
+            )
+        }
         assertThat(details.rules.defaultSettings).isEqualTo(CHECKERS_DEFAULT_SETTINGS)
     }
 
     @Test
+    fun `advanced board size and draw counter outside the limits are rejected`() {
+        val roomId = roomWith(ALICE, settings = CHECKERS_DEFAULT_SETTINGS.advanced)
+        val advanced = checkersAdvanced(CheckersVariant.RUSSIAN).copy(boardSize = 12, drawQuietMoves = 7)
+
+        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(advanced = advanced), GameCodes.CHECKERS).andExpect {
+            status { isBadRequest() }
+            jsonPath("$.code") { value("VALIDATION_ERROR") }
+            jsonPath("$.errors['advanced.boardSize']") { exists() }
+            jsonPath("$.errors['advanced.drawQuietMoves']") { exists() }
+        }
+    }
+
+    @Test
     fun `advanced settings of the room set the rules and the board of the game`() {
-        val settings = checkersAdvanced(CheckersVariant.INTERNATIONAL).copy(removeCapturedAfterMove = false)
+        val settings = checkersAdvanced(CheckersVariant.RUSSIAN).copy(boardSize = 10, firstColor = CheckersColor.BLACK, removeCapturedAfterMove = false)
         val roomId = roomWith(ALICE, BOB, started = true, settings = settings)
         val stream = openSessionStream(ALICE, roomId, gameCode = GameCodes.CHECKERS)
 
         val snapshot = snapshot(stream)
         assertThat(jsonMapper.treeToValue(snapshot.path("meta").path("advancedRules"), CheckersAdvancedRulesDto::class.java))
-            .isEqualTo(CheckersAdvancedRulesDto(10, CheckersColor.WHITE, false, true, true, true, true, false, false))
+            .isEqualTo(CheckersAdvancedRulesDto(10, CheckersColor.BLACK, false, true, true, true, false, true, false))
         assertThat(jsonMapper.treeToValue(snapshot.path("meta").path("game").path("settings"), CheckersAdvancedSettingsDto::class.java))
             .isEqualTo(settings)
         assertThat(jsonMapper.treeToValue(snapshot.path("state"), CheckersSessionStateDto::class.java).pieces).hasSize(40)

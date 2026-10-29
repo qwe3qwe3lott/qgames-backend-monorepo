@@ -40,7 +40,10 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(strings(variantSchema.path("required"))).contains("gameCode", variantField)
     }
 
-    /** Варианты правил шашек: все три в контракте, доступные — в границах настроек. */
+    /**
+     * Варианты правил шашек: все три в контракте, доступные — в границах настроек. В advanced варианта нет — доска, первый
+     * ход и правила ничьих задаются напрямую, а вариант остаётся пресетом в границах.
+     */
     @Test
     fun `checkers settings list all variants`() {
         val schemas = apiDocs().path("components").path("schemas")
@@ -49,10 +52,15 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
             .containsExactly("RUSSIAN", "INTERNATIONAL", "ENGLISH")
         assertThat(strings(schemas.path("CheckersSimpleSettingsDto").path("properties").path("time").path("enum")))
             .containsExactly("NONE", "CLASSIC", "RAPID", "BLITZ")
-        assertThat(strings(schemas.path("CheckersAdvancedSettingsDto").path("properties").path("variant").path("enum")))
-            .containsExactly("RUSSIAN", "INTERNATIONAL", "ENGLISH")
+        val advanced = schemas.path("CheckersAdvancedSettingsDto")
+        assertThat(advanced.path("properties").has("variant")).isFalse()
+        assertThat(strings(advanced.path("required"))).contains("boardSize", "firstColor", "endgameRule", "drawQuietMoves")
+        assertThat(strings(advanced.path("properties").path("endgameRule").path("enum"))).containsExactly("NONE", "RUSSIAN", "INTERNATIONAL")
         assertThat(strings(schemas.path("CheckersSettingsLimitsDto").path("properties").path("variants").path("items").path("enum")))
             .containsExactly("RUSSIAN", "INTERNATIONAL", "ENGLISH")
+        assertThat(strings(schemas.path("CheckersSettingsLimitsDto").path("required"))).contains("boardSizes", "drawQuietMoves", "rulePresets")
+        assertThat(strings(schemas.path("CheckersRulePresetDto").path("required")))
+            .contains("variant", "boardSize", "firstColor", "endgameRule", "drawQuietMoves", "removeCapturedAfterMove")
     }
 
     /** Код игры — строчные коды (`@JsonValue`), а не имена значений enum. */

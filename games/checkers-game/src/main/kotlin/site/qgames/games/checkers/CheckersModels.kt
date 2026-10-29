@@ -3,11 +3,23 @@ package site.qgames.games.checkers
 import java.util.UUID
 import site.qgames.games.core.TimeControlSettings
 
-/** Вариант правил: база advanced-правил (доска, первый ход, флаги по умолчанию — [CheckersAdvancedRules.of]). */
+/** Вариант правил simple-настроек; в advanced — пресет, подставляющий все правила ([CheckersRulePreset]). */
 enum class CheckersVariant {
     RUSSIAN,
     INTERNATIONAL,
     ENGLISH,
+}
+
+/** Правила окончаний: при каком соотношении сил и через сколько ходов партия — ничья ([CheckersDraws.endgame]). */
+enum class CheckersEndgameRule {
+    /** Особых правил окончаний нет. */
+    NONE,
+
+    /** Правила русских шашек. */
+    RUSSIAN,
+
+    /** Правила международных шашек (FMJD). */
+    INTERNATIONAL,
 }
 
 enum class CheckersColor {
@@ -48,11 +60,16 @@ data class CheckersSimpleSettings(
 )
 
 /**
- * Advanced-настройки партии: вариант (доска, первый ход, правила ничьих), часы и флаги правил хода, которые задаёт
- * владелец комнаты. Итоговые правила хода — [CheckersAdvancedRules.of].
+ * Advanced-настройки партии, которые задаёт владелец комнаты: доска, первый ход, правила ничьих, часы и флаги правил
+ * хода. Итоговые правила хода — [CheckersAdvancedRules.of].
  */
 data class CheckersAdvancedSettings(
-    val variant: CheckersVariant,
+    /** Размер доски: один из [CheckersSettingsLimits.boardSizes]. */
+    val boardSize: Int,
+    val firstColor: CheckersColor,
+    val endgameRule: CheckersEndgameRule,
+    /** Ничья после стольких ходов подряд (обеих сторон в сумме) только дамками без взятий: один из [CheckersSettingsLimits.drawQuietMoves]. */
+    val drawQuietMoves: Int,
     val timeControl: TimeControlSettings,
     val menMoveBackward: Boolean,
     val menCaptureBackward: Boolean,
@@ -63,10 +80,28 @@ data class CheckersAdvancedSettings(
     val removeCapturedAfterMove: Boolean,
 )
 
-/** Границы настроек для формы: доступные варианты правил и часы их пресетов. */
+/**
+ * Границы настроек для формы: доступные варианты правил, часы их пресетов, допустимые доска и счётчик ничьей, правила
+ * вариантов для кнопок пресетов advanced.
+ */
 data class CheckersSettingsLimits(
     val variants: List<CheckersVariant>,
     val timePresets: List<CheckersTimePreset>,
+    val boardSizes: List<Int>,
+    val drawQuietMoves: List<Int>,
+    val rulePresets: List<CheckersRulePreset>,
+)
+
+/**
+ * Правила варианта: из них simple-настройки выводят advanced, а в форме advanced кнопка варианта подставляет их в поля.
+ * Часов нет — у них свои пресеты ([CheckersTimePreset]).
+ */
+data class CheckersRulePreset(
+    val variant: CheckersVariant,
+    /** Доска, первый ход и флаги правил хода. */
+    val rules: CheckersAdvancedRules,
+    val endgameRule: CheckersEndgameRule,
+    val drawQuietMoves: Int,
 )
 
 /** Официальный контроль времени варианта: часы пресета [time] (кроме NONE). */
@@ -79,8 +114,7 @@ data class CheckersTimePreset(
 
 /**
  * Итоговые правила хода (`meta.advancedRules`): по этим флагам клиент подсказывает путь, а сервер генерирует и
- * проверяет ходы. Клиент вариантов не знает — только флаги. Доска и первый ход выводятся из варианта, флаги — из
- * advanced-настроек.
+ * проверяет ходы. Клиент вариантов не знает — только флаги. Собираются из advanced-настроек ([of]).
  */
 data class CheckersAdvancedRules(
     /** Размер доски. */
@@ -147,15 +181,10 @@ data class CheckersAdvancedRules(
             removeCapturedAfterMove = true,
         )
 
-        /** Правила хода варианта по умолчанию: из них simple-настройки выводят флаги advanced. */
-        fun of(variant: CheckersVariant): CheckersAdvancedRules = when (variant) {
-            CheckersVariant.RUSSIAN -> RUSSIAN
-            CheckersVariant.INTERNATIONAL -> INTERNATIONAL
-            CheckersVariant.ENGLISH -> ENGLISH
-        }
-
-        /** Итоговые правила партии: доска и первый ход — из варианта, флаги — из advanced-настроек. */
-        fun of(settings: CheckersAdvancedSettings): CheckersAdvancedRules = of(settings.variant).copy(
+        /** Итоговые правила партии из advanced-настроек. */
+        fun of(settings: CheckersAdvancedSettings): CheckersAdvancedRules = CheckersAdvancedRules(
+            boardSize = settings.boardSize,
+            firstColor = settings.firstColor,
             menMoveBackward = settings.menMoveBackward,
             menCaptureBackward = settings.menCaptureBackward,
             flyingKings = settings.flyingKings,

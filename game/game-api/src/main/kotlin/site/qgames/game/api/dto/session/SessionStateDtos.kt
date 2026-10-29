@@ -148,7 +148,7 @@ enum class CheckersPieceKind {
     KING,
 }
 
-/** Итоговые правила партии шашек: доска и первый ход — из варианта, флаги — из advanced-настроек. */
+/** Итоговые правила партии шашек: доска, первый ход и флаги — из advanced-настроек. */
 data class CheckersAdvancedRulesDto(
     /** Размер доски. */
     val boardSize: Int,

@@ -64,7 +64,10 @@ class CheckersSessionScenariosTest {
                     "code" to "checkers",
                     "settings" to mapOf(
                         "gameCode" to "checkers",
-                        "variant" to "RUSSIAN",
+                        "boardSize" to 8,
+                        "firstColor" to "WHITE",
+                        "endgameRule" to "RUSSIAN",
+                        "drawQuietMoves" to 30,
                         "timeControl" to mapOf("enabled" to false, "baseSeconds" to 480, "incrementSeconds" to 4),
                         "menMoveBackward" to false,
                         "menCaptureBackward" to true,
@@ -120,6 +123,24 @@ class CheckersSessionScenariosTest {
 
         assertThat(whiteBySeed.toSet()).containsExactlyInAnyOrder(ALICE, BOB)
         assertThat(idOf(fold(startOf(RUSSIAN, NO_TIMER, SEED)), WHITE)).isEqualTo(white)
+    }
+
+    @Test
+    fun `board size and first color come from advanced settings, not from the variant`() {
+        val document = fold(startOf(RUSSIAN.copy(boardSize = 10, firstColor = BLACK), NO_TIMER, SEED))
+
+        val game = document.session.state.game as CheckersGameState
+        assertThat(game.pieces).hasSize(40)
+        assertThat(game.pieces.map { it.square[1] }.toSet()).containsExactlyInAnyOrder(1, 2, 3, 4, 7, 8, 9, 10)
+        assertThat(document.session.state.turns.currentPlayerId).isEqualTo(idOf(document, BLACK))
+    }
+
+    @Test
+    fun `advanced board size and draw counter outside the limits are rejected`() {
+        val violations = checkers.validateAdvanced(RUSSIAN.copy(boardSize = 12, drawQuietMoves = 40))
+
+        assertThat(violations.map { it.field }).containsExactly("boardSize", "drawQuietMoves")
+        assertThat(checkers.settingsLimits.rulePresets.map { it.variant }).isEqualTo(CheckersVariant.entries)
     }
 
     @Test
@@ -204,7 +225,7 @@ class CheckersSessionScenariosTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("endgames")
     fun `endgame rules draw at their move limit`(case: String, settings: CheckersAdvancedSettings, pieces: List<CheckersPiece>, path: List<Pair<Int, Int>>, limit: Int) {
-        val mover = if (CheckersAdvancedRules.of(settings.variant).firstColor == WHITE) white else black
+        val mover = if (settings.firstColor == WHITE) white else black
 
         val before = position(pieces, materialMoves = limit - 2, settings = settings)
         assertThat(fold(before + accepted(before, mover, *path.toTypedArray())).session.state.result).isNull()
@@ -314,12 +335,11 @@ class CheckersSessionScenariosTest {
         assertThat(game(journal + events).pieces.single { it.id == "b1" }.kind).isEqualTo(CheckersPieceKind.KING)
     }
 
-    @ParameterizedTest(name = "{0}: {1}")
+    @ParameterizedTest(name = "{0}: {2}")
     @MethodSource("drawLimits")
-    fun `quiet king moves draw at the limit of the variant`(variant: CheckersVariant, limit: Int) {
+    fun `quiet king moves draw at the limit of the settings`(case: String, settings: CheckersAdvancedSettings, limit: Int) {
         val pieces = listOf(wk("w1", 1, 1), bk("b1", 8, 2))
-        val settings = advanced(variant)
-        val mover = if (CheckersAdvancedRules.of(variant).firstColor == WHITE) white else black
+        val mover = if (settings.firstColor == WHITE) white else black
         val path = if (mover == white) arrayOf(1 to 1, 2 to 2) else arrayOf(8 to 2, 7 to 3)
 
         val before = accepted(position(pieces, quietMoves = limit - 2, settings = settings), mover, *path)
@@ -409,7 +429,10 @@ class CheckersSessionScenariosTest {
             it.variant == variant && it.time == (if (time == CheckersTime.NONE) CheckersTime.RAPID else time)
         }
 
-        assertThat(CheckersAdvancedRules.of(advanced)).isEqualTo(CheckersAdvancedRules.of(variant))
+        val rules = checkers.settingsLimits.rulePresets.single { it.variant == variant }
+        assertThat(CheckersAdvancedRules.of(advanced)).isEqualTo(rules.rules)
+        assertThat(advanced.endgameRule).isEqualTo(rules.endgameRule)
+        assertThat(advanced.drawQuietMoves).isEqualTo(rules.drawQuietMoves)
         assertThat(advanced.timeControl).isEqualTo(TimeControlSettings(time != CheckersTime.NONE, preset.baseSeconds, preset.incrementSeconds))
         assertThat(checkers.validateAdvanced(advanced) + checkers.timeControl.validate(advanced.timeControl)).isEmpty()
     }
@@ -595,7 +618,7 @@ class CheckersSessionScenariosTest {
         settings: CheckersAdvancedSettings = RUSSIAN,
     ): List<SessionEvent> {
         val started = startOf(settings, timeControl, SEED)
-        val history = listOf(CheckersDraws.positionKey(CheckersAdvancedRules.of(settings.variant).firstColor, pieces))
+        val history = listOf(CheckersDraws.positionKey(settings.firstColor, pieces))
         return started + listOf(
             SessionEvents.put("test-position", SessionEvents.path("state", "pieces"), pieces),
             SessionEvents.patch(
@@ -758,9 +781,10 @@ class CheckersSessionScenariosTest {
 
         @JvmStatic
         fun drawLimits(): Stream<Arguments> = Stream.of(
-            arguments(CheckersVariant.RUSSIAN, 30),
-            arguments(CheckersVariant.INTERNATIONAL, 50),
-            arguments(CheckersVariant.ENGLISH, 80),
+            arguments("russian", RUSSIAN, 30),
+            arguments("international", INTERNATIONAL, 50),
+            arguments("english", ENGLISH, 80),
+            arguments("russian rules with 50 moves", RUSSIAN.copy(drawQuietMoves = 50), 50),
         )
 
         @JvmStatic
