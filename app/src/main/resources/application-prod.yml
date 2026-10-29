@@ -1,0 +1,44 @@
+# Профиль prod — прод на VPS (deploy/compose.yml включает его через SPRING_PROFILES_ACTIVE).
+# Накладывается поверх application.yml: только переопределения. Наружу ничего лишнего, а без обязательных переменных
+# окружения приложение не стартует (у плейсхолдеров нет значений по умолчанию с dev-ключами и localhost).
+
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+
+# OpenAPI и Swagger UI в проде выключены жёстко, независимо от API_DOCS_ENABLED: ручки отвечают 404.
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false
+
+# Только health (healthcheck контейнера), без деталей и компонентов.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      show-components: never
+
+qgames:
+  auth:
+    jwt:
+      key-id: ${JWT_KEY_ID}
+      private-key: ${JWT_PRIVATE_KEY_LOCATION}
+      public-key: ${JWT_PUBLIC_KEY_LOCATION}
+    cookies:
+      secure: true
+
+  admin-auth:
+    jwt:
+      key-id: ${ADMIN_JWT_KEY_ID}
+      private-key: ${ADMIN_JWT_PRIVATE_KEY_LOCATION}
+      public-key: ${ADMIN_JWT_PUBLIC_KEY_LOCATION}
+    cookies:
+      secure: true

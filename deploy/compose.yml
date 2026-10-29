@@ -1,0 +1,103 @@
+# Прод на VPS: postgres + app. Запускает /opt/qgames/bin/deploy.sh (CI по push в ветку deploy) — он скачивает этот
+# файл на нужном коммите в /opt/qgames/backend/ и выполняет docker compose -p qgames-backend up -d --wait.
+# Значения — из /opt/qgames/backend/.env на сервере (не в репозитории); IMAGE_TAG пишет deploy.sh.
+# web (nginx) — отдельный compose-проект фронтенда, ходит в app по общей сети qgames (алиас app).
+# Наружу порты не публикуются: Docker публикует их в обход ufw.
+
+services:
+  # Настройки — под малую память, как в docker-compose.yml (adr/system/memory-budget.md).
+  postgres:
+    image: postgres:18-alpine
+    environment:
+      POSTGRES_USER: qgames
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?}
+      POSTGRES_DB: qgames
+    command:
+      - postgres
+      - -c
+      - max_connections=20
+      - -c
+      - shared_buffers=16MB
+      - -c
+      - effective_cache_size=64MB
+      - -c
+      - work_mem=2MB
+      - -c
+      - maintenance_work_mem=16MB
+      - -c
+      - wal_buffers=1MB
+      - -c
+      - max_wal_size=64MB
+      - -c
+      - jit=off
+      - -c
+      - huge_pages=off
+      - -c
+      - max_worker_processes=2
+      - -c
+      - max_parallel_workers=0
+      - -c
+      - max_parallel_workers_per_gather=0
+      - -c
+      - max_parallel_maintenance_workers=0
+      - -c
+      - autovacuum_max_workers=1
+    mem_limit: 128m
+    memswap_limit: 128m
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - default
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qgames -d qgames"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    image: ghcr.io/qwe3qwe3lott/qgames-app:${IMAGE_TAG:?}
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://postgres:5432/qgames
+      DB_USERNAME: qgames
+      DB_PASSWORD: ${DB_PASSWORD:?}
+      # Ключи ES256 сгенерированы на сервере: /opt/qgames/keys.
+      JWT_KEY_ID: ${JWT_KEY_ID:?}
+      JWT_PRIVATE_KEY_LOCATION: file:/keys/jwt-private.pem
+      JWT_PUBLIC_KEY_LOCATION: file:/keys/jwt-public.pem
+      ADMIN_JWT_KEY_ID: ${ADMIN_JWT_KEY_ID:?}
+      ADMIN_JWT_PRIVATE_KEY_LOCATION: file:/keys/admin-jwt-private.pem
+      ADMIN_JWT_PUBLIC_KEY_LOCATION: file:/keys/admin-jwt-public.pem
+      GOOGLE_CLIENT_IDS: ${GOOGLE_CLIENT_IDS:?}
+      # Первый администратор создаётся, только если администраторов ещё нет.
+      ADMIN_BOOTSTRAP_LOGIN: ${ADMIN_BOOTSTRAP_LOGIN:?}
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:?}
+    # Флаги JVM — в docker/app.Dockerfile; без свопа: при нехватке — OOM-kill и перезапуск (restart).
+    mem_limit: 512m
+    memswap_limit: 512m
+    volumes:
+      - /opt/qgames/keys:/keys:ro
+    networks:
+      default:
+      qgames:
+        aliases:
+          - app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 40s
+
+networks:
+  # Общая сеть с web фронтенда; создаётся при настройке сервера (docker network create qgames).
+  qgames:
+    external: true
+
+volumes:
+  postgres-data:

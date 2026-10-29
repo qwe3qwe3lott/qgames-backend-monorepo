@@ -286,7 +286,7 @@ docker compose down -v                # остановить и удалить �
 ```
 
 - Приложение — http://localhost:8080: Swagger — http://localhost:8080/swagger-ui.html (группы `portal` и `admin`), OpenAPI — `/v3/api-docs/portal`, `/v3/api-docs/admin`.
-- **Профиль `local`** — локальный стенд: `app/src/main/resources/application-local.yml` накладывается поверх `application.yml` и содержит только переопределения и добавления (основной конфиг не дублируется). docker-compose включает его через `SPRING_PROFILES_ACTIVE=local`. Значения только для стенда (первый админ, тестовые игроки, `qgames.game.session.seed-header-enabled` — seed партии из заголовка `X-Qgames-Seed` для e2e-сценариев фронта) живут в нём, а не в env compose. Для прода будет профиль `prod` (`application-prod.yml`, `SPRING_PROFILES_ACTIVE=prod`) — решить при подготовке деплоя.
+- **Профиль `local`** — локальный стенд: `app/src/main/resources/application-local.yml` накладывается поверх `application.yml` и содержит только переопределения и добавления (основной конфиг не дублируется). docker-compose включает его через `SPRING_PROFILES_ACTIVE=local`. Значения только для стенда (первый админ, тестовые игроки, `qgames.game.session.seed-header-enabled` — seed партии из заголовка `X-Qgames-Seed` для e2e-сценариев фронта) живут в нём, а не в env compose. **Профиль `prod`** (`application-prod.yml`, включает `deploy/compose.yml`) — тоже только переопределения: OpenAPI и Swagger выключены жёстко, actuator — только `health` без деталей, у БД и JWT-ключей нет значений по умолчанию (без env приложение не стартует).
 - Вход на стенде: админка — `admin` / `admin`; портал — тестовые игроки с логинами `qwe3qwe1` … `qwe3qwe10`, пароль `qwe3qwe3`.
 - Google-вход: заполнить `GOOGLE_CLIENT_IDS` в `.env` (см. `.env.example`).
 - Запуск из IDE: `docker compose up -d postgres`, затем `QgamesApplication` (или `./gradlew :app:bootRun`) с рабочим каталогом `app/` и профилем `local` (без него нет админа и тестовых игроков): значения по умолчанию в `application.yml` смотрят на localhost и `../docker/dev-keys`.
@@ -296,7 +296,7 @@ docker compose down -v                # остановить и удалить �
 
 ## 10. Развёртывание (один VPS)
 
-Один VPS 1 ГБ, docker compose: nginx (образ `web` фронтенда) + app + PostgreSQL. Бюджет памяти, SSE через proxy, Swagger в проде — в **`adr/c4/deployment.md`**, флаги JVM и настройки PostgreSQL с обоснованием — в **`adr/system/memory-budget.md`**: читать, когда трогаешь Docker-образ, `docker-compose.yml`, память или деплой.
+Один VPS 1 ГБ, docker compose: nginx (образ `web` фронтенда) + app + PostgreSQL. Прод-compose бэкенда — `deploy/compose.yml`, выкатка — `.github/workflows/deploy.yml` по push в ветку `deploy`; сервер, секреты и TLS — в **`adr/system/hosting.md`**. Бюджет памяти, SSE через proxy, Swagger в проде — в **`adr/c4/deployment.md`**, флаги JVM и настройки PostgreSQL с обоснованием — в **`adr/system/memory-budget.md`**: читать, когда трогаешь Docker-образ, `docker-compose.yml`, память или деплой.
 
 ## 11. Архитектурные решения и отвергнутые варианты
 
