@@ -69,6 +69,8 @@ class RoomController(
     override fun transferOwnership(roomId: UUID, request: TransferOwnershipRequest) =
         roomService.transferOwnership(requestUserContext.userId(), roomId, request.userId)
 
+    override fun kickMember(roomId: UUID, userId: UUID) = roomService.kick(requestUserContext.userId(), roomId, userId)
+
     override fun startSession(roomId: UUID) = roomSessionService.start(requestUserContext.userId(), roomId, seedFromHeader())
 
     override fun cancelSession(roomId: UUID) = roomSessionService.cancel(requestUserContext.userId(), roomId)

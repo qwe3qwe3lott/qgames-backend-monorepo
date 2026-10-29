@@ -174,6 +174,7 @@ object RoomEventCodes {
     const val MEMBER_LEFT = "member-left"
     const val MEMBER_LEAVING = "member-leaving"
     const val MEMBER_RETURNED = "member-returned"
+    const val MEMBER_KICKED = "member-kicked"
     const val ROLE_CHANGED = "role-changed"
     const val PROFILE_CHANGED = "profile-changed"
     const val OWNER_CHANGED = "owner-changed"
@@ -188,6 +189,8 @@ object RoomEventCodes {
         "конца партии;\n" +
         "- member-leaving — PATCH [\"members\", {id}] {leaving: true}: игрок идущей партии отключился, место за ним;\n" +
         "- member-returned — PATCH [\"members\", {id}] {leaving: false}: отсутствующий игрок партии вернулся;\n" +
+        "- member-kicked — INFO {userId}: владелец исключил участника, следом идёт member-left или member-leaving " +
+        "(игрок идущей партии). У исключённого это последнее событие: сервер закрывает его потоки комнаты и партии;\n" +
         "- role-changed — PATCH [\"members\", {id}] {role}: участник стал игроком или наблюдателем;\n" +
         "- profile-changed — PATCH [\"members\", {id}] {nickname, avatar}: участник сменил ник или аватар;\n" +
         "- owner-changed — PATCH [] {ownerId}: сменился владелец (null — присутствующих нет);\n" +

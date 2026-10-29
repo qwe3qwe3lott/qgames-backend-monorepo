@@ -6,15 +6,17 @@ import site.qgames.game.stream.common.SseWriter
 import site.qgames.games.core.ViewerKey
 
 /**
- * Один открытый поток партии (SSE): зритель с проекцией [viewer]. Аренды и присутствия у потока партии нет:
- * нахождение в комнате держит поток комнаты.
+ * Один открытый поток партии (SSE): пользователь [userId] комнаты [roomId] с проекцией [viewer]. Аренды и присутствия
+ * у потока партии нет: нахождение в комнате держит поток комнаты, а уход из неё закрывает и потоки партий.
  *
  * Порядок защищён seq, маркер не нужен: подписчик регистрируется до сборки снапшота, события до снапшота копятся,
  * снапшот на seq N уходит первым, из накопленного и последующих событий отбрасываются те, что с seq ≤ N.
  * Последнее событие партии (конец, отмена) закрывает поток.
  */
 class SessionStreamSubscriber(
+    val roomId: UUID,
     val sessionId: UUID,
+    val userId: UUID,
     val viewer: ViewerKey,
     emitter: SseEmitter,
     onClose: (SessionStreamSubscriber) -> Unit,

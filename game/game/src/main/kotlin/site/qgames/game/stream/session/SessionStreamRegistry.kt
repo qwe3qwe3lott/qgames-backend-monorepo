@@ -22,12 +22,17 @@ class SessionStreamRegistry : SmartLifecycle {
     private var running = false
 
     /** Новый подписчик, ждущий снапшот. Эмиттер без таймаута: поток живёт, пока его не закроет одна из сторон. */
-    fun register(sessionId: UUID, viewer: ViewerKey): SessionStreamSubscriber =
-        SessionStreamSubscriber(sessionId, viewer, SseEmitter(NO_TIMEOUT), sessions::remove).also(sessions::add)
+    fun register(roomId: UUID, sessionId: UUID, userId: UUID, viewer: ViewerKey): SessionStreamSubscriber =
+        SessionStreamSubscriber(roomId, sessionId, userId, viewer, SseEmitter(NO_TIMEOUT), sessions::remove).also(sessions::add)
 
     fun subscribers(sessionId: UUID): Collection<SessionStreamSubscriber> = sessions[sessionId]
 
     fun all(): List<SessionStreamSubscriber> = sessions.all()
+
+    /** Закрывает потоки партий комнаты [roomId] у пользователя [userId]: он больше не участник комнаты. */
+    fun close(roomId: UUID, userId: UUID) {
+        all().filter { it.roomId == roomId && it.userId == userId }.forEach(SessionStreamSubscriber::close)
+    }
 
     /** Закрывает все потоки (обрыв LISTEN-соединения, остановка): клиенты переподключатся и получат свежий снапшот. */
     fun closeAll() {

@@ -63,8 +63,9 @@ class GameRoomController(
      * seq ≤ N отбрасываются.
      */
     override fun sessionEvents(gameCode: String, roomId: UUID, sessionId: UUID): ResponseEntity<ResponseBodyEmitter> {
-        val subscription = sessionStreamService.subscribe(requestUserContext.userId(), gameCode(gameCode), roomId, sessionId)
-        val subscriber = sessionStreamRegistry.register(sessionId, subscription.viewer)
+        val userId = requestUserContext.userId()
+        val subscription = sessionStreamService.subscribe(userId, gameCode(gameCode), roomId, sessionId)
+        val subscriber = sessionStreamRegistry.register(roomId, sessionId, userId, subscription.viewer)
         try {
             val snapshot = sessionStreamService.snapshot(sessionId, subscription.viewer) ?: throw RoomErrors.sessionNotFound()
             subscriber.snapshot(

@@ -20,6 +20,9 @@ class RoomConnectionRepository(
     /** false — подключения уже нет (удалено по аренде или вместе с комнатой). */
     fun delete(id: UUID): Boolean = roomConnectionExposedRepository.delete(id)
 
+    /** Удаляет все подключения пользователя к комнате (исключение из комнаты). */
+    fun deleteForUser(roomId: UUID, userId: UUID) = roomConnectionExposedRepository.deleteForUser(roomId, userId)
+
     fun existsForUser(roomId: UUID, userId: UUID): Boolean = roomConnectionExposedRepository.existsForUser(roomId, userId)
 
     /**

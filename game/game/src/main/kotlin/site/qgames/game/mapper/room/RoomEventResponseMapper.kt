@@ -53,6 +53,8 @@ class RoomEventResponseMapper(
 
     fun memberReturned(userId: UUID) = patch(RoomEventCodes.MEMBER_RETURNED, member(userId), mapOf(LEAVING to false))
 
+    fun memberKicked(userId: UUID) = RoomEvent(RoomEventCodes.MEMBER_KICKED, PatchMethod.INFO, emptyList(), mapOf(USER_ID to userId))
+
     fun roleChanged(userId: UUID, role: RoomRoleModel) =
         patch(RoomEventCodes.ROLE_CHANGED, member(userId), mapOf(ROLE to RoomRole.valueOf(role.name)))
 
@@ -84,8 +86,23 @@ class RoomEventResponseMapper(
     /** Тип сообщения SSE для события: метод в нижнем регистре. */
     fun toType(event: RoomEvent): String = RoomStreamEventType.valueOf(event.method.name).code
 
-    /** Последнее событие потока: после него поток закрывается. */
-    fun isLast(event: RoomEvent): Boolean = event.code == RoomEventCodes.ROOM_DELETED
+    /** Последнее событие потока подписчика [userId]: комната удалена или он исключён. После него поток закрывается. */
+    fun isLast(event: RoomEvent, userId: UUID): Boolean =
+        event.code == RoomEventCodes.ROOM_DELETED ||
+            event.code == RoomEventCodes.MEMBER_KICKED && kickedUserId(event) == userId
+
+    /**
+     * Пользователь, который перестал быть участником комнаты по событию: исключённый (member-kicked) или ушедший
+     * (member-left). Игрок партии на member-leaving участником остаётся. null — событие не про это.
+     */
+    fun removedUserId(event: RoomEvent): UUID? = when (event.code) {
+        RoomEventCodes.MEMBER_KICKED -> kickedUserId(event)
+        RoomEventCodes.MEMBER_LEFT -> (event.path.last() as PathSegment.Id).id.let(UUID::fromString)
+        else -> null
+    }
+
+    /** Значение события — данные в форме контракта ({userId} строкой после NOTIFY). */
+    private fun kickedUserId(event: RoomEvent): UUID = UUID.fromString(objectOf(event)[USER_ID].toString())
 
     /** Кадр события `{seq, at, method, code, data}`. */
     fun toFrame(model: RoomEventModel): RoomPatchEvent {
@@ -122,5 +139,6 @@ class RoomEventResponseMapper(
         const val OWNER_ID = "ownerId"
         const val STATUS = "status"
         const val SESSION = "session"
+        const val USER_ID = "userId"
     }
 }

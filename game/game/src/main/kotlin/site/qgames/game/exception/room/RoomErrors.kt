@@ -26,6 +26,9 @@ object RoomErrors {
     /** Владение передают только присутствующему участнику комнаты. */
     fun newOwnerNotPresent() = ConflictException("NEW_OWNER_NOT_PRESENT", "The new owner is not present in the room")
 
+    /** Владелец не исключает сам себя: выход из комнаты — закрытие её потока. */
+    fun cannotKickSelf() = ConflictException("CANNOT_KICK_SELF", "The owner cannot kick themselves")
+
     fun notSessionPlayer() = ForbiddenException("NOT_SESSION_PLAYER", "User is not a player of the current game")
 
     fun roomNotWaiting() = ConflictException("ROOM_NOT_WAITING", "A game is in progress in the room")

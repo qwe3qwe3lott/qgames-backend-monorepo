@@ -43,6 +43,9 @@ class RoomEventPublisher(
 
     fun memberReturned(roomId: UUID, userId: UUID) = publish(roomId, roomEventResponseMapper.memberReturned(userId))
 
+    /** Перед выходом исключённого (member-left или member-leaving); у исключённого — последнее событие потока. */
+    fun memberKicked(roomId: UUID, userId: UUID) = publish(roomId, roomEventResponseMapper.memberKicked(userId))
+
     fun roleChanged(roomId: UUID, userId: UUID, role: RoomRole) = publish(roomId, roomEventResponseMapper.roleChanged(userId, role))
 
     fun profileChanged(roomId: UUID, member: RoomMemberDetailsModel) = publish(roomId, roomEventResponseMapper.profileChanged(member))

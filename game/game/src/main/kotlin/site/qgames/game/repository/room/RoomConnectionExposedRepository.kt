@@ -38,6 +38,10 @@ class RoomConnectionExposedRepository {
 
     fun delete(id: UUID): Boolean = RoomConnectionTable.deleteWhere { RoomConnectionTable.id eq id } > 0
 
+    fun deleteForUser(roomId: UUID, userId: UUID) {
+        RoomConnectionTable.deleteWhere { (RoomConnectionTable.roomId eq roomId) and (RoomConnectionTable.userId eq userId) }
+    }
+
     fun existsForUser(roomId: UUID, userId: UUID): Boolean =
         !RoomConnectionTable.select(RoomConnectionTable.id)
             .where { (RoomConnectionTable.roomId eq roomId) and (RoomConnectionTable.userId eq userId) }

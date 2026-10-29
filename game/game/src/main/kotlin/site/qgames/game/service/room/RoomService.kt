@@ -185,6 +185,33 @@ class RoomService(
         roomEventPublisher.ownerChanged(roomId, newOwnerId)
     }
 
+    /**
+     * Владелец исключает участника [targetId] — в любой момент, в том числе игрока идущей партии. Это не бан: исключённый
+     * может войти снова. Его подключения удаляются (потоки комнаты закроет событие member-kicked), дальше — как выход
+     * ([leave]): игрок партии остаётся отсутствующим до её конца, остальные удаляются. Неучастника и уже отсутствующего
+     * не трогает.
+     */
+    @Transactional
+    fun kick(userId: UUID, roomId: UUID, targetId: UUID) {
+        val room = lock(roomId)
+        val members = roomMemberRepository.findAll(roomId)
+        if (members.none { it.userId == userId }) {
+            throw RoomErrors.notRoomMember()
+        }
+        if (room.ownerId != userId) {
+            throw RoomErrors.notRoomOwner()
+        }
+        if (targetId == userId) {
+            throw RoomErrors.cannotKickSelf()
+        }
+        if (members.none { it.userId == targetId && it.leftAt == null }) {
+            return
+        }
+        roomConnectionRepository.deleteForUser(roomId, targetId)
+        roomEventPublisher.memberKicked(roomId, targetId)
+        leave(roomId, targetId)
+    }
+
     /** Роли меняются только между партиями. */
     @Transactional
     fun changeRole(userId: UUID, roomId: UUID, role: RoomRole) {

@@ -150,6 +150,32 @@ interface RoomApi {
     fun transferOwnership(@PathVariable roomId: UUID, @Valid @RequestBody request: TransferOwnershipRequest)
 
     @Operation(
+        summary = "Исключить участника",
+        description = "Владелец исключает участника из комнаты в любой момент, в том числе игрока идущей партии. " +
+            "Это не бан: исключённый может войти снова. Игрок идущей партии остаётся её игроком (отсутствующим, " +
+            "leaving = true) до конца партии, на его отсутствие отвечает игра (таймаут хода), при повторном входе он " +
+            "возвращается на своё место. Все подключения исключённого к потоку комнаты закрываются. Исключение " +
+            "неучастника или отсутствующего игрока ничего не меняет. Ответ без тела: изменение приходит событием " +
+            "member-kicked и следом member-left или member-leaving потока комнаты.",
+    )
+    @ApiResponses(
+        ApiResponse(responseCode = "204", description = "Участник исключён"),
+        ApiResponse(responseCode = "401", description = "Нет действительного access-токена (UNAUTHENTICATED)"),
+        ApiResponse(
+            responseCode = "403",
+            description = "Пользователь не в комнате (NOT_ROOM_MEMBER) или не владелец (NOT_ROOM_OWNER)",
+        ),
+        ApiResponse(
+            responseCode = "404",
+            description = "Комнаты нет или она удалена (ROOM_NOT_FOUND), игра комнаты не опубликована (GAME_NOT_FOUND)",
+        ),
+        ApiResponse(responseCode = "409", description = "Владелец исключает сам себя (CANNOT_KICK_SELF)"),
+    )
+    @DeleteExchange("/{roomId}/members/{userId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    fun kickMember(@PathVariable roomId: UUID, @PathVariable userId: UUID)
+
+    @Operation(
         summary = "Начать партию",
         description = "Стартует партию с текущими игроками комнаты (места — по порядку входа). Только владелец, " +
             "число игроков должно укладываться в ограничения игры (minPlayers–maxPlayers). Игра должна быть доступна " +
