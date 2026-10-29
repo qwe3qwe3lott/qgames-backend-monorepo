@@ -112,14 +112,18 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
     protected fun room(roomId: UUID, viewer: UUID): RoomResponse =
         call(HttpMethod.GET, "/api/rooms/$roomId", viewer).andExpect { status { isOk() } }.body()
 
-    /** Открывает поток событий комнаты (SSE) — вход в комнату. Поток остаётся открытым до [leave] или конца теста. */
+    /**
+     * Открывает поток событий комнаты (SSE) — вход в комнату. Поток остаётся открытым до [leave] или конца теста.
+     * Возвращается, когда в потоке уже есть первое сообщение — снапшот (он пишется асинхронно): иначе счёт
+     * «событий до действия» в тесте зависел бы от того, успел ли прийти снапшот.
+     */
     protected fun openStream(user: UUID, roomId: UUID): MvcResult =
         mockMvc.get("/api/rooms/$roomId/events") {
             asUser(user)
             accept = MediaType.TEXT_EVENT_STREAM
         }.andExpect {
             request { asyncStarted() }
-        }.andReturn()
+        }.andReturn().also { stream -> awaitUntil("snapshot in the stream") { events(stream).isNotEmpty() } }
 
     /** Вход в комнату — подключение к её потоку; возвращает комнату глазами вошедшего. */
     protected fun join(user: UUID, roomId: UUID): RoomResponse {
