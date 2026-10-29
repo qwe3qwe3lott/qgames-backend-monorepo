@@ -50,6 +50,10 @@ object RoomErrors {
     fun moveRejected(reason: String, message: String) =
         UnprocessableException("MOVE_REJECTED", message, mapOf("reason" to reason))
 
+    /** Заголовок `X-Qgames-Seed` не число (только при включённом `seed-header-enabled`). */
+    fun invalidSeed() =
+        ClientException(ErrorCodes.VALIDATION_ERROR, "Seed header must be a 64-bit integer")
+
     fun invalidMove() =
         ClientException(ErrorCodes.VALIDATION_ERROR, "Move does not match the game format")
 

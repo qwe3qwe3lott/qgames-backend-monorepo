@@ -1,5 +1,6 @@
 package site.qgames.game.controller.room
 
+import jakarta.servlet.http.HttpServletRequest
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RestController
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter
@@ -9,6 +10,8 @@ import site.qgames.game.api.dto.room.RoomResponse
 import site.qgames.game.api.dto.room.RoomStreamEventType
 import site.qgames.game.api.dto.room.TransferOwnershipRequest
 import site.qgames.game.api.web.RoomApi
+import site.qgames.game.config.GameProperties
+import site.qgames.game.exception.room.RoomErrors
 import site.qgames.game.mapper.room.RoomEventResponseMapper
 import site.qgames.game.mapper.room.RoomResponseMapper
 import site.qgames.game.model.room.RoomRole
@@ -26,6 +29,9 @@ class RoomController(
     private val roomEventResponseMapper: RoomEventResponseMapper,
     private val roomStreamRegistry: RoomStreamRegistry,
     private val requestUserContext: RequestUserContext,
+    private val gameProperties: GameProperties,
+    /** Прокси на текущий запрос: из него читается заголовок seed (см. [seedFromHeader]). */
+    private val httpRequest: HttpServletRequest,
 ) : RoomApi {
 
     override fun getRoom(roomId: UUID): RoomResponse =
@@ -61,11 +67,26 @@ class RoomController(
         roomResponseMapper.toResponse(roomService.transferOwnership(requestUserContext.userId(), roomId, request.userId))
 
     override fun startSession(roomId: UUID): RoomResponse =
-        roomResponseMapper.toResponse(roomSessionService.start(requestUserContext.userId(), roomId))
+        roomResponseMapper.toResponse(roomSessionService.start(requestUserContext.userId(), roomId, seedFromHeader()))
 
     override fun cancelSession(roomId: UUID) = roomSessionService.cancel(requestUserContext.userId(), roomId)
 
     override fun pauseSession(roomId: UUID) = roomSessionService.pause(requestUserContext.userId(), roomId)
 
     override fun resumeSession(roomId: UUID) = roomSessionService.resume(requestUserContext.userId(), roomId)
+
+    /**
+     * Seed партии для воспроизводимых e2e-сценариев. Заголовок учитывается только при
+     * `qgames.game.session.seed-header-enabled` (локальный стенд) и не входит в контракт, поэтому читается из запроса,
+     * а не через `@RequestHeader` в [RoomApi].
+     */
+    private fun seedFromHeader(): Long? {
+        if (!gameProperties.session.seedHeaderEnabled) return null
+        val header = httpRequest.getHeader(SEED_HEADER) ?: return null
+        return header.toLongOrNull() ?: throw RoomErrors.invalidSeed()
+    }
+
+    private companion object {
+        const val SEED_HEADER = "X-Qgames-Seed"
+    }
 }

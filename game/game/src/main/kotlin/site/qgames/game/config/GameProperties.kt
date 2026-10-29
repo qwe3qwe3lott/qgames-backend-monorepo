@@ -57,6 +57,11 @@ data class GameProperties(
         val timeoutBatchSize: Int = 100,
         /** Кеш состояний партий по проекциям зрителей (SessionStateCache). */
         val stateCache: StateCache = StateCache(),
+        /**
+         * Seed партии из заголовка `X-Qgames-Seed` ручки старта — для воспроизводимых e2e-сценариев. Включается только
+         * на локальном стенде (профиль local); выключен — заголовок игнорируется.
+         */
+        val seedHeaderEnabled: Boolean = false,
     )
 
     data class StateCache(

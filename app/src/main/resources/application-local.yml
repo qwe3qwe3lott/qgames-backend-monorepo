@@ -13,3 +13,8 @@ qgames:
     bootstrap:
       login: admin
       password: admin
+
+  game:
+    session:
+      # e2e-сценарии партий задают seed заголовком X-Qgames-Seed ручки старта (воспроизводимые цвета, раздачи).
+      seed-header-enabled: true

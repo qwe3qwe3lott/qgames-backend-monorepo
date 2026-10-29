@@ -27,3 +27,5 @@ qgames:
         cleanup-enabled: false
     session:
       timeout-enabled: false
+      # Как на локальном стенде: seed из заголовка X-Qgames-Seed (SessionSeedHeaderScenariosTest).
+      seed-header-enabled: true

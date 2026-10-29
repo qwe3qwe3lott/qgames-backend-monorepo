@@ -56,10 +56,11 @@ class RoomSessionService(
 
     /**
      * Игроки — участники с ролью PLAYER, места — по порядку входа в комнату. Партия получает снимок advanced-настроек
-     * комнаты, первое событие журнала — session-started. Игра должна быть доступна для новых партий.
+     * комнаты, первое событие журнала — session-started. Игра должна быть доступна для новых партий. [seed] задаётся
+     * только e2e-сценариями на локальном стенде, иначе — случайный.
      */
     @Transactional
-    fun start(userId: UUID, roomId: UUID): RoomDetailsModel {
+    fun start(userId: UUID, roomId: UUID, seed: Long? = null): RoomDetailsModel {
         val room = lockAsOwner(userId, roomId)
         gameService.checkAccessible(room.gameCode)
         if (room.status != RoomStatus.WAITING) {
@@ -70,18 +71,18 @@ class RoomSessionService(
         if (players.size !in rules.minPlayers..rules.maxPlayers) {
             throw RoomErrors.notEnoughPlayers(rules.minPlayers, rules.maxPlayers)
         }
-        val seed = random.nextLong()
+        val sessionSeed = seed ?: random.nextLong()
         val now = clock.instant()
         val session = roomSessionRepository.insert(
             roomId = roomId,
             gameCode = room.gameCode,
-            seed = seed,
+            seed = sessionSeed,
             settings = room.advancedSettings,
             players = players,
             now = now,
         )
         val settings = jsonMapper.readValue(room.advancedSettings, rules.advancedClass)
-        val events = sessionEngine.start(rules, players, seed, settings, now)
+        val events = sessionEngine.start(rules, players, sessionSeed, settings, now)
         sessionJournalService.record(session, before = null, events, now)
         val updated = room.copy(status = RoomStatus.IN_GAME, currentSessionId = session.id)
         roomRepository.update(updated)
