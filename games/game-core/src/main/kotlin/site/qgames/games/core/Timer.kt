@@ -101,8 +101,9 @@ enum class TimerStatus {
 
 /**
  * Часы партии (`state.timer`, [TimeControl]). Старт: у всех запас `baseSeconds`, дедлайн ходящего — `now + запас`
- * (+ задержка). Часы переключаются только при смене очереди: у ходившего остаётся `min(запас, остаток)` (+ инкремент),
- * следующему ставится дедлайн `now + его запас` (+ задержка). Ход без смены очереди часы не трогает. Время вышло —
+ * (+ задержка). Часы переключаются только при смене очереди — изменении `state.turns` (игрок или раунд, в том числе ход
+ * снова у того же игрока, как в одиночной партии): у ходившего остаётся `min(запас, остаток)` (+ инкремент), следующему
+ * ставится дедлайн `now + его запас` (+ задержка). Ход без смены очереди часы не трогает. Время вышло —
  * последствия решает игра (`GameRules.onTimeout`); запас ходившего тогда 0 (плюс инкремент, если очередь сменилась).
  * Пауза запрещает ходы и замораживает дедлайн; продолжение сдвигает его ровно на длительность паузы по меткам времени,
  * поэтому сколько угодно пауз не добавляют времени (задержка заново не начисляется). Конец и отмена партии останавливают часы
@@ -133,14 +134,16 @@ object Timer {
 
     /**
      * Смена очереди с [previous] на [next] (`clock-switched`): у ходившего остаётся его запас к [now] плюс инкремент,
-     * следующему — дедлайн по его запасу и задержке. null — таймера нет или очередь не сменилась.
+     * следующему (может быть он же) — дедлайн по его запасу и задержке. null — таймера нет или очередь не сменилась.
      */
-    fun switch(timer: TimerState?, timeControl: TimeControl?, previous: UUID?, next: UUID?, now: Instant): SessionEvent? {
+    fun switch(timer: TimerState?, timeControl: TimeControl?, previous: TurnsState, next: TurnsState, now: Instant): SessionEvent? {
         if (timer == null || timeControl == null || previous == next) return null
         val clocks = timer.clocks.map {
-            if (it.playerId == previous) it.copy(remainingMs = remaining(timer, it, now) + incrementMs(timeControl)) else it
+            if (it.playerId == previous.currentPlayerId) it.copy(remainingMs = remaining(timer, it, now) + incrementMs(timeControl)) else it
         }
-        val deadline = next?.let { id -> now.plusMillis(clocks.single { it.playerId == id }.remainingMs + delayMs(timeControl)) }
+        val deadline = next.currentPlayerId?.let { id ->
+            now.plusMillis(clocks.single { it.playerId == id }.remainingMs + delayMs(timeControl))
+        }
         return SessionEvents.put(CLOCK_SWITCHED, PATH, TimerState(TimerStatus.RUNNING, deadline, pausedAt = null, clocks))
     }
 

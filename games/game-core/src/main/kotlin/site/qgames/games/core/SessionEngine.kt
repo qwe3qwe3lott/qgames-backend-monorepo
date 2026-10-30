@@ -136,12 +136,12 @@ class SessionEngine(private val codec: SessionCodec) {
         check(results <= 1) { "${Result.RESULT_SET} must be set once, got $results" }
         val after = read(rules, fold(document.tree, own)!!).session
         val players = Players.changes(after.state) { if (finished) emptyList() else rules.moveOptions(after.state, it) }
-        val previous = document.session.state.turns.currentPlayerId
+        val previous = document.session.state.turns
         val timer = if (finished) {
-            after.state.timer?.let { Timer.stop(it, previous, now) }
+            after.state.timer?.let { Timer.stop(it, previous.currentPlayerId, now) }
         } else {
             val timeControl = rules.clock(settings(rules, document.session)).toTimeControl()
-            Timer.switch(after.state.timer, timeControl, previous, after.state.turns.currentPlayerId, now)
+            Timer.switch(after.state.timer, timeControl, previous, after.state.turns, now)
         }
         return own + (players + listOfNotNull(timer) + ending.take(1)).map(::tree)
     }

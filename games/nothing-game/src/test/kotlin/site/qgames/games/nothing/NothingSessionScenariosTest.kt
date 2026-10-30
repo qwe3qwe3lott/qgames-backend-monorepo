@@ -308,6 +308,30 @@ class NothingSessionScenariosTest {
         assertThat(fold(journal + events).session.state.timer).isEqualTo(fold(journal).session.state.timer)
     }
 
+    /** В одиночной партии очередь меняется раундом: каждый ход снова даёт задержку или инкремент. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("soloBonuses")
+    fun `solo move switches the clock to the same player`(bonusType: TimeBonusType, aliceMs: Long, deadline: Instant) {
+        val journal = journal(TimeControl(30, bonusType, 5), players = listOf(ALICE))
+
+        val events = accepted(fold(journal), ALICE, NOW.plusSeconds(12))
+
+        assertThat(events.last().code).isEqualTo("clock-switched")
+        assertThat(fold(journal + events).session.state.timer)
+            .isEqualTo(TimerState(TimerStatus.RUNNING, deadline, null, listOf(PlayerClock(ALICE, aliceMs))))
+    }
+
+    @Test
+    fun `solo timeout gives a new deadline with the delay`() {
+        val journal = journal(TimeControl(30, TimeBonusType.DELAY, 5), players = listOf(ALICE))
+
+        val events = engine.timeout(rules, fold(journal), NOW.plusSeconds(35))
+
+        // Запас кончился, но новый ход снова начинается с задержки, а дедлайн — в будущем.
+        assertThat(fold(journal + events).session.state.timer)
+            .isEqualTo(TimerState(TimerStatus.RUNNING, NOW.plusSeconds(40), null, listOf(PlayerClock(ALICE, 0))))
+    }
+
     @Test
     fun `game without a timer cannot be paused`() {
         assertThat(engine.pause(fold(journal()), NOW)).isEqualTo(TimerOutcome.NotPausable)
@@ -399,6 +423,14 @@ class NothingSessionScenariosTest {
             arguments("move within the delay keeps the base time", 1L, 30_000L),
             arguments("move at the end of the delay keeps the base time", 5L, 30_000L),
             arguments("longer move spends the base time beyond the delay", 12L, 23_000L),
+        )
+
+        @JvmStatic
+        fun soloBonuses(): Stream<Arguments> = Stream.of(
+            // 12 с хода: 5 с задержки, 7 с из запаса; новый дедлайн — запас 23 с + задержка 5 с.
+            arguments(TimeBonusType.DELAY, 23_000L, NOW.plusSeconds(40)),
+            // 12 с из запаса, +5 с инкремента.
+            arguments(TimeBonusType.INCREMENT, 23_000L, NOW.plusSeconds(35)),
         )
 
         @JvmStatic
