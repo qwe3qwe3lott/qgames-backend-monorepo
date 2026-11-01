@@ -10,7 +10,6 @@ import org.assertj.core.api.Assertions.within
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.isNull
-import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import org.junit.jupiter.api.Test
@@ -186,24 +185,8 @@ class RoomPauseScenariosTest : GameIntegrationTest() {
     }
 
     /** Пишет в журнал паузу таймера с момента [pausedAt] — как будто владелец поставил её тогда. */
-    private fun appendPause(roomId: UUID, pausedAt: Instant) {
-        val data = jsonMapper.writeValueAsString(
-            mapOf("path" to listOf("state", "timer"), "value" to mapOf("status" to TimerStatus.PAUSED, "pausedAt" to pausedAt)),
-        )
-        val session = roomSessionRepository.findById(sessionId(roomId))!!
-        val seq = session.lastSeq + 1
-        db {
-            RoomSessionEventTable.insert {
-                it[sessionId] = session.id
-                it[RoomSessionEventTable.seq] = seq
-                it[method] = "PATCH"
-                it[code] = "game-paused"
-                it[RoomSessionEventTable.data] = data
-                it[createdAt] = Instant.now()
-            }
-            RoomSessionTable.update({ RoomSessionTable.id eq session.id }) { it[lastSeq] = seq }
-        }
-    }
+    private fun appendPause(roomId: UUID, pausedAt: Instant) =
+        appendTimerPatch(roomId, "game-paused", mapOf("status" to TimerStatus.PAUSED, "pausedAt" to pausedAt))
 
     private fun storedDeadline(roomId: UUID): Instant? =
         db { RoomSessionTable.selectAll().where { RoomSessionTable.roomId eq roomId }.single()[RoomSessionTable.moveDeadline] }

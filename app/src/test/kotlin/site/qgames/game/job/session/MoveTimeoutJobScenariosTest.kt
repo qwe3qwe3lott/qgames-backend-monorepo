@@ -10,7 +10,6 @@ import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.games.nothing.NothingGameState
 import java.time.Instant
-import java.util.UUID
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.jdbc.selectAll
@@ -22,8 +21,8 @@ import site.qgames.game.table.session.RoomSessionTable
 import site.qgames.game.table.session.RoomSessionEventTable
 
 /**
- * Истечение времени хода: дедлайн-проекция сдвигается в прошлое через SQL, джоб вызывается напрямую (по расписанию он в
- * тестах выключен). В «игре в ничто» истечение времени — автоматический PASS игрока, чьё время вышло; события идут в
+ * Истечение времени хода: дедлайн сдвигается в прошлое в журнале и в проекции ([expireMove]), джоб вызывается напрямую
+ * (по расписанию он в тестах выключен). Истечение решает журнал, проекция — только выборка партий. В «игре в ничто» истечение времени — автоматический PASS игрока, чьё время вышло; события идут в
  * журнал тем же путём, что ход (пропуск — INFO player-passed, счётчик ходов не меняется).
  */
 class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
@@ -45,8 +44,9 @@ class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
         val state = fullState(roomId).state
         assertThat(state.turns.currentPlayerId).isEqualTo(BOB)
         assertThat(state.timer!!.deadline).isBetween(before.plusSeconds(30).minusMillis(1), after.plusSeconds(30))
+        // game-resumed — дедлайн в прошлом, записанный тестом (expireMove).
         assertThat(journal(roomId).map { it.second })
-            .containsExactly("session-started", "player-passed", "turn-changed", "move-options-changed", "move-options-changed", "clock-switched")
+            .containsExactly("session-started", "game-resumed", "player-passed", "turn-changed", "move-options-changed", "move-options-changed", "clock-switched")
         // Пропуск по времени — INFO: в журнале, но счётчик ходов игры не меняется.
         val passed = db {
             RoomSessionEventTable.selectAll().where { RoomSessionEventTable.code eq "player-passed" }.single()
@@ -103,14 +103,18 @@ class MoveTimeoutJobScenariosTest : GameIntegrationTest() {
         assertThat(count(RoomSessionEventTable) { RoomSessionEventTable.code eq "player-passed" }).isEqualTo(1)
     }
 
+    @Test
+    fun `expired projection alone does not time out the move`() {
+        val roomId = roomWith(ALICE, BOB, started = true, settings = perMove(seconds = 600))
+        // Проекцию поправили руками, а по журналу время хода ещё не вышло.
+        db { RoomSessionTable.update({ RoomSessionTable.roomId eq roomId }) { it[moveDeadline] = Instant.now().minusSeconds(5) } }
+
+        assertThat(moveTimeoutJob.run()).isZero()
+
+        assertThat(journal(roomId).map { it.second }).containsExactly("session-started")
+        assertThat(fullState(roomId).state.turns.currentPlayerId).isEqualTo(ALICE)
+    }
+
     private fun perMove(seconds: Int, rounds: Int = 3) =
         nothingSettings(rounds = rounds, clockSeconds = seconds)
-
-    private fun expireMove(roomId: UUID) {
-        db {
-            RoomSessionTable.update({ (RoomSessionTable.roomId eq roomId) and (RoomSessionTable.status eq "IN_PROGRESS") }) {
-                it[moveDeadline] = Instant.now().minusSeconds(5)
-            }
-        }
-    }
 }

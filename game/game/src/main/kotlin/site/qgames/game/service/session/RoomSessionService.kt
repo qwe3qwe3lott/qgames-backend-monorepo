@@ -23,6 +23,7 @@ import site.qgames.games.core.MoveOutcome
 import site.qgames.games.core.SessionDocument
 import site.qgames.games.core.SessionEngine
 import site.qgames.games.core.SessionStatus
+import site.qgames.games.core.Timer
 import site.qgames.games.core.TimerOutcome
 import tools.jackson.databind.json.JsonMapper
 
@@ -159,10 +160,10 @@ class RoomSessionService(
 
     /**
      * Истекло время хода в партии [sessionId]: последствия решает игра ([SessionEngine.timeout]), дальше — как обычный
-     * ход. Партия найдена джобом без блокировки: здесь блокируется только строка её комнаты, и под блокировкой всё
-     * перепроверяется — партия всё ещё идёт в этой комнате, дедлайн истёк (ход, отмена или пауза могли успеть раньше),
-     * игра не снята с публикации (такие партии отменит NotPublishedGameCleanupJob). Возвращает true, если время хода
-     * обработано.
+     * ход. Партия найдена джобом без блокировки по проекции `move_deadline`: здесь блокируется только строка её
+     * комнаты, и под блокировкой всё перепроверяется — партия всё ещё идёт в этой комнате, игра не снята с публикации
+     * (такие партии отменит NotPublishedGameCleanupJob), дедлайн идущего таймера истёк по полному состоянию партии, а не
+     * по проекции (ход, отмена или пауза могли успеть раньше). Возвращает true, если время хода обработано.
      */
     @Transactional
     fun timeout(sessionId: UUID): Boolean {
@@ -170,14 +171,17 @@ class RoomSessionService(
         val roomId = roomSessionRepository.findById(sessionId)?.roomId ?: return false
         val room = roomRepository.lockById(roomId) ?: return false
         val session = roomSessionRepository.findById(sessionId) ?: return false
-        val deadline = session.moveDeadline
-        if (room.currentSessionId != sessionId || session.status != RoomSessionStatus.IN_PROGRESS || deadline == null || deadline > now) {
+        if (room.currentSessionId != sessionId || session.status != RoomSessionStatus.IN_PROGRESS) {
             return false
         }
         if (gameService.isNotPublished(room.gameCode)) {
             return false
         }
         val full = sessionJournalService.full(session)
+        val deadline = Timer.runningDeadline(full.session.state.timer)
+        if (deadline == null || deadline > now) {
+            return false
+        }
         val events = sessionEngine.timeout(gameRegistry.rules(session.gameCode), full, now)
         if (events.isEmpty()) {
             log.warn("Move deadline expired in session {}, but the game has nothing to do; timer is removed", sessionId)

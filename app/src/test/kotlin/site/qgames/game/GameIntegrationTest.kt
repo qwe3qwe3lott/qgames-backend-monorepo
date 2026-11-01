@@ -1,10 +1,12 @@
 package site.qgames.game
 
+import java.time.Duration
 import java.time.Instant
 import java.util.UUID
 import org.jetbrains.exposed.v1.core.SortOrder
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.insert
 import org.jetbrains.exposed.v1.jdbc.selectAll
 import org.jetbrains.exposed.v1.jdbc.update
 import org.springframework.beans.factory.annotation.Autowired
@@ -35,7 +37,9 @@ import site.qgames.game.stream.session.SessionStreamRegistry
 import site.qgames.game.table.game.GameTable
 import site.qgames.game.table.room.RoomMemberTable
 import site.qgames.game.table.session.RoomSessionEventTable
+import site.qgames.game.table.session.RoomSessionTable
 import site.qgames.games.core.Session
+import site.qgames.games.core.TimerStatus
 import site.qgames.games.core.ViewerKey
 import site.qgames.userauth.api.dto.user.Avatar
 import site.qgames.userauth.api.dto.user.UpdateProfileRequest
@@ -213,6 +217,39 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
     /** Полный документ последней партии комнаты {status, meta, state} — свёртка журнала. */
     protected fun fullDocument(roomId: UUID): Map<String, Any?> =
         sessionStateService.state(roomSessionRepository.findById(sessionId(roomId))!!, ViewerKey.Full).document
+
+    /**
+     * Время хода последней партии комнаты истекло [ago] назад — и по журналу, и по проекции: в журнал дописывается
+     * PATCH таймера (`game-resumed` с дедлайном в прошлом), в room_session.move_deadline — тот же дедлайн. Выборка
+     * MoveTimeoutJob идёт по проекции, перепроверка под блокировкой — по журналу.
+     */
+    protected fun expireMove(roomId: UUID, ago: Duration = Duration.ofSeconds(5)) {
+        val deadline = Instant.now().minus(ago)
+        appendTimerPatch(roomId, "game-resumed", mapOf("status" to TimerStatus.RUNNING, "deadline" to deadline, "pausedAt" to null))
+        val sessionId = sessionId(roomId)
+        db { RoomSessionTable.update({ RoomSessionTable.id eq sessionId }) { it[moveDeadline] = deadline } }
+    }
+
+    /**
+     * Дописывает в журнал последней партии комнаты PATCH таймера ([value] — изменившиеся поля) с кодом [code], как
+     * будто его записал сервер. Проекцию move_deadline не меняет.
+     */
+    protected fun appendTimerPatch(roomId: UUID, code: String, value: Map<String, Any?>) {
+        val data = jsonMapper.writeValueAsString(mapOf("path" to listOf("state", "timer"), "value" to value))
+        val session = roomSessionRepository.findById(sessionId(roomId))!!
+        val seq = session.lastSeq + 1
+        db {
+            RoomSessionEventTable.insert {
+                it[sessionId] = session.id
+                it[RoomSessionEventTable.seq] = seq
+                it[method] = "PATCH"
+                it[RoomSessionEventTable.code] = code
+                it[RoomSessionEventTable.data] = data
+                it[createdAt] = Instant.now()
+            }
+            RoomSessionTable.update({ RoomSessionTable.id eq session.id }) { it[lastSeq] = seq }
+        }
+    }
 
     /** Журнал последней партии комнаты: пары (seq, код) по порядку. */
     protected fun journal(roomId: UUID): List<Pair<Long, String>> {
