@@ -70,7 +70,7 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
             jsonPath("$.games[0].code") { value("carcassonne") }
             jsonPath("$.games[0].title") { value(CARCASSONNE_TITLE) }
             jsonPath("$.games[0].description") { value(CARCASSONNE_DESCRIPTION) }
-            jsonPath("$.games[1].code") { value("nothing") }
+            jsonPath("$.games[1].code") { value("checkers") }
         }
     }
 
