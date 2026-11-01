@@ -59,7 +59,7 @@ interface GameApi {
     )
     @GetExchange("/{gameCode}")
     fun getGame(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CROISSANT, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
     ): GameDetailsResponse
 
@@ -84,7 +84,7 @@ interface GameApi {
     )
     @PostExchange("/{gameCode}/advanced-settings")
     fun toAdvancedSettings(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CROISSANT, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @Valid @RequestBody request: GameSimpleSettingsDto,
     ): GameAdvancedSettingsDto

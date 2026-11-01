@@ -56,7 +56,7 @@ games/                         ПРАВИЛА ИГР (бизнес-логика,
   game-core                    core игр: модель игры (GameRules, SessionEngine) и общие блоки — игроки, очередь, часы, итог
   nothing-game                 «игра в ничто» — тестовая игра для проверки движка
   checkers-game                шашки (вариант правил — настройка комнаты: русские, международные, английские)
-  <игра>                       правила конкретной игры (например, games/carcassonne)
+  <игра>                       правила конкретной игры (например, games/croissant)
 user-auth/, admin-auth/, game/ МОДУЛИ ПРИЛОЖЕНИЯ: <m>/<m> (реализация) и <m>/<m>-api (публичный контракт)
 app/                           приложение: собирает модули; Security, OpenAPI, конфигурация, миграции, все интеграционные тесты
 docker/                        Dockerfile приложения, dev-ключи
@@ -164,7 +164,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
     Чистый `oneOf` + `discriminator` без цикла `allOf` от swagger-core даёт `DiscriminatedUnionCustomizer` из `libs/common-web`. Форму схемы проверяет `PortalOpenApiContractScenariosTest`. `jackson-annotations` (версия из BOM) подключается в `<m>-api`.
 
     Дискриминатор настроек игры (`gameSettings`, `gameSettingsLimits`) — поле `gameCode`, значения — коды игр (`nothing`), константы из `GameCodes`.
-- **Код игры — единственный идентификатор игры.** Enum `GameCode` в контрактах сериализуется строчным кодом (`@get:JsonValue val code`), поэтому в JSON и в OpenAPI значения — `nothing`, `carcassonne`, `checkers`, а не имена констант. Отдельного «типа игры» нет.
+- **Код игры — единственный идентификатор игры.** Enum `GameCode` в контрактах сериализуется строчным кодом (`@get:JsonValue val code`), поэтому в JSON и в OpenAPI значения — `nothing`, `croissant`, `checkers`, а не имена констант. Отдельного «типа игры» нет.
 - **Код игры — в пути.** Ручка, которой нужна игра, живёт под `/api/games/{gameCode}/...`, сначала `games`, потом `rooms`:
   - каталог игр — `GET /api/games`, игра с параметрами правил — `GET /api/games/{gameCode}`;
   - создание комнаты — `POST /api/games/{gameCode}/rooms`;

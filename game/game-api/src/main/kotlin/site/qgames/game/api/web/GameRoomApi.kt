@@ -52,7 +52,7 @@ interface GameRoomApi {
     )
     @PostExchange("/{gameCode}/rooms")
     fun createRoom(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CROISSANT, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
     ): RoomResponse
 
@@ -91,7 +91,7 @@ interface GameRoomApi {
     @PutExchange("/{gameCode}/rooms/{roomId}/settings")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun updateRoomSettings(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CROISSANT, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: UpdateRoomSettingsRequest,
@@ -137,7 +137,7 @@ interface GameRoomApi {
     @PostExchange("/{gameCode}/rooms/{roomId}/moves")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     fun makeMove(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CROISSANT, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @Valid @RequestBody request: MoveRequest,
@@ -185,7 +185,7 @@ interface GameRoomApi {
     )
     @GetExchange("/{gameCode}/rooms/{roomId}/sessions/{sessionId}/events", accept = [MediaType.TEXT_EVENT_STREAM_VALUE])
     fun sessionEvents(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CROISSANT, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @PathVariable roomId: UUID,
         @PathVariable sessionId: UUID,

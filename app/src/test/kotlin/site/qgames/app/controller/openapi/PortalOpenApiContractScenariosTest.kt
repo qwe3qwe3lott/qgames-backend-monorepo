@@ -66,9 +66,9 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
     /** Код игры — строчные коды (`@JsonValue`), а не имена значений enum. */
     @ParameterizedTest(name = "{0}.{1}")
     @CsvSource(
-        "RoomResponse, gameCode, nothing|carcassonne|checkers",
-        "GameSummaryDto, code, nothing|carcassonne|checkers",
-        "GameDetailsResponse, code, nothing|carcassonne|checkers",
+        "RoomResponse, gameCode, nothing|croissant|checkers",
+        "GameSummaryDto, code, nothing|croissant|checkers",
+        "GameDetailsResponse, code, nothing|croissant|checkers",
         "TimeControlDto, bonusType, INCREMENT|DELAY",
     )
     fun `game enums expose their public values`(schema: String, property: String, values: String) {
@@ -96,7 +96,7 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         ).forEach { (path, method) ->
             val parameters = docs.path("paths").path(path).path(method).path("parameters")
             val parameter = (0 until parameters.size()).map(parameters::get).single { it.path("name").asString() == "gameCode" }
-            assertThat(strings(parameter.path("schema").path("enum"))).describedAs(path).containsExactly("nothing", "carcassonne", "checkers")
+            assertThat(strings(parameter.path("schema").path("enum"))).describedAs(path).containsExactly("nothing", "croissant", "checkers")
         }
     }
 

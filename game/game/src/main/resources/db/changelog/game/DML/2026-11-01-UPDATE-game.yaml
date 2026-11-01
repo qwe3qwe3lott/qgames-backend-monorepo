@@ -1,0 +1,24 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-11-01-UPDATE-game
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        Будущая игра на выкладывание тайлов получает свои код, название и описание: croissant, «Круассан».
+        id и NOT_PUBLISHED не меняются. Комнат и партий этой игры нет (она не опубликована), поэтому FK на game (code) не мешают.
+      changes:
+        - update:
+            tableName: game
+            columns:
+              - column: { name: code, value: croissant }
+              - column: { name: title, value: Круассан }
+              - column: { name: description, value: "Игра на выкладывание тайлов. Игра в разработке." }
+            where: id = '019a0000-0000-7000-8000-000000000002'
+      rollback:
+        - update:
+            tableName: game
+            columns:
+              - column: { name: code, value: carcassonne }
+              - column: { name: title, value: Каркассон }
+              - column: { name: description, value: "Строим города, дороги и монастыри. Игра в разработке." }
+            where: id = '019a0000-0000-7000-8000-000000000002'

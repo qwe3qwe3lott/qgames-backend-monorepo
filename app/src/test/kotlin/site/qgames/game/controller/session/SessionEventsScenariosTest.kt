@@ -366,7 +366,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
             arguments("unknown room", ALICE, { _: UUID, s: UUID -> PATH.format("nothing", UUID.randomUUID(), s) }, HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND"),
             arguments("unknown session", ALICE, { r: UUID, _: UUID -> PATH.format("nothing", r, UUID.randomUUID()) }, HttpStatus.NOT_FOUND, "SESSION_NOT_FOUND"),
             arguments("unknown game", ALICE, { r: UUID, s: UUID -> PATH.format("chess", r, s) }, HttpStatus.NOT_FOUND, "GAME_NOT_FOUND"),
-            arguments("another game", ALICE, { r: UUID, s: UUID -> PATH.format("carcassonne", r, s) }, HttpStatus.CONFLICT, "GAME_TYPE_MISMATCH"),
+            arguments("another game", ALICE, { r: UUID, s: UUID -> PATH.format("croissant", r, s) }, HttpStatus.CONFLICT, "GAME_TYPE_MISMATCH"),
         )
     }
 }

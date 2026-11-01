@@ -35,14 +35,14 @@ object TestData {
 
     /**
      * Каталог игр (таблица game), как в DML-миграциях. «Игра в ничто» — HIDDEN (не в каталоге, доступна по ссылке),
-     * шашки — PUBLISHED, Каркассон — NOT_PUBLISHED без правил.
+     * шашки — PUBLISHED, Круассан — NOT_PUBLISHED без правил.
      */
     const val NOTHING_TITLE = "Игра в ничто"
     const val NOTHING_DESCRIPTION = "Тестовая игра: игроки по очереди завершают ход, партия длится заданное число раундов."
     const val CHECKERS_TITLE = "Шашки"
     const val CHECKERS_DESCRIPTION = "Шашки на двоих: русские, международные или английские — вариант правил выбирается в настройках комнаты."
-    const val CARCASSONNE_TITLE = "Каркассон"
-    const val CARCASSONNE_DESCRIPTION = "Строим города, дороги и монастыри. Игра в разработке."
+    const val CROISSANT_TITLE = "Круассан"
+    const val CROISSANT_DESCRIPTION = "Игра на выкладывание тайлов. Игра в разработке."
 
     /** Максимум игроков «игры в ничто». */
     const val NOTHING_MAX_PLAYERS = 4

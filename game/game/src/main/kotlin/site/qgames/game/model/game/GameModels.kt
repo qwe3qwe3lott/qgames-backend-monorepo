@@ -19,7 +19,7 @@ data class GameModel(
  */
 enum class GameCode(val code: String) {
     NOTHING("nothing"),
-    CARCASSONNE("carcassonne"),
+    CROISSANT("croissant"),
     CHECKERS("checkers"),
     ;
 

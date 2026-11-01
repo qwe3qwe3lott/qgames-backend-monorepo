@@ -330,7 +330,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         fun rejectedTranslations(): Stream<Arguments> = Stream.of(
             arguments("guest", null, "nothing", simple(), HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", null),
             arguments("unknown game", ALICE, "chess", simple(), HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null),
-            arguments("not published game", ALICE, "carcassonne", simple(), HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null),
+            arguments("not published game", ALICE, "croissant", simple(), HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null),
             arguments("rounds out of limits", ALICE, "nothing", simple(rounds = 0), HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "rounds"),
             arguments("settings of another game", ALICE, "checkers", simple(), HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "gameCode"),
         )

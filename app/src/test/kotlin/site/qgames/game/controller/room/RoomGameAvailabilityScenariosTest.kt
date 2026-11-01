@@ -52,7 +52,7 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
 
     @Test
     fun `room of a not published game without rules is not created`() {
-        createRoomRequest(ALICE, gameCode = "carcassonne").andExpect {
+        createRoomRequest(ALICE, gameCode = "croissant").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("GAME_NOT_FOUND") }
         }
@@ -81,11 +81,11 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
     fun `room of another game is rejected by the game code in the path`() {
         val roomId = roomWith(ALICE, BOB, started = true)
 
-        moveRequest(ALICE, roomId, gameCode = "carcassonne").andExpect {
+        moveRequest(ALICE, roomId, gameCode = "croissant").andExpect {
             status { isConflict() }
             jsonPath("$.code") { value("GAME_TYPE_MISMATCH") }
         }
-        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(advanced = nothingSettings()), gameCode = "carcassonne").andExpect {
+        updateSettingsRequest(ALICE, roomId, UpdateRoomSettingsRequest(advanced = nothingSettings()), gameCode = "croissant").andExpect {
             status { isConflict() }
             jsonPath("$.code") { value("GAME_TYPE_MISMATCH") }
         }

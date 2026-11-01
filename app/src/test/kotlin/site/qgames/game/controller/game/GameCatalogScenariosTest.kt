@@ -16,8 +16,8 @@ import site.qgames.game.api.dto.room.IntRangeDto
 import site.qgames.game.api.dto.room.NothingSettingsLimitsDto
 import site.qgames.game.api.dto.room.NothingTime
 import site.qgames.game.api.dto.room.NothingTimePresetDto
-import site.qgames.game.support.TestData.CARCASSONNE_DESCRIPTION
-import site.qgames.game.support.TestData.CARCASSONNE_TITLE
+import site.qgames.game.support.TestData.CROISSANT_DESCRIPTION
+import site.qgames.game.support.TestData.CROISSANT_TITLE
 import site.qgames.game.support.TestData.CHECKERS_DESCRIPTION
 import site.qgames.game.support.TestData.CHECKERS_TITLE
 import site.qgames.game.support.TestData.NOTHING_DEFAULT_SETTINGS
@@ -45,7 +45,7 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
 
         val games = call(HttpMethod.GET, "/api/games", null).andExpect { status { isOk() } }.body<GameListResponse>().games
 
-        // Шашки опубликованы и стоят после «ничто» (sort_order), Каркассон не опубликован и в каталог не попадает.
+        // Шашки опубликованы и стоят после «ничто» (sort_order), Круассан не опубликован и в каталог не попадает.
         val checkers = GameSummaryDto(GameCode.CHECKERS, CHECKERS_TITLE, CHECKERS_DESCRIPTION)
         if (listed) {
             val nothing = GameSummaryDto(GameCode.NOTHING, NOTHING_TITLE, NOTHING_DESCRIPTION)
@@ -59,7 +59,7 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
     fun `catalog is ordered by sort order`() {
         // Только для проверки порядка: в каталоге нужны две игры, а правила списку не нужны.
         db {
-            GameTable.update({ GameTable.code eq "carcassonne" }) {
+            GameTable.update({ GameTable.code eq "croissant" }) {
                 it[sortOrder] = 1
                 it[publishStatus] = "PUBLISHED"
             }
@@ -67,9 +67,9 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
 
         call(HttpMethod.GET, "/api/games", null).andExpect {
             status { isOk() }
-            jsonPath("$.games[0].code") { value("carcassonne") }
-            jsonPath("$.games[0].title") { value(CARCASSONNE_TITLE) }
-            jsonPath("$.games[0].description") { value(CARCASSONNE_DESCRIPTION) }
+            jsonPath("$.games[0].code") { value("croissant") }
+            jsonPath("$.games[0].title") { value(CROISSANT_TITLE) }
+            jsonPath("$.games[0].description") { value(CROISSANT_DESCRIPTION) }
             jsonPath("$.games[1].code") { value("checkers") }
         }
     }
@@ -117,7 +117,7 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
         "chess, ",
         "NOTHING, ",
         "nothing, NOT_PUBLISHED",
-        "carcassonne, ",
+        "croissant, ",
     )
     fun `game that is unknown or not exposed is not found`(code: String, status: String?) {
         status?.let { setPublishStatus(code, it) }
