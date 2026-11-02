@@ -45,7 +45,7 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
 
         val games = call(HttpMethod.GET, "/api/games", null).andExpect { status { isOk() } }.body<GameListResponse>().games
 
-        // Шашки опубликованы и стоят после «ничто» (sort_order), Круассан не опубликован и в каталог не попадает.
+        // Шашки опубликованы и стоят после «ничто» (sort_order), Круассан скрыт (HIDDEN) и в каталог не попадает.
         val checkers = GameSummaryDto(GameCode.CHECKERS, CHECKERS_TITLE, CHECKERS_DESCRIPTION)
         if (listed) {
             val nothing = GameSummaryDto(GameCode.NOTHING, NOTHING_TITLE, NOTHING_DESCRIPTION)
@@ -117,7 +117,7 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
         "chess, ",
         "NOTHING, ",
         "nothing, NOT_PUBLISHED",
-        "croissant, ",
+        "croissant, NOT_PUBLISHED",
     )
     fun `game that is unknown or not exposed is not found`(code: String, status: String?) {
         status?.let { setPublishStatus(code, it) }

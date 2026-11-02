@@ -190,6 +190,8 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
     @ParameterizedTest(name = "{0}")
     @MethodSource("rejectedTranslations")
     fun `translation of simple settings is rejected`(case: String, user: UUID?, gameCode: String, body: Any, status: HttpStatus, code: String, field: String?) {
+        // Круассан в каталоге скрыт (HIDDEN): неопубликованным его делает сам сценарий.
+        setPublishStatus("croissant", "NOT_PUBLISHED")
         call(HttpMethod.POST, "/api/games/$gameCode/advanced-settings", user, body).andExpect {
             status { isEqualTo(status.value()) }
             jsonPath("$.code") { value(code) }

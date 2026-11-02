@@ -129,7 +129,12 @@ data class PlayerClockDto(
     description = "Состояние текущей стадии партии конкретной игры: блоки core (stage, players, timer, turns, result) и " +
         "поля игры. Игра — meta.game.code снапшота, стадия — state.stage; этой схемой клиент проверяет состояние после " +
         "каждого события. Смена стадии (stage-changed) заменяет состояние целиком",
-    oneOf = [NothingSessionStateDto::class, CheckersSessionStateDto::class, CheckersColorPickStateDto::class],
+    oneOf = [
+        NothingSessionStateDto::class,
+        CheckersSessionStateDto::class,
+        CheckersColorPickStateDto::class,
+        CroissantSessionStateDto::class,
+    ],
 )
 sealed interface SessionStateDto
 
@@ -279,7 +284,11 @@ data class CheckersPickColorDataDto(
 
 /** Схемы параметров ходов игр (`data` тела хода MoveRequest): публикуются в components OpenAPI. */
 object MoveDataSchemas {
-    val CLASSES: List<Class<*>> = listOf(CheckersMoveDataDto::class.java, CheckersPickColorDataDto::class.java)
+    val CLASSES: List<Class<*>> = listOf(
+        CheckersMoveDataDto::class.java,
+        CheckersPickColorDataDto::class.java,
+        CroissantMoveDataDto::class.java,
+    )
 }
 
 /** Основная стадия партии (у игр из одной стадии — единственная). */
@@ -287,3 +296,170 @@ const val STAGE_PLAY = "play"
 
 /** Стадия выбора цвета шашек. */
 const val CHECKERS_STAGE_COLOR_PICK = "color-pick"
+
+/** Сторона тайла «Круассана»; в JSON — имя значения. */
+enum class CroissantDirection {
+    N,
+    E,
+    S,
+    W,
+}
+
+/** Чем занята сторона тайла: пекарня, мучная тропа или луг. */
+enum class CroissantEdge {
+    BAKERY,
+    TRAIL,
+    PASTURE,
+}
+
+/** Тип участка сети. */
+enum class CroissantSpotType {
+    /** Пекарня: квартал с вывеской. */
+    BAKERY,
+
+    /** Мучная тропа: путь доставки. */
+    TRAIL,
+
+    /** Сыроварня при аббатстве. */
+    DAIRY,
+
+    /** Луг: стада пасутся, итоговый подсчёт только в конце. */
+    PASTURE,
+}
+
+/** Полуребро: сторона и её половина (0 — первая по часовой стрелке). */
+data class CroissantHalfEdgeDto(
+    val dir: CroissantDirection,
+    val half: Int,
+)
+
+/** Пекарня на тайле: стороны квартала и вывеска. */
+data class CroissantBakeryDto(
+    val sides: List<CroissantDirection>,
+    val sign: Boolean,
+)
+
+/** Мучная тропа на тайле: стороны, на которые она выходит. */
+data class CroissantTrailDto(
+    val sides: List<CroissantDirection>,
+)
+
+/** Луг на тайле: полуребра выхода и индексы примыкающих пекарен тайла. */
+data class CroissantPastureDto(
+    val halves: List<CroissantHalfEdgeDto>,
+    val bakeries: List<Int>,
+)
+
+/**
+ * Тип тайла «Круассана»: геометрия участков в базовой ориентации. Каталог лежит в состоянии партии, чтобы клиент рисовал
+ * тайлы по данным сервера и не дублировал их у себя.
+ */
+data class CroissantTileDto(
+    val code: String,
+    /** Подпись тайла для интерфейса. */
+    val title: String,
+    /** Чем занята каждая сторона: N, E, S, W. */
+    val edges: List<CroissantEdge>,
+    val bakeries: List<CroissantBakeryDto>,
+    val trails: List<CroissantTrailDto>,
+    /** Сыроварня при аббатстве на этом тайле. */
+    val dairy: Boolean,
+    val pastures: List<CroissantPastureDto>,
+)
+
+/** Выложенный тайл: id — `x:y`, поворот — в градусах. */
+data class CroissantPlacedTileDto(
+    val id: String,
+    val x: Int,
+    val y: Int,
+    /** Код типа тайла в каталоге состояния. */
+    val tile: String,
+    val rotation: Int,
+)
+
+/** Участок тайла в составе связного участка сети. */
+data class CroissantSpotMemberDto(
+    val tileId: String,
+    val index: Int,
+)
+
+/** Кондитер на участке: чей и на каком тайле стоит. */
+data class CroissantConfectionerDto(
+    val playerId: UUID,
+    val tileId: String,
+)
+
+/**
+ * Связный участок сети: пекарни и тропы, объединённые через границы клеток, сыроварня (один тайл) и луга.
+ * [open] — сколько выходов ещё смотрит в пустые клетки; [bakeries] — у луга: id примыкающих пекарен.
+ */
+data class CroissantSpotDto(
+    val id: String,
+    val type: CroissantSpotType,
+    val members: List<CroissantSpotMemberDto>,
+    /** Сколько выходов участка смотрит в пустые клетки; у завершённого 0. */
+    val open: Int,
+    /** Вывески в пекарне. */
+    val signs: Int,
+    val confectioners: List<CroissantConfectionerDto>,
+    val complete: Boolean,
+    /** У луга — id примыкающих пекарен, у остальных участков пусто. */
+    val bakeries: List<String>,
+)
+
+/** Выложенный тайл, ждущий кондитера: [spots] — куда его можно поставить, [completed] — что завершилось этим тайлом. */
+data class CroissantPendingDto(
+    val tileId: String,
+    val spots: List<String>,
+    val completed: List<String>,
+)
+
+/** Игрок «Круассана»: поля core и «Золотые крошки» с остатком кондитеров. */
+data class CroissantPlayerDto(
+    val id: UUID,
+    /** Что игрок может сделать сейчас (PLACE_TILE или PLACE_CONFECTIONER, SKIP_CONFECTIONER). */
+    val moveOptions: List<MoveOptionDto>,
+    /** Накопленные «Золотые крошки». */
+    val crumbs: Int,
+    /** Непоставленные кондитеры. */
+    val confectioners: Int,
+)
+
+/**
+ * Состояние партии «Круассана»: блоки core и поля игры — поле сети, связные участки, каталог тайлов и текущий тайл.
+ * Порядка колоды в состоянии нет: он выводится из seed партии на сервере.
+ */
+data class CroissantSessionStateDto(
+    @field:Schema(type = "string", allowableValues = [STAGE_PLAY])
+    val stage: String,
+    val players: List<CroissantPlayerDto>,
+    val timer: SessionTimerDto?,
+    val turns: SessionTurnsDto,
+    val result: SessionResultDto?,
+    /** Выложенные тайлы; адресуются по id `x:y`. */
+    val board: List<CroissantPlacedTileDto>,
+    /** Связные участки сети. */
+    val spots: List<CroissantSpotDto>,
+    /** Каталог типов тайлов: по нему клиент рисует доску. */
+    val tiles: List<CroissantTileDto>,
+    /** Выложенный тайл, ждущий кондитера; null — шаг кондитера не сейчас. */
+    val pending: CroissantPendingDto?,
+    /** Тайл, который выкладывает ходящий; null — колода кончилась. */
+    val currentTile: String?,
+    /** Сколько тайлов колоды уже открыто. */
+    val deckPos: Int,
+    /** Размер колоды партии без стартового тайла. */
+    val deckSize: Int,
+) : SessionStateDto
+
+/** Параметры хода «Круассана» (`data` тела хода): клетка и поворот либо участок для кондитера. */
+data class CroissantMoveDataDto(
+    /** Клетка выкладки по x; у PLACE_CONFECTIONER не нужна. */
+    val x: Int? = null,
+    /** Клетка выкладки по y. */
+    val y: Int? = null,
+    /** Поворот тайла в градусах: 0, 90, 180, 270. */
+    val rotation: Int? = null,
+    /** Участок сети для PLACE_CONFECTIONER (id из state.spots). */
+    val spotId: String? = null,
+)

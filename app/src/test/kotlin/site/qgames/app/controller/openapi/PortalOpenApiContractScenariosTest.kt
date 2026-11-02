@@ -28,7 +28,7 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         val schemas = apiDocs().path("components").path("schemas")
 
         val unionSchema = schemas.path(union)
-        assertThat(strings(unionSchema.path("oneOf")) { it.path("\$ref") }).hasSize(2).contains("#/components/schemas/$variant")
+        assertThat(strings(unionSchema.path("oneOf")) { it.path("\$ref") }).hasSize(3).contains("#/components/schemas/$variant")
         assertThat(unionSchema.path("discriminator").path("propertyName").asString()).isEqualTo("gameCode")
         assertThat(unionSchema.path("discriminator").path("mapping").path(gameCode).asString())
             .isEqualTo("#/components/schemas/$variant")

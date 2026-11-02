@@ -35,3 +35,6 @@ databaseChangeLog:
   - include:
       file: DML/2026-11-01-UPDATE-game.yaml
       relativeToChangelogFile: true
+  - include:
+      file: DML/2026-11-02-UPDATE-game.yaml
+      relativeToChangelogFile: true

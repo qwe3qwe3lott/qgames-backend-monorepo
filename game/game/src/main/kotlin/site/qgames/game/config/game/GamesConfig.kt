@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration
 import site.qgames.games.checkers.CheckersGameRules
 import site.qgames.games.core.SessionCodec
 import site.qgames.games.core.SessionEngine
+import site.qgames.games.croissant.CroissantGameRules
 import site.qgames.games.nothing.NothingGameRules
 
 /**
@@ -19,6 +20,9 @@ class GamesConfig {
 
     @Bean
     fun checkersGameRules() = CheckersGameRules()
+
+    @Bean
+    fun croissantGameRules() = CroissantGameRules()
 
     @Bean
     fun sessionEngine(sessionCodec: SessionCodec) = SessionEngine(sessionCodec)

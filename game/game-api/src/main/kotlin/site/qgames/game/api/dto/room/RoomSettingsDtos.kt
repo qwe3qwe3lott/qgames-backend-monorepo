@@ -81,14 +81,16 @@ enum class TimeBonusType {
 @JsonSubTypes(
     JsonSubTypes.Type(value = NothingSimpleSettingsDto::class, name = GameCodes.NOTHING),
     JsonSubTypes.Type(value = CheckersSimpleSettingsDto::class, name = GameCodes.CHECKERS),
+    JsonSubTypes.Type(value = CroissantSimpleSettingsDto::class, name = GameCodes.CROISSANT),
 )
 @Schema(
     description = "Simple-настройки конкретной игры, вид — по полю gameCode",
-    oneOf = [NothingSimpleSettingsDto::class, CheckersSimpleSettingsDto::class],
+    oneOf = [NothingSimpleSettingsDto::class, CheckersSimpleSettingsDto::class, CroissantSimpleSettingsDto::class],
     discriminatorProperty = "gameCode",
     discriminatorMapping = [
         DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSimpleSettingsDto::class),
         DiscriminatorMapping(value = GameCodes.CHECKERS, schema = CheckersSimpleSettingsDto::class),
+        DiscriminatorMapping(value = GameCodes.CROISSANT, schema = CroissantSimpleSettingsDto::class),
     ],
 )
 sealed interface GameSimpleSettingsDto
@@ -98,14 +100,16 @@ sealed interface GameSimpleSettingsDto
 @JsonSubTypes(
     JsonSubTypes.Type(value = NothingAdvancedSettingsDto::class, name = GameCodes.NOTHING),
     JsonSubTypes.Type(value = CheckersAdvancedSettingsDto::class, name = GameCodes.CHECKERS),
+    JsonSubTypes.Type(value = CroissantAdvancedSettingsDto::class, name = GameCodes.CROISSANT),
 )
 @Schema(
     description = "Advanced-настройки конкретной игры, вид — по полю gameCode",
-    oneOf = [NothingAdvancedSettingsDto::class, CheckersAdvancedSettingsDto::class],
+    oneOf = [NothingAdvancedSettingsDto::class, CheckersAdvancedSettingsDto::class, CroissantAdvancedSettingsDto::class],
     discriminatorProperty = "gameCode",
     discriminatorMapping = [
         DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingAdvancedSettingsDto::class),
         DiscriminatorMapping(value = GameCodes.CHECKERS, schema = CheckersAdvancedSettingsDto::class),
+        DiscriminatorMapping(value = GameCodes.CROISSANT, schema = CroissantAdvancedSettingsDto::class),
     ],
 )
 sealed interface GameAdvancedSettingsDto
@@ -252,14 +256,16 @@ data class IntRangeDto(
 @JsonSubTypes(
     JsonSubTypes.Type(value = NothingSettingsLimitsDto::class, name = GameCodes.NOTHING),
     JsonSubTypes.Type(value = CheckersSettingsLimitsDto::class, name = GameCodes.CHECKERS),
+    JsonSubTypes.Type(value = CroissantSettingsLimitsDto::class, name = GameCodes.CROISSANT),
 )
 @Schema(
     description = "Границы настроек конкретной игры, вид — по полю gameCode",
-    oneOf = [NothingSettingsLimitsDto::class, CheckersSettingsLimitsDto::class],
+    oneOf = [NothingSettingsLimitsDto::class, CheckersSettingsLimitsDto::class, CroissantSettingsLimitsDto::class],
     discriminatorProperty = "gameCode",
     discriminatorMapping = [
         DiscriminatorMapping(value = GameCodes.NOTHING, schema = NothingSettingsLimitsDto::class),
         DiscriminatorMapping(value = GameCodes.CHECKERS, schema = CheckersSettingsLimitsDto::class),
+        DiscriminatorMapping(value = GameCodes.CROISSANT, schema = CroissantSettingsLimitsDto::class),
     ],
 )
 sealed interface GameSettingsLimitsDto
@@ -316,6 +322,56 @@ data class CheckersRulePresetDto(
 data class CheckersTimePresetDto(
     val variant: CheckersVariant,
     val time: CheckersTime,
+    val baseSeconds: Int,
+    val bonusSeconds: Int,
+)
+
+/** Пресет времени «Круассана». */
+enum class CroissantTime {
+    /** Без таймера. */
+    NONE,
+
+    /** Классика. */
+    CLASSIC,
+
+    /** Быстрая партия. */
+    RAPID,
+
+    /** Блиц. */
+    BLITZ,
+}
+
+/** Simple-настройки «Круассана»: только пресет времени. */
+data class CroissantSimpleSettingsDto(
+    @field:Schema(type = "string", allowableValues = [GameCodes.CROISSANT])
+    val gameCode: GameCode,
+    /** Пресет времени; часы пресетов — CroissantSettingsLimitsDto.timePresets. */
+    val time: CroissantTime,
+) : GameSimpleSettingsDto
+
+/** Advanced-настройки «Круассана»: кондитеры и часы. */
+data class CroissantAdvancedSettingsDto(
+    @field:Schema(type = "string", allowableValues = [GameCodes.CROISSANT])
+    val gameCode: GameCode,
+    /** Сколько кондитеров у каждого игрока: одно из CroissantSettingsLimitsDto.confectioners. */
+    val confectioners: Int,
+    @field:Valid
+    val timeControl: TimeControlDto,
+) : GameAdvancedSettingsDto
+
+/** Границы настроек «Круассана». */
+data class CroissantSettingsLimitsDto(
+    @field:Schema(type = "string", allowableValues = [GameCodes.CROISSANT])
+    val gameCode: GameCode,
+    /** Границы числа кондитеров у игрока. */
+    val confectioners: IntRangeDto,
+    /** Часы пресетов времени (кроме NONE): для подписей в форме. */
+    val timePresets: List<CroissantTimePresetDto>,
+) : GameSettingsLimitsDto
+
+/** Часы пресета времени «Круассана». */
+data class CroissantTimePresetDto(
+    val time: CroissantTime,
     val baseSeconds: Int,
     val bonusSeconds: Int,
 )

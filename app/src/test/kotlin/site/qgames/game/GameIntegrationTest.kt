@@ -21,6 +21,7 @@ import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.game.GameCodes
 import site.qgames.game.api.dto.room.ChangeRoleRequest
 import site.qgames.game.api.dto.room.CheckersAdvancedSettingsDto
+import site.qgames.game.api.dto.room.CroissantAdvancedSettingsDto
 import site.qgames.game.api.dto.room.GameAdvancedSettingsDto
 import site.qgames.game.api.dto.room.MoveRequest
 import site.qgames.game.api.dto.room.NothingAdvancedSettingsDto
@@ -101,6 +102,7 @@ abstract class GameIntegrationTest : BaseIntegrationTest() {
             null -> gameCode
             is NothingAdvancedSettingsDto -> GameCodes.NOTHING
             is CheckersAdvancedSettingsDto -> GameCodes.CHECKERS
+            is CroissantAdvancedSettingsDto -> GameCodes.CROISSANT
         }
         val created: RoomResponse = createRoomRequest(owner, code).andExpect { status { isOk() } }.body()
         val joined = join(owner, created.id)

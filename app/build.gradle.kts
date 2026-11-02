@@ -26,5 +26,6 @@ dependencies {
     // Тесты game работают с моделями правил игр и сборкой состояний партий.
     testImplementation(project(":games:nothing-game"))
     testImplementation(project(":games:checkers-game"))
+    testImplementation(project(":games:croissant-game"))
     testImplementation("com.nimbusds:nimbus-jose-jwt")
 }

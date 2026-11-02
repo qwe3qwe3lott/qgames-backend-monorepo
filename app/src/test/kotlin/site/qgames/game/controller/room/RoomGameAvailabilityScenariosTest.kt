@@ -51,7 +51,9 @@ class RoomGameAvailabilityScenariosTest : GameIntegrationTest() {
     }
 
     @Test
-    fun `room of a not published game without rules is not created`() {
+    fun `room of a not published game is not created`() {
+        setPublishStatus("croissant", "NOT_PUBLISHED")
+
         createRoomRequest(ALICE, gameCode = "croissant").andExpect {
             status { isNotFound() }
             jsonPath("$.code") { value("GAME_NOT_FOUND") }

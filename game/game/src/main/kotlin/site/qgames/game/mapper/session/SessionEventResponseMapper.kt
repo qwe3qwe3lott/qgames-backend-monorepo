@@ -8,6 +8,7 @@ import site.qgames.game.api.dto.session.CheckersAdvancedRulesDto
 import site.qgames.game.api.dto.session.CheckersColorPickStateDto
 import site.qgames.game.api.dto.session.CheckersSessionStateDto
 import site.qgames.game.api.dto.patch.DeleteData
+import site.qgames.game.api.dto.session.CroissantSessionStateDto
 import site.qgames.game.api.dto.session.NothingSessionStateDto
 import site.qgames.game.api.dto.patch.PatchData
 import site.qgames.game.api.dto.patch.PatchEventMethod
@@ -94,6 +95,7 @@ class SessionEventResponseMapper(
         gameCode == GameCode.NOTHING && stage == Stages.PLAY -> NothingSessionStateDto::class.java
         gameCode == GameCode.CHECKERS && stage == Stages.PLAY -> CheckersSessionStateDto::class.java
         gameCode == GameCode.CHECKERS && stage == CheckersGameRules.COLOR_PICK -> CheckersColorPickStateDto::class.java
+        gameCode == GameCode.CROISSANT && stage == Stages.PLAY -> CroissantSessionStateDto::class.java
         else -> error("No DTO for the state of game $gameCode in stage $stage")
     }
 
