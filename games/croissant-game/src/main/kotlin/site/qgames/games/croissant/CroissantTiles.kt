@@ -73,8 +73,9 @@ data class CroissantPastureSpec(val halves: List<CroissantHalfEdge>, val bakerie
 /**
  * Тип тайла (их 14, а тайлов в колоде 72). [edges] — по индексу [CroissantDirection.ordinal]: N, E, S, W.
  *
- * Каталог — единственный источник геометрии и на сервере, и на клиенте: состояние партии отдаёт его целиком, поэтому
- * фронт не дублирует тайлы и не расходится с правилами.
+ * Каталог — единственный источник геометрии и на сервере, и на клиенте: карточка игры отдаёт его целиком
+ * ([CroissantGameRules.assets]), состояние партии ссылается на тип по [code], поэтому фронт не дублирует тайлы и не
+ * расходится с правилами.
  */
 data class CroissantTileType(
     val code: String,
@@ -368,7 +369,7 @@ object CroissantCatalog {
         return CroissantTileType(code, title, edges, bakeries, trails, dairy, pastures)
     }
 
-    /** Все типы каталога: состояние партии отдаёт их клиенту целиком. */
+    /** Все типы каталога: карточка игры отдаёт их клиенту целиком. */
     val TYPES: List<CroissantTileType> = listOf(
         DAIRY,
         DAIRY_TRAIL,

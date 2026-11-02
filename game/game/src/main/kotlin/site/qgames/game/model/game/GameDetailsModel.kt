@@ -24,4 +24,6 @@ data class GameRulesModel(
     val settingsLimits: Any,
     /** Настройки новой комнаты. */
     val defaultSettings: RoomSettingsModel,
+    /** Статичные данные игры для отрисовки партии, формат задаёт модуль игры (GameRules.assets); null — нет. */
+    val assets: Any?,
 )

@@ -85,6 +85,7 @@ class GameService(
             bonusSeconds = timeControl.bonusSeconds,
             settingsLimits = rules.settingsLimits,
             defaultSettings = defaultSettings(code),
+            assets = rules.assets,
         )
     }
 }

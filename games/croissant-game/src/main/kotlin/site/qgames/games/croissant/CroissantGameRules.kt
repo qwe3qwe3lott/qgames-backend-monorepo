@@ -48,6 +48,9 @@ class CroissantGameRules :
 
     override val settingsLimits = CroissantSettingsLimits(CroissantConfectionersRange, CroissantTimePresets)
 
+    /** Каталог тайлов: клиент получает его с карточкой игры, состояние ссылается на тип тайла по коду. */
+    override val assets = CroissantAssets(CroissantCatalog.TYPES)
+
     override fun playerClass(stage: String) = CroissantPlayer::class.java
 
     override fun validateSimple(settings: CroissantSimpleSettings): List<SettingsViolation> = emptyList()
@@ -83,17 +86,16 @@ class CroissantGameRules :
     override fun start(players: List<UUID>, seed: Long, settings: CroissantAdvancedSettings): GameStart<CroissantGameState> {
         val startTile = CroissantPlacedTile(id = CELL_ORIGIN, x = 0, y = 0, tile = CroissantCatalog.START_TILE, rotation = 0)
         val board = listOf(startTile)
-        val layout = CroissantLayout(board, CroissantCatalog.TYPES)
+        val layout = CroissantLayout(board)
         val spots = CroissantNetwork.rebuild(layout, board, emptyList())
         val deck = CroissantCatalog.deck(seed)
-        val drawn = draw(board, CroissantCatalog.TYPES, deck, from = 0)
+        val drawn = draw(board, deck, from = 0)
         val first = players[Math.floorMod(Random(seed).nextInt(), players.size)]
         return GameStart(
             stage = Stages.PLAY,
             game = CroissantGameState(
                 board = board,
                 spots = spots,
-                tiles = CroissantCatalog.TYPES,
                 pending = null,
                 currentTile = drawn.tile,
                 deckPos = drawn.pos,
@@ -135,7 +137,7 @@ class CroissantGameRules :
             return turn.events
         }
         val tile = state.game.currentTile ?: return emptyList()
-        val placements = CroissantLayout(state.game.board, state.game.tiles).placements(tile)
+        val placements = CroissantLayout(state.game.board).placements(tile)
         if (placements.isEmpty()) return emptyList()
         val random = Random(seed * ODD + state.game.board.size)
         val placement = placements[random.nextInt(placements.size)]
@@ -167,7 +169,7 @@ class CroissantGameRules :
             }
         }
         val tile = state.game.currentTile ?: return emptyList()
-        val placements = CroissantLayout(state.game.board, state.game.tiles).placements(tile)
+        val placements = CroissantLayout(state.game.board).placements(tile)
         if (placements.isEmpty()) return emptyList()
         val data = placements.map { mapOf("x" to it.x, "y" to it.y, "rotations" to it.rotations) }
         return listOf(MoveOption(PLACE_TILE, mapOf(CURRENT_TILE to tile, "placements" to data)))
@@ -186,12 +188,11 @@ class CroissantGameRules :
     /** Первый тайл партии из seed: тайлы, которые некуда положить, пропускаются. */
     private fun draw(
         board: List<CroissantPlacedTile>,
-        tiles: List<CroissantTileType>,
         deck: List<String>,
         from: Int,
     ): Drawn {
         var pos = from
-        val layout = CroissantLayout(board, tiles)
+        val layout = CroissantLayout(board)
         while (pos < deck.size) {
             val tile = deck[pos]
             pos += 1
@@ -229,12 +230,12 @@ class CroissantGameRules :
             val x = data.x ?: return ERR_ILLEGAL_MOVE
             val y = data.y ?: return ERR_ILLEGAL_MOVE
             val rotation = data.rotation ?: 0
-            val layout = CroissantLayout(game.board, game.tiles)
+            val layout = CroissantLayout(game.board)
             if (!layout.accepts(tileCode, x, y, rotation)) return ERR_ILLEGAL_PLACEMENT
 
             val placed = CroissantPlacedTile(layout.cellId(x, y), x, y, tileCode, rotation)
             val board = game.board + placed
-            val rebuilt = CroissantNetwork.rebuild(CroissantLayout(board, game.tiles), board, game.spots)
+            val rebuilt = CroissantNetwork.rebuild(CroissantLayout(board), board, game.spots)
             val before = game.spots.associateBy { it.id }
             val completedNow = rebuilt.filter { it.complete && before[it.id]?.complete != true }
 
@@ -312,7 +313,7 @@ class CroissantGameRules :
             while (pos < deck.size) {
                 val candidate = deck[pos]
                 pos += 1
-                if (CroissantLayout(game.board, game.tiles).placements(candidate).isNotEmpty()) {
+                if (CroissantLayout(game.board).placements(candidate).isNotEmpty()) {
                     next = candidate
                     break
                 }
@@ -333,7 +334,7 @@ class CroissantGameRules :
 
         /** Итоговый подсчёт: незавершённые пекарни, тропы, сыроварни и луга; победители — по большинству кондитеров. */
         fun finish() {
-            val layout = CroissantLayout(game.board, game.tiles)
+            val layout = CroissantLayout(game.board)
             val gained = mutableMapOf<UUID, Int>()
             game.spots.filter { !it.complete }.forEach { spot ->
                 val winners = CroissantScoring.winners(spot)

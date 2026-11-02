@@ -8,16 +8,14 @@ data class CroissantPlacement(val x: Int, val y: Int, val rotations: List<Int>)
 /**
  * Поле партии, разложенное по клеткам: тайлы, их геометрия и проверка стыковки рёбер. Чистые вычисления без состояния.
  */
-class CroissantLayout(board: List<CroissantPlacedTile>, tiles: List<CroissantTileType>) {
+class CroissantLayout(board: List<CroissantPlacedTile>) {
 
-    private val types: Map<String, CroissantTileType> = tiles.associateBy { it.code }
     private val cells: Map<String, CroissantPlacedTile> = board.associateBy { it.id }
     private val shapes: Map<String, CroissantShape> = board.associate {
         it.id to CroissantShape(type(it.tile), it.rotation)
     }
 
-    fun type(code: String): CroissantTileType =
-        types[code] ?: error("Unknown tile type '$code', the session catalog has ${types.keys}")
+    fun type(code: String): CroissantTileType = CroissantCatalog.type(code)
 
     fun typeOf(placed: CroissantPlacedTile): CroissantTileType = type(placed.tile)
 

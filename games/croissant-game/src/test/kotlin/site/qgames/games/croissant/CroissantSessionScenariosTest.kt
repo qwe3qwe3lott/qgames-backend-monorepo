@@ -281,7 +281,7 @@ class CroissantSessionScenariosTest {
         CroissantPlacedTile("$x:$y", x, y, type.code, rotation)
 
     private fun rebuild(board: List<CroissantPlacedTile>): List<CroissantSpot> =
-        CroissantNetwork.rebuild(CroissantLayout(board, CroissantCatalog.TYPES), board, emptyList())
+        CroissantNetwork.rebuild(CroissantLayout(board), board, emptyList())
 
     private fun sessionState(
         board: List<CroissantPlacedTile>,
@@ -302,7 +302,6 @@ class CroissantSessionScenariosTest {
         game = CroissantGameState(
             board = board,
             spots = spots,
-            tiles = CroissantCatalog.TYPES,
             pending = pending,
             currentTile = currentTile,
             deckPos = 1,

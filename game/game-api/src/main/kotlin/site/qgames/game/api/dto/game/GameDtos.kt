@@ -47,6 +47,8 @@ data class GameDetailsResponse(
     val title: String,
     val description: String,
     val rules: GameRulesDto,
+    /** Статичные данные игры для отрисовки партии (схема — по gameCode); null — игре они не нужны. */
+    val assets: GameAssetsDto?,
 )
 
 /** Параметры правил игры: по ним строится форма настроек комнаты. */

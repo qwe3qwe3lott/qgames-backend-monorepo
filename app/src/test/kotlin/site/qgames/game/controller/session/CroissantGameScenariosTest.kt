@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test
 import org.springframework.http.HttpMethod
 import org.springframework.test.web.servlet.MvcResult
 import site.qgames.game.GameIntegrationTest
+import site.qgames.game.api.dto.game.CroissantAssetsDto
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.game.GameCodes
 import site.qgames.game.api.dto.game.GameDetailsResponse
@@ -27,6 +28,7 @@ import site.qgames.game.support.TestData.CAROL
 import site.qgames.games.core.MoveOption
 import site.qgames.games.core.Session
 import site.qgames.games.core.SessionStatus
+import site.qgames.games.croissant.CroissantCatalog
 import site.qgames.games.croissant.CroissantGameRules
 import tools.jackson.databind.JsonNode
 
@@ -55,6 +57,8 @@ class CroissantGameScenariosTest : GameIntegrationTest() {
             .containsExactly(CroissantTime.CLASSIC, CroissantTime.RAPID, CroissantTime.BLITZ)
         val simple = details.rules.defaultSettings.simple as CroissantSimpleSettingsDto
         assertThat(simple.time).isEqualTo(CroissantTime.NONE)
+        val assets = details.assets as CroissantAssetsDto
+        assertThat(assets.tiles.map { it.code }).hasSize(14).doesNotHaveDuplicates().contains(CroissantCatalog.START_TILE)
     }
 
     @Test
@@ -71,7 +75,7 @@ class CroissantGameScenariosTest : GameIntegrationTest() {
         assertThat(state.players).hasSize(2)
         assertThat(state.players.map { it.confectioners }).containsOnly(6)
         assertThat(state.board).hasSize(1)
-        assertThat(state.tiles).hasSize(14)
+        assertThat(snapshot.path("state").has("tiles")).isFalse()
         assertThat(state.deckSize).isEqualTo(71)
         assertThat(state.result).isNull()
     }

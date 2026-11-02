@@ -29,6 +29,9 @@ data class CroissantTimePreset(
     val bonusSeconds: Int,
 )
 
+/** Статичные данные игры для клиента: каталог типов тайлов ([GameRules.assets][site.qgames.games.core.GameRules.assets]). */
+data class CroissantAssets(val tiles: List<CroissantTileType>)
+
 /** Границы настроек для формы комнаты. */
 data class CroissantSettingsLimits(
     val confectioners: IntRange,
@@ -38,14 +41,13 @@ data class CroissantSettingsLimits(
 /**
  * Игровая часть состояния партии.
  *
- * [board] — выложенные тайлы, [spots] — связные участки сети, [tiles] — каталог тайлов (клиент по нему рисует доску),
+ * [board] — выложенные тайлы (тип — код из [CroissantCatalog]), [spots] — связные участки сети,
  * [pending] — только что выложенный тайл, ждущий кондитера, [currentTile] — тайл, который сейчас выкладывает ходящий,
  * [deckPos] и [deckSize] — где мы в колоде. Порядок колоды в состояние не входит: он выводится из seed партии.
  */
 data class CroissantGameState(
     val board: List<CroissantPlacedTile>,
     val spots: List<CroissantSpot>,
-    val tiles: List<CroissantTileType>,
     val pending: CroissantPending?,
     val currentTile: String?,
     val deckPos: Int,

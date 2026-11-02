@@ -95,6 +95,7 @@ class GameCatalogScenariosTest : GameIntegrationTest() {
                     ),
                     defaultSettings = NOTHING_DEFAULT_SETTINGS,
                 ),
+                assets = null,
             ),
         )
     }

@@ -297,21 +297,6 @@ const val STAGE_PLAY = "play"
 /** Стадия выбора цвета шашек. */
 const val CHECKERS_STAGE_COLOR_PICK = "color-pick"
 
-/** Сторона тайла «Круассана»; в JSON — имя значения. */
-enum class CroissantDirection {
-    N,
-    E,
-    S,
-    W,
-}
-
-/** Чем занята сторона тайла: пекарня, мучная тропа или луг. */
-enum class CroissantEdge {
-    BAKERY,
-    TRAIL,
-    PASTURE,
-}
-
 /** Тип участка сети. */
 enum class CroissantSpotType {
     /** Пекарня: квартал с вывеской. */
@@ -327,52 +312,12 @@ enum class CroissantSpotType {
     PASTURE,
 }
 
-/** Полуребро: сторона и её половина (0 — первая по часовой стрелке). */
-data class CroissantHalfEdgeDto(
-    val dir: CroissantDirection,
-    val half: Int,
-)
-
-/** Пекарня на тайле: стороны квартала и вывеска. */
-data class CroissantBakeryDto(
-    val sides: List<CroissantDirection>,
-    val sign: Boolean,
-)
-
-/** Мучная тропа на тайле: стороны, на которые она выходит. */
-data class CroissantTrailDto(
-    val sides: List<CroissantDirection>,
-)
-
-/** Луг на тайле: полуребра выхода и индексы примыкающих пекарен тайла. */
-data class CroissantPastureDto(
-    val halves: List<CroissantHalfEdgeDto>,
-    val bakeries: List<Int>,
-)
-
-/**
- * Тип тайла «Круассана»: геометрия участков в базовой ориентации. Каталог лежит в состоянии партии, чтобы клиент рисовал
- * тайлы по данным сервера и не дублировал их у себя.
- */
-data class CroissantTileDto(
-    val code: String,
-    /** Подпись тайла для интерфейса. */
-    val title: String,
-    /** Чем занята каждая сторона: N, E, S, W. */
-    val edges: List<CroissantEdge>,
-    val bakeries: List<CroissantBakeryDto>,
-    val trails: List<CroissantTrailDto>,
-    /** Сыроварня при аббатстве на этом тайле. */
-    val dairy: Boolean,
-    val pastures: List<CroissantPastureDto>,
-)
-
 /** Выложенный тайл: id — `x:y`, поворот — в градусах. */
 data class CroissantPlacedTileDto(
     val id: String,
     val x: Int,
     val y: Int,
-    /** Код типа тайла в каталоге состояния. */
+    /** Код типа тайла в каталоге игры (CroissantAssetsDto.tiles). */
     val tile: String,
     val rotation: Int,
 )
@@ -426,8 +371,9 @@ data class CroissantPlayerDto(
 )
 
 /**
- * Состояние партии «Круассана»: блоки core и поля игры — поле сети, связные участки, каталог тайлов и текущий тайл.
- * Порядка колоды в состоянии нет: он выводится из seed партии на сервере.
+ * Состояние партии «Круассана»: блоки core и поля игры — поле сети, связные участки и текущий тайл. Тайлы указаны
+ * кодами типов, геометрия — в каталоге игры (GameDetailsResponse.assets). Порядка колоды в состоянии нет: он выводится
+ * из seed партии на сервере.
  */
 data class CroissantSessionStateDto(
     @field:Schema(type = "string", allowableValues = [STAGE_PLAY])
@@ -440,8 +386,6 @@ data class CroissantSessionStateDto(
     val board: List<CroissantPlacedTileDto>,
     /** Связные участки сети. */
     val spots: List<CroissantSpotDto>,
-    /** Каталог типов тайлов: по нему клиент рисует доску. */
-    val tiles: List<CroissantTileDto>,
     /** Выложенный тайл, ждущий кондитера; null — шаг кондитера не сейчас. */
     val pending: CroissantPendingDto?,
     /** Тайл, который выкладывает ходящий; null — колода кончилась. */

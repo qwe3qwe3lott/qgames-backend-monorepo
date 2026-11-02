@@ -82,7 +82,9 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         val docs = apiDocs()
 
         val details = docs.path("components").path("schemas").path("GameDetailsResponse")
-        assertThat(strings(details.path("required"))).contains("code", "title", "description", "rules")
+        assertThat(strings(details.path("required"))).containsExactlyInAnyOrder("code", "title", "description", "rules")
+        // Статичные данные игры — nullable: у игр без них null.
+        assertThat(details.path("properties").has("assets")).isTrue()
         // Статус публикации наружу не выходит: в каталоге и по ссылке — только доступные игры.
         assertThat(details.path("properties").has("publishStatus")).isFalse()
         assertThat(docs.path("components").path("schemas").path("GameSummaryDto").path("properties").has("publishStatus")).isFalse()
@@ -98,6 +100,24 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
             val parameter = (0 until parameters.size()).map(parameters::get).single { it.path("name").asString() == "gameCode" }
             assertThat(strings(parameter.path("schema").path("enum"))).describedAs(path).containsExactly("nothing", "croissant", "checkers")
         }
+    }
+
+    /** Статичные данные игры — union по gameCode в карточке игры; каталога тайлов в состоянии партии «Круассана» нет. */
+    @Test
+    fun `game assets are a discriminated union and the croissant state refers to tiles by code`() {
+        val schemas = apiDocs().path("components").path("schemas")
+
+        val union = schemas.path("GameAssetsDto")
+        assertThat(strings(union.path("oneOf")) { it.path("\$ref") }).containsExactly("#/components/schemas/CroissantAssetsDto")
+        assertThat(union.path("discriminator").path("propertyName").asString()).isEqualTo("gameCode")
+        assertThat(union.path("discriminator").path("mapping").path("croissant").asString())
+            .isEqualTo("#/components/schemas/CroissantAssetsDto")
+        val croissant = schemas.path("CroissantAssetsDto")
+        assertThat(strings(croissant.path("properties").path("gameCode").path("enum"))).containsExactly("croissant")
+        assertThat(strings(croissant.path("required"))).containsExactlyInAnyOrder("gameCode", "tiles")
+        assertThat(strings(schemas.path("CroissantTileDto").path("required")))
+            .containsExactlyInAnyOrder("code", "title", "edges", "bakeries", "trails", "dairy", "pastures")
+        assertThat(schemas.path("CroissantSessionStateDto").path("properties").has("tiles")).isFalse()
     }
 
     /** Поток событий комнаты: text/event-stream со схемой-union событий, конверты {type, data} в components. */
