@@ -224,5 +224,7 @@ object SessionEventCodes {
         "- tile-exhausted (Круассан) — PATCH [\"state\"] {currentTile: null, deckPos}: колода кончилась;\n" +
         "- tile-discarded (Круассан) — INFO {tile, playerId}: тайл некуда положить, ушёл в сброс;\n" +
         "- game-scored (Круассан) — INFO {crumbs}: итоговый подсчёт;\n" +
-        "- move-timed-out (Круассан) — INFO {playerId, x, y, rotation}: время вышло, тайл выложен автоматически."
+        "- tile-returned (Круассан) — PATCH [\"state\"] {deckReturns, deckSize}: невыложенный тайл выбывшего вернулся в колоду (место — из seed);\n" +
+        "- move-timed-out (Круассан) — INFO {playerId}: время игрока вышло, следом player-out;\n" +
+        "- player-out (Круассан) — PATCH [\"state\", \"players\", {id}] {out: true}: игрок выбыл по времени — не ходит и не может победить, крошки считаются; невыложенный тайл возвращается в колоду (tile-returned). Остался один невыбывший — итог с reason TIMEOUT."
 }

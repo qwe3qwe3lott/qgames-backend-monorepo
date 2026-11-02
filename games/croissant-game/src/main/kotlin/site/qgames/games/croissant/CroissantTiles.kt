@@ -419,14 +419,26 @@ object CroissantCatalog {
     /**
      * Порядок тайлов партии из seed. Стартовый тайл уже на поле и в колоду не входит: в ней 71 тайл, экземпляры
      * [START_TILE] уменьшены на один.
+     *
+     * [returns] — моменты возврата невыложенного тайла (`deckPos` на тот момент, по порядку). Каждый возврат кладёт тайл
+     * `deck[pos - 1]` ещё раз в оставшуюся часть колоды — в место, выведенное из seed, позиции и номера возврата. Так
+     * колода целиком восстанавливается из seed и списка позиций, а её порядок в состояние не попадает.
      */
-    fun deck(seed: Long): List<String> {
-        val tiles = ArrayList<String>(72)
+    fun deck(seed: Long, returns: List<Int> = emptyList()): List<String> {
+        val tiles = ArrayList<String>(72 + returns.size)
         COUNTS.forEach { (code, count) -> repeat(count) { tiles += code } }
         tiles.remove(START_TILE)
         tiles.shuffle(Random(seed))
+        returns.forEachIndexed { index, pos ->
+            val tile = tiles[pos - 1]
+            val offset = Random(seed * RETURN_SALT + pos * RETURN_SALT + index).nextInt(tiles.size - pos + 1)
+            tiles.add(pos + offset, tile)
+        }
         return tiles
     }
+
+    /** Нечётный множитель: разводит случайность возвратов с порядком колоды и между собой. */
+    private const val RETURN_SALT = 31L
 
     /** Размер колоды без стартового тайла. */
     val DECK_SIZE: Int = COUNTS.values.sum() - 1

@@ -52,6 +52,8 @@ data class CroissantGameState(
     val currentTile: String?,
     val deckPos: Int,
     val deckSize: Int,
+    /** Моменты возврата невыложенного тайла в колоду: `deckPos` на тот момент ([CroissantCatalog.deck]). */
+    val deckReturns: List<Int>,
 )
 
 /** Выложенный тайл: адресуется по id (`x:y`), [rotation] — в градусах, 0/90/180/270. */
@@ -78,6 +80,8 @@ data class CroissantPending(
 data class CroissantPlayer(
     val crumbs: Int,
     val confectioners: Int,
+    /** Выбыл: вышло время. Больше не ходит и не может победить, крошки ему считаются как всем. */
+    val out: Boolean = false,
 )
 
 /** Ход — конверт платформы: `{type, data}`. Типы: `PLACE_TILE`, `PLACE_CONFECTIONER`, `SKIP_CONFECTIONER`. */

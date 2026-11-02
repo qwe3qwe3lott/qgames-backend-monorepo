@@ -9,7 +9,10 @@ import site.qgames.games.core.Decision
 import site.qgames.games.core.GameRules
 import site.qgames.games.core.MoveOutcome
 import site.qgames.games.core.PlayerState
+import site.qgames.games.core.Result
 import site.qgames.games.core.ResultOutcome
+import site.qgames.games.core.ResultState
+import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionDocument
 import site.qgames.games.core.SessionEngine
 import site.qgames.games.core.SessionState
@@ -268,16 +271,132 @@ class CroissantSessionScenariosTest {
     }
 
     @Test
-    fun `timeout places a tile itself and never stalls the game`() {
+    fun `a timed out player of two drops out and the other wins even with fewer crumbs`() {
         val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_TRAIL, 0))
-        val state = sessionState(board = board, currentTile = CroissantCatalog.DAIRY.code, spots = rebuild(board))
+        val state = sessionState(
+            board = board,
+            currentTile = CroissantCatalog.DAIRY.code,
+            spots = rebuild(board),
+            alice = CroissantPlayer(crumbs = 10, confectioners = 7),
+        )
 
         val events = rules.onTimeout(state, settings, seed = 5L)
 
-        assertThat(events.map { it.code }).contains(CroissantGameRules.MOVE_TIMED_OUT, CroissantGameRules.TILE_PLACED)
-        assertThat(events.map { it.code }).anyMatch {
-            it == CroissantGameRules.TILE_PENDING || it == "turn-changed" || it == "session-finished"
+        assertThat(events.map { it.code }).containsSubsequence(
+            CroissantGameRules.MOVE_TIMED_OUT,
+            CroissantGameRules.PLAYER_OUT,
+            CroissantGameRules.TILE_RETURNED,
+            CroissantGameRules.GAME_SCORED,
+            Result.RESULT_SET,
+            "session-finished",
+        )
+        assertThat(events.map { it.code }).doesNotContain(CroissantGameRules.TILE_PLACED, "turn-changed")
+        assertThat(events.single { it.code == CroissantGameRules.PLAYER_OUT }.value).isEqualTo(mapOf("out" to true))
+        assertThat(events.single { it.code == Result.RESULT_SET }.value)
+            .isEqualTo(ResultState(ResultOutcome.WIN, listOf(BOB), CroissantGameRules.RESULT_TIMEOUT))
+    }
+
+    @Test
+    fun `a timed out player of three drops out and the turn goes on`() {
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_TRAIL, 0))
+        val state = sessionState(
+            board = board,
+            currentTile = CroissantCatalog.DAIRY.code,
+            spots = rebuild(board),
+            carol = CroissantPlayer(crumbs = 0, confectioners = 7),
+        )
+
+        val events = rules.onTimeout(state, settings, seed = 5L)
+
+        assertThat(events.map { it.code })
+            .containsSubsequence(
+                CroissantGameRules.PLAYER_OUT,
+                CroissantGameRules.TILE_RETURNED,
+                CroissantGameRules.TILE_DRAWN,
+                "turn-changed",
+            )
+            .doesNotContain("session-finished", CroissantGameRules.TILE_DISCARDED)
+        val turns = events.single { it.code == "turn-changed" }.value as TurnsState
+        assertThat(turns.currentPlayerId).isEqualTo(BOB)
+        // Тайл вернулся в колоду: размер +1, момент возврата записан, следующий тайл — следующий по колоде.
+        assertThat(events.single { it.code == CroissantGameRules.TILE_RETURNED }.value)
+            .isEqualTo(mapOf("deckReturns" to listOf(1), "deckSize" to 72))
+        val deck = CroissantCatalog.deck(5L, listOf(1))
+        @Suppress("UNCHECKED_CAST")
+        val drawn = events.first { it.code == CroissantGameRules.TILE_DRAWN }.value as Map<String, Any?>
+        assertThat(drawn["deckPos"] as Int).isGreaterThan(1)
+        assertThat(drawn["currentTile"]).isEqualTo(deck[(drawn["deckPos"] as Int) - 1])
+    }
+
+    @Test
+    fun `a returned tile goes back into the rest of the deck by the seed`() {
+        val plain = CroissantCatalog.deck(7L)
+        val returned = CroissantCatalog.deck(7L, listOf(10))
+
+        assertThat(CroissantCatalog.deck(7L, listOf(10))).isEqualTo(returned)
+        assertThat(returned).hasSize(plain.size + 1)
+        // Уже открытая часть колоды не меняется, тайл с позиции 10 появляется ещё раз дальше.
+        assertThat(returned.take(10)).isEqualTo(plain.take(10))
+        // Без вставленной копии остаток колоды — тот же, что без возврата.
+        val rest = returned.drop(10)
+        assertThat(rest.indices.any { i -> rest[i] == plain[9] && rest.filterIndexed { j, _ -> j != i } == plain.drop(10) })
+            .isTrue()
+        assertThat(CroissantCatalog.deck(7L, listOf(10, 10))).hasSize(plain.size + 2)
+    }
+
+    @Test
+    fun `the turn order skips players who are out`() {
+        val board = listOf(tile(0, 0, CroissantCatalog.DAIRY, 0))
+        // Кэрол ходит последней в раунде, Алиса выбыла: очередь переходит сразу к Бобу.
+        val state = sessionState(
+            board = board,
+            currentTile = CroissantCatalog.DAIRY.code,
+            spots = rebuild(board),
+            alice = CroissantPlayer(crumbs = 0, confectioners = 7, out = true),
+            carol = CroissantPlayer(crumbs = 0, confectioners = 0),
+            current = CAROL,
+        )
+
+        val placed = rules.decide(state, settings, 5L, CAROL, place(1, 0, 0)) as Decision.Accepted
+
+        val turns = placed.events.single { it.code == "turn-changed" }.value as TurnsState
+        assertThat(turns.currentPlayerId).isEqualTo(BOB)
+        assertThat(turns.round).isEqualTo(2)
+    }
+
+    @Test
+    fun `a timeout on the confectioner step settles what the tile has closed`() {
+        val first = tile(0, 0, CroissantCatalog.BAKERY_ONE, 0)
+        val board = listOf(first)
+        val base = rebuild(board)
+        val bakery = base.single { it.type == CroissantSpotType.BAKERY }
+        val spots = base.map {
+            if (it.id == bakery.id) it.copy(confectioners = listOf(CroissantConfectioner(ALICE, first.id))) else it
         }
+        val state = sessionState(
+            board = board,
+            currentTile = CroissantCatalog.BAKERY_ONE.code,
+            spots = spots,
+            alice = CroissantPlayer(crumbs = 0, confectioners = 6),
+            carol = CroissantPlayer(crumbs = 0, confectioners = 7),
+        )
+        val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
+
+        val events = rules.onTimeout(waitingAfter(state, placed), settings, seed = 1L)
+
+        assertThat(events.map { it.code }).containsSubsequence(
+            CroissantGameRules.MOVE_TIMED_OUT,
+            CroissantGameRules.PLAYER_OUT,
+            CroissantGameRules.CONFECTIONER_SKIPPED,
+            CroissantGameRules.SPOT_COMPLETED,
+            CroissantGameRules.CRUMBS_CHANGED,
+            CroissantGameRules.TILE_PENDING_CLEARED,
+            "turn-changed",
+        )
+        // Выбывший получает крошки за свой участок, как все.
+        val crumbs = events.single { it.code == CroissantGameRules.CRUMBS_CHANGED }
+        assertThat(crumbs.path).contains(SessionEvents.id(ALICE))
+        assertThat(crumbs.value).isEqualTo(mapOf("crumbs" to 4))
     }
 
     @Test
@@ -370,14 +489,17 @@ class CroissantSessionScenariosTest {
         pending: CroissantPending? = null,
         alice: CroissantPlayer = CroissantPlayer(crumbs = 0, confectioners = 7),
         bob: CroissantPlayer = CroissantPlayer(crumbs = 0, confectioners = 7),
+        carol: CroissantPlayer? = null,
+        current: UUID = ALICE,
     ): SessionState<Any> = SessionState(
         stage = Stages.PLAY,
-        players = listOf(
+        players = listOfNotNull(
             PlayerState(ALICE, emptyList(), alice),
             PlayerState(BOB, emptyList(), bob),
+            carol?.let { PlayerState(CAROL, emptyList(), it) },
         ),
         timer = null,
-        turns = TurnsState(ALICE, round = 1, rounds = null),
+        turns = TurnsState(current, round = 1, rounds = null),
         result = null,
         game = CroissantGameState(
             board = board,
@@ -386,11 +508,13 @@ class CroissantSessionScenariosTest {
             currentTile = currentTile,
             deckPos = 1,
             deckSize = 71,
+            deckReturns = emptyList(),
         ),
     )
 
     private companion object {
         val ALICE: UUID = UUID.fromString("00000000-0000-4000-8000-00000000000a")
         val BOB: UUID = UUID.fromString("00000000-0000-4000-8000-00000000000b")
+        val CAROL: UUID = UUID.fromString("00000000-0000-4000-8000-00000000000c")
     }
 }
