@@ -107,31 +107,98 @@ class CroissantSessionScenariosTest {
             alice = CroissantPlayer(crumbs = 0, confectioners = 6),
         )
 
-        val decision = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180))
-        assertThat(decision).isInstanceOf(Decision.Accepted::class.java)
-        val events = (decision as Decision.Accepted).events
+        val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
 
-        assertThat(events.map { it.code }).contains(
-            CroissantGameRules.TILE_PLACED,
-            CroissantGameRules.SPOT_UPDATED,
-            CroissantGameRules.SPOT_COMPLETED,
-            CroissantGameRules.CRUMBS_CHANGED,
-            CroissantGameRules.CONFECTIONERS_RETURNED,
-        )
-        val merged = events.filter { it.code == CroissantGameRules.SPOT_UPDATED }
+        // Выкладка только завершает участок: крошки — в конце хода, после шага кондитера.
+        assertThat(placed.events.map { it.code })
+            .contains(CroissantGameRules.TILE_PLACED, CroissantGameRules.SPOT_UPDATED, CroissantGameRules.TILE_PENDING)
+            .doesNotContain(CroissantGameRules.SPOT_COMPLETED, CroissantGameRules.CRUMBS_CHANGED)
+        val merged = placed.events.filter { it.code == CroissantGameRules.SPOT_UPDATED }
             .map { it.value as CroissantSpot }
             .filter { it.type == CroissantSpotType.BAKERY }
         assertThat(merged).hasSize(1)
         assertThat(merged.single().complete).isTrue()
         assertThat(merged.single().open).isZero()
         assertThat(merged.single().members).hasSize(2)
-        assertThat(merged.single().confectioners).isEmpty()
+        assertThat(merged.single().confectioners).hasSize(1)
+        // Занятая пекарня кондитеру недоступна, свободный луг нового тайла — доступен.
+        val pending = placed.events.single { it.code == CroissantGameRules.TILE_PENDING }.value as CroissantPending
+        assertThat(pending.spots).doesNotContain(bakery.id)
+        assertThat(pending.completed).containsExactly(bakery.id)
 
-        val crumbs = events.filter { it.code == CroissantGameRules.CRUMBS_CHANGED }
+        val skipped = rules.decide(
+            waitingAfter(state, placed),
+            settings,
+            1L,
+            ALICE,
+            CroissantMove(CroissantGameRules.SKIP_CONFECTIONER),
+        ) as Decision.Accepted
+
+        assertThat(skipped.events.map { it.code }).contains(
+            CroissantGameRules.SPOT_COMPLETED,
+            CroissantGameRules.CRUMBS_CHANGED,
+            CroissantGameRules.CONFECTIONERS_RETURNED,
+        )
+        val crumbs = skipped.events.filter { it.code == CroissantGameRules.CRUMBS_CHANGED }
         assertThat(crumbs).hasSize(1)
         assertThat(crumbs.single().method).isEqualTo(PatchMethod.PATCH)
         assertThat(crumbs.single().value).isEqualTo(mapOf("crumbs" to 4))
         assertThat(crumbs.single().path).hasSize(3)
+        val settled = skipped.events.filter { it.code == CroissantGameRules.SPOT_UPDATED }
+            .map { it.value as CroissantSpot }
+            .single { it.id == bakery.id }
+        assertThat(settled.confectioners).isEmpty()
+    }
+
+    @Test
+    fun `a confectioner on a bakery the tile has just closed scores at once and returns`() {
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_ONE, 0))
+        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY_ONE.code, spots = rebuild(board))
+
+        val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
+        val pending = placed.events.single { it.code == CroissantGameRules.TILE_PENDING }.value as CroissantPending
+        val bakery = pending.completed.single()
+        assertThat(pending.spots).contains(bakery)
+
+        val assigned = rules.decide(
+            waitingAfter(state, placed),
+            settings,
+            1L,
+            ALICE,
+            CroissantMove(CroissantGameRules.PLACE_CONFECTIONER, CroissantMoveData(spotId = bakery)),
+        ) as Decision.Accepted
+
+        val codes = assigned.events.map { it.code }
+        assertThat(codes).containsSubsequence(
+            CroissantGameRules.CONFECTIONER_PLACED,
+            CroissantGameRules.SPOT_COMPLETED,
+            CroissantGameRules.CRUMBS_CHANGED,
+            CroissantGameRules.CONFECTIONERS_RETURNED,
+            CroissantGameRules.TILE_DRAWN,
+        )
+        assertThat(assigned.events.single { it.code == CroissantGameRules.CRUMBS_CHANGED }.value)
+            .isEqualTo(mapOf("crumbs" to 4))
+        assertThat(assigned.events.single { it.code == CroissantGameRules.CONFECTIONERS_RETURNED }.value)
+            .isEqualTo(mapOf("confectioners" to 7))
+    }
+
+    @Test
+    fun `a closed bakery without confectioners scores nobody after the step is skipped`() {
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_ONE, 0))
+        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY_ONE.code, spots = rebuild(board))
+
+        val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
+        val skipped = rules.decide(
+            waitingAfter(state, placed),
+            settings,
+            1L,
+            ALICE,
+            CroissantMove(CroissantGameRules.SKIP_CONFECTIONER),
+        ) as Decision.Accepted
+
+        assertThat(skipped.events.map { it.code })
+            .contains(CroissantGameRules.SPOT_COMPLETED)
+            .doesNotContain(CroissantGameRules.CRUMBS_CHANGED, CroissantGameRules.CONFECTIONERS_RETURNED)
     }
 
     @Test
@@ -279,6 +346,19 @@ class CroissantSessionScenariosTest {
 
     private fun tile(x: Int, y: Int, type: CroissantTileType, rotation: Int) =
         CroissantPlacedTile("$x:$y", x, y, type.code, rotation)
+
+    /**
+     * Состояние на шаге кондитера после выкладки [placed] в [state]: тайл на поле, участки пересобраны так же, как в
+     * правилах (кондитеры переезжают с прежних участков), ожидание — из события.
+     */
+    private fun waitingAfter(state: SessionState<Any>, placed: Decision.Accepted): SessionState<Any> {
+        val game = state.game as CroissantGameState
+        val tile = placed.events.single { it.code == CroissantGameRules.TILE_PLACED }.value as CroissantPlacedTile
+        val board = game.board + tile
+        val pending = placed.events.single { it.code == CroissantGameRules.TILE_PENDING }.value as CroissantPending
+        val spots = CroissantNetwork.rebuild(CroissantLayout(board), board, game.spots)
+        return state.copy(game = game.copy(board = board, spots = spots, pending = pending))
+    }
 
     private fun rebuild(board: List<CroissantPlacedTile>): List<CroissantSpot> =
         CroissantNetwork.rebuild(CroissantLayout(board), board, emptyList())

@@ -222,6 +222,12 @@ class CroissantGameRules :
 
         private val deck = CroissantCatalog.deck(seed)
 
+        /**
+         * Участки, завершённые тайлом этого хода: считаются в конце хода ([settle]), после шага кондитера, — так на
+         * участок, который игрок сам завершил, можно поставить кондитера и сразу получить крошки.
+         */
+        private var toSettle: List<String> = game.pending?.completed ?: emptyList()
+
         /** Выложить тайл; [ERR_*] — отказ, null — ход принят (ждёт кондитера или уже передал очередь). */
         fun place(playerId: UUID, move: CroissantMove): String? {
             if (move.type != PLACE_TILE) return ERR_UNKNOWN_MOVE
@@ -240,37 +246,20 @@ class CroissantGameRules :
             val completedNow = rebuilt.filter { it.complete && before[it.id]?.complete != true }
 
             events += SessionEvents.put(TILE_PLACED, boardPath(placed.id), placed)
+            events += spotEvents(game.spots, rebuilt)
+            game = game.copy(board = board, spots = rebuilt)
+            toSettle = completedNow.map { it.id }
 
-            val crumbs = mutableMapOf<UUID, Int>()
-            val returned = mutableMapOf<UUID, Int>()
-            val settled = rebuilt.map { spot ->
-                if (completedNow.none { it.id == spot.id }) return@map spot
-                val points = CroissantScoring.completed(spot)
-                if (points > 0) {
-                    CroissantScoring.winners(spot).forEach { winner -> crumbs.merge(winner, points, Int::plus) }
-                }
-                spot.confectioners.forEach { returned.merge(it.playerId, 1, Int::plus) }
-                spot.copy(confectioners = emptyList())
-            }
-            events += spotEvents(game.spots, settled)
-            completedNow.forEach { spot ->
-                events += SessionEvents.info(
-                    SPOT_COMPLETED,
-                    mapOf("spotId" to spot.id, "type" to spot.type.name, "crumbs" to CroissantScoring.completed(spot)),
-                )
-            }
-            award(crumbs, returned)
-            game = game.copy(board = board, spots = settled)
-
-            val free = settled.filter { spot ->
-                spot.members.any { it.tileId == placed.id } && !spot.complete && spot.confectioners.isEmpty()
+            // Свободные участки нового тайла, в том числе завершённые им: подсчёт будет после шага кондитера.
+            val free = rebuilt.filter { spot ->
+                spot.members.any { it.tileId == placed.id } && spot.confectioners.isEmpty()
             }
             val me = fields.getValue(playerId)
             if (free.isEmpty() || me.confectioners == 0) {
                 advance(playerId)
                 return null
             }
-            val pending = CroissantPending(placed.id, free.map { it.id }, completedNow.map { it.id })
+            val pending = CroissantPending(placed.id, free.map { it.id }, toSettle)
             events += SessionEvents.put(TILE_PENDING, statePath(PENDING), pending)
             game = game.copy(pending = pending)
             return null
@@ -304,8 +293,12 @@ class CroissantGameRules :
             return null
         }
 
-        /** Ход завершён: снять ожидание, взять следующий тайл и передать очередь; колода кончилась — итоговый подсчёт. */
+        /**
+         * Ход завершён: подсчитать завершённые участки, снять ожидание, взять следующий тайл и передать очередь; колода
+         * кончилась — итоговый подсчёт.
+         */
         fun advance(playerId: UUID) {
+            settle()
             if (game.pending != null) events += SessionEvents.delete(TILE_PENDING_CLEARED, statePath(PENDING))
             game = game.copy(pending = null)
             var pos = game.deckPos
@@ -330,6 +323,36 @@ class CroissantGameRules :
             turns = moved
             events += Turns.changed(moved)
             game = game.copy(currentTile = next, deckPos = pos)
+        }
+
+        /**
+         * Подсчёт участков, завершённых тайлом этого хода: крошки большинству кондитеров, кондитеры возвращаются
+         * владельцам. Идёт после шага кондитера, поэтому учитывает и только что поставленного.
+         */
+        private fun settle() {
+            if (toSettle.isEmpty()) return
+            val crumbs = mutableMapOf<UUID, Int>()
+            val returned = mutableMapOf<UUID, Int>()
+            val completed = game.spots.filter { it.id in toSettle }
+            val settled = game.spots.map { spot ->
+                if (spot.id !in toSettle) return@map spot
+                val points = CroissantScoring.completed(spot)
+                if (points > 0) {
+                    CroissantScoring.winners(spot).forEach { winner -> crumbs.merge(winner, points, Int::plus) }
+                }
+                spot.confectioners.forEach { returned.merge(it.playerId, 1, Int::plus) }
+                spot.copy(confectioners = emptyList())
+            }
+            events += spotEvents(game.spots, settled)
+            completed.forEach { spot ->
+                events += SessionEvents.info(
+                    SPOT_COMPLETED,
+                    mapOf("spotId" to spot.id, "type" to spot.type.name, "crumbs" to CroissantScoring.completed(spot)),
+                )
+            }
+            award(crumbs, returned)
+            game = game.copy(spots = settled)
+            toSettle = emptyList()
         }
 
         /** Итоговый подсчёт: незавершённые пекарни, тропы, сыроварни и луга; победители — по большинству кондитеров. */

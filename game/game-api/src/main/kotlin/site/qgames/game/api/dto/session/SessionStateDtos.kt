@@ -352,7 +352,10 @@ data class CroissantSpotDto(
     val bakeries: List<String>,
 )
 
-/** Выложенный тайл, ждущий кондитера: [spots] — куда его можно поставить, [completed] — что завершилось этим тайлом. */
+/**
+ * Выложенный тайл, ждущий кондитера: [spots] — куда его можно поставить (и на завершённый этим тайлом свободный участок),
+ * [completed] — что завершилось этим тайлом; крошки за них — в конце хода, после шага кондитера.
+ */
 data class CroissantPendingDto(
     val tileId: String,
     val spots: List<String>,
