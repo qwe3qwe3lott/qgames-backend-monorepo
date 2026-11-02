@@ -116,7 +116,10 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(strings(croissant.path("properties").path("gameCode").path("enum"))).containsExactly("croissant")
         assertThat(strings(croissant.path("required"))).containsExactlyInAnyOrder("gameCode", "tiles")
         assertThat(strings(schemas.path("CroissantTileDto").path("required")))
-            .containsExactlyInAnyOrder("code", "title", "edges", "bakeries", "trails", "dairy", "pastures")
+            .containsExactlyInAnyOrder("code", "title", "edges", "bakeries", "trails", "dairy", "garden", "pastures")
+        assertThat(strings(schemas.path("CroissantTrailDto").path("required")))
+            .containsExactlyInAnyOrder("sides", "dairy", "garden")
+        assertThat(schemas.path("CroissantTrailDto").path("properties").has("bakery")).isTrue()
         assertThat(schemas.path("CroissantSessionStateDto").path("properties").has("tiles")).isFalse()
     }
 

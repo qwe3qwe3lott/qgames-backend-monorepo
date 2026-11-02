@@ -11,7 +11,8 @@ import java.util.Random
  * БД и IO. Случайность — только из seed партии (порядок колоды).
  *
  * Термины игры (и только они) в коде и контракте: [CroissantEdge.BAKERY] — пекарня, [CroissantEdge.TRAIL] — мучная
- * тропа, [CroissantEdge.PASTURE] — луг, сыроварня — `dairy`, «Золотые крошки» — `crumbs`, фишки игроков — `confectioners`.
+ * тропа, [CroissantEdge.PASTURE] — луг, сыроварня — `dairy`, сад — `garden`, «Золотые крошки» — `crumbs`, фишки игроков —
+ * `confectioners`.
  */
 
 /** Сторона тайла. Координаты клеток: [CroissantDirection.E] — +x, [CroissantDirection.N] — +y. */
@@ -61,8 +62,20 @@ data class CroissantHalfEdge(val dir: CroissantDirection, val half: Int)
 /** Пекарня на тайле: стороны квартала и вывеска. */
 data class CroissantBakerySpec(val sides: List<CroissantDirection>, val sign: Boolean = false)
 
-/** Мучная тропа на тайле: стороны, на которые она выходит. */
-data class CroissantTrailSpec(val sides: List<CroissantDirection>)
+/**
+ * Мучная тропа на тайле: стороны, на которые она выходит, и элемент тайла, в который она входит. Тропа на две стороны и
+ * больше соединяет эти стороны и цели не имеет. Тропа на одну сторону входит ровно в одну цель: пекарню [bakery]
+ * (индекс в [CroissantTileType.bakeries]), сыроварню ([dairy]) или сад ([garden]) — там тропа и заканчивается.
+ */
+data class CroissantTrailSpec(
+    val sides: List<CroissantDirection>,
+    val bakery: Int? = null,
+    val dairy: Boolean = false,
+    val garden: Boolean = false,
+) {
+    /** Сколько целей у тропы. */
+    val targets: Int get() = (if (bakery != null) 1 else 0) + (if (dairy) 1 else 0) + (if (garden) 1 else 0)
+}
 
 /**
  * Луг на тайле: полуребра, которыми участок выходит к соседним клеткам, и индексы своих пекарен ([bakeries]) — по ним
@@ -71,7 +84,9 @@ data class CroissantTrailSpec(val sides: List<CroissantDirection>)
 data class CroissantPastureSpec(val halves: List<CroissantHalfEdge>, val bakeries: List<Int> = emptyList())
 
 /**
- * Тип тайла (их 14, а тайлов в колоде 72). [edges] — по индексу [CroissantDirection.ordinal]: N, E, S, W.
+ * Тип тайла (их 14, а тайлов в колоде 72). [edges] — по индексу [CroissantDirection.ordinal]: N, E, S, W. Тайл — перечень
+ * элементов: пекарни, тропы, сыроварня или сад в центре и луга. На одной стороне — строго один элемент: пекарня, тропа
+ * или луг. Сад — не участок: кондитера на него не ставят, он только обрывает тропы.
  *
  * Каталог — единственный источник геометрии и на сервере, и на клиенте: карточка игры отдаёт его целиком
  * ([CroissantGameRules.assets]), состояние партии ссылается на тип по [code], поэтому фронт не дублирует тайлы и не
@@ -85,8 +100,40 @@ data class CroissantTileType(
     val bakeries: List<CroissantBakerySpec> = emptyList(),
     val trails: List<CroissantTrailSpec> = emptyList(),
     val dairy: Boolean = false,
+    val garden: Boolean = false,
     val pastures: List<CroissantPastureSpec> = emptyList(),
 ) {
+    init {
+        val bakerySides = bakeries.flatMap { it.sides }
+        val trailSides = trails.flatMap { it.sides }
+        require(bakerySides.size == bakerySides.toSet().size) { "Tile '$code': a side belongs to two bakeries" }
+        require(trailSides.size == trailSides.toSet().size) { "Tile '$code': a side has two trails" }
+        require(bakerySides.none { it in trailSides }) { "Tile '$code': a side has both a bakery and a trail" }
+        require(!(dairy && garden)) { "Tile '$code': the dairy and the garden both take the center" }
+        trails.forEachIndexed { index, trail ->
+            require(trail.sides.isNotEmpty()) { "Tile '$code': trail $index has no sides" }
+            if (trail.sides.size == 1) {
+                require(trail.targets == 1) { "Tile '$code': trail $index has one side and needs exactly one target" }
+            } else {
+                require(trail.targets == 0) { "Tile '$code': trail $index joins sides and can't have a target" }
+            }
+            require(trail.bakery == null || trail.bakery in bakeries.indices) {
+                "Tile '$code': trail $index leads to a missing bakery ${trail.bakery}"
+            }
+            require(!trail.dairy || dairy) { "Tile '$code': trail $index leads to a missing dairy" }
+            require(!trail.garden || garden) { "Tile '$code': trail $index leads to a missing garden" }
+        }
+        val halves = pastures.flatMap { it.halves }
+        val free = CroissantDirection.entries.filter { it !in bakerySides }
+            .flatMap { listOf(CroissantHalfEdge(it, 0), CroissantHalfEdge(it, 1)) }
+        require(halves.size == halves.toSet().size && halves.toSet() == free.toSet()) {
+            "Tile '$code': pastures must cover every half-edge of the sides without bakeries exactly once"
+        }
+        pastures.forEachIndexed { index, pasture ->
+            require(pasture.bakeries.all { it in bakeries.indices }) { "Tile '$code': pasture $index has a missing bakery" }
+        }
+    }
+
     fun edge(dir: CroissantDirection): CroissantEdge = edges[dir.ordinal]
 
     /** Индекс пекарни, занимающей сторону [dir]; null — пекарни на этой стороне нет. */
@@ -203,13 +250,13 @@ object CroissantCatalog {
         pastures = listOf(pasture(*ALL_HALVES.toTypedArray())),
     )
 
-    /** Сыроварня у мучной тропы: тропа входит с севера и заканчивается у ворот. */
+    /** Сыроварня у мучной тропы: тропа входит с севера и заканчивается у ворот, луг огибает сыроварню целиком. */
     val DAIRY_TRAIL = tile(
         code = "dairy-trail",
         title = "Сыроварня у тропы",
-        trails = listOf(CroissantTrailSpec(listOf(CroissantDirection.N))),
+        trails = listOf(CroissantTrailSpec(listOf(CroissantDirection.N), dairy = true)),
         dairy = true,
-        pastures = listOf(pasture(N0, W0, W1, S0), pasture(N1, E0, E1, S1)),
+        pastures = listOf(pasture(*ALL_HALVES.toTypedArray())),
     )
 
     /** Пекарня на одной стороне. */
@@ -254,55 +301,49 @@ object CroissantCatalog {
         pastures = listOf(pasture(N0, W0), pasture(N1, E0, E1, S0, S1, W1)),
     )
 
-    /** Тропа на три стороны: три луга. */
+    /** Сад, к которому сходятся три тропы: каждая заканчивается у сада, лугов три. */
     val TRAIL_CROSS = tile(
         code = "trail-cross",
         title = "Развилка троп",
+        garden = true,
         trails = listOf(
-            CroissantTrailSpec(listOf(CroissantDirection.N, CroissantDirection.E, CroissantDirection.S)),
+            CroissantTrailSpec(listOf(CroissantDirection.N), garden = true),
+            CroissantTrailSpec(listOf(CroissantDirection.E), garden = true),
+            CroissantTrailSpec(listOf(CroissantDirection.S), garden = true),
         ),
         pastures = listOf(pasture(N1, E0), pasture(E1, S1), pasture(S0, W0, W1, N0)),
     )
 
-    /** Тропа на четыре стороны: четыре луга. */
+    /** Сад, к которому сходятся четыре тропы: каждая заканчивается у сада, лугов четыре. */
     val TRAIL_JUNCTION = tile(
         code = "trail-junction",
         title = "Перекрёсток троп",
-        trails = listOf(
-            CroissantTrailSpec(
-                listOf(
-                    CroissantDirection.N,
-                    CroissantDirection.E,
-                    CroissantDirection.S,
-                    CroissantDirection.W,
-                ),
-            ),
-        ),
+        garden = true,
+        trails = CroissantDirection.entries.map { CroissantTrailSpec(listOf(it), garden = true) },
         pastures = listOf(pasture(N0, W0), pasture(N1, E0), pasture(E1, S1), pasture(S0, W1)),
     )
 
-    /** Пекарня и тропа напротив неё; луг разделён тропой на две части. */
+    /** Пекарня и тропа напротив неё, тропа входит в пекарню; луг разделён тропой на две части. */
     val BAKERY_TRAIL = tile(
         code = "bakery-trail",
         title = "Ворота пекарни",
         bakeries = listOf(CroissantBakerySpec(listOf(CroissantDirection.N))),
-        trails = listOf(CroissantTrailSpec(listOf(CroissantDirection.S))),
+        trails = listOf(CroissantTrailSpec(listOf(CroissantDirection.S), bakery = 0)),
         pastures = listOf(
             pasture(W0, W1, S0, bakeries = listOf(0)),
             pasture(E0, E1, S1, bakeries = listOf(0)),
         ),
     )
 
-    /** Пекарня, от которой тропа расходится на две стороны. */
+    /** Пекарня и тропа-дуга с востока на юг мимо неё: внутренний угол луга отделён, к пекарне примыкает внешний луг. */
     val BAKERY_TRAIL_T = tile(
         code = "bakery-trail-t",
         title = "Пекарня на распутье",
         bakeries = listOf(CroissantBakerySpec(listOf(CroissantDirection.N))),
         trails = listOf(CroissantTrailSpec(listOf(CroissantDirection.E, CroissantDirection.S))),
         pastures = listOf(
-            pasture(E0, bakeries = listOf(0)),
-            pasture(E1, S1, bakeries = listOf(0)),
-            pasture(S0, W0, W1, bakeries = listOf(0)),
+            pasture(E0, S0, W0, W1, bakeries = listOf(0)),
+            pasture(E1, S1),
         ),
     )
 
@@ -357,6 +398,7 @@ object CroissantCatalog {
         bakeries: List<CroissantBakerySpec> = emptyList(),
         trails: List<CroissantTrailSpec> = emptyList(),
         dairy: Boolean = false,
+        garden: Boolean = false,
         pastures: List<CroissantPastureSpec> = emptyList(),
     ): CroissantTileType {
         val edges = CroissantDirection.entries.map { dir ->
@@ -366,7 +408,7 @@ object CroissantCatalog {
                 else -> CroissantEdge.PASTURE
             }
         }
-        return CroissantTileType(code, title, edges, bakeries, trails, dairy, pastures)
+        return CroissantTileType(code, title, edges, bakeries, trails, dairy, garden, pastures)
     }
 
     /** Все типы каталога: карточка игры отдаёт их клиенту целиком. */

@@ -3,6 +3,7 @@ package site.qgames.games.croissant
 import java.time.Instant
 import java.util.UUID
 import org.assertj.core.api.Assertions.assertThat
+import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
 import site.qgames.common.docpatch.PatchMethod
 import site.qgames.games.core.Decision
@@ -72,6 +73,73 @@ class CroissantSessionScenariosTest {
         val facing = lower.map { CroissantHalfEdge(it.dir.opposite, it.half) }
 
         assertThat(upper).containsAll(facing)
+    }
+
+    @Test
+    fun `the catalog rejects tiles with two elements on a side or trails without a target`() {
+        val n = CroissantDirection.N
+        val s = CroissantDirection.S
+        val e = CroissantDirection.E
+        val w = CroissantDirection.W
+        val allPastures = listOf(
+            CroissantPastureSpec(CroissantDirection.entries.flatMap { listOf(CroissantHalfEdge(it, 0), CroissantHalfEdge(it, 1)) }),
+        )
+        fun type(
+            trails: List<CroissantTrailSpec> = emptyList(),
+            bakeries: List<CroissantBakerySpec> = emptyList(),
+            pastures: List<CroissantPastureSpec> = allPastures,
+            dairy: Boolean = false,
+            garden: Boolean = false,
+        ) = CroissantTileType("test", "Тест", List(4) { CroissantEdge.PASTURE }, bakeries, trails, dairy, garden, pastures)
+
+        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(n, s)), CroissantTrailSpec(listOf(n, e)))) }
+            .hasMessageContaining("two trails")
+        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(n)))) }
+            .hasMessageContaining("exactly one target")
+        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(n), dairy = true, garden = true)), dairy = true) }
+            .hasMessageContaining("exactly one target")
+        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(n, s), garden = true)), garden = true) }
+            .hasMessageContaining("can't have a target")
+        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(w), garden = true))) }
+            .hasMessageContaining("missing garden")
+        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(w), bakery = 0))) }
+            .hasMessageContaining("missing bakery")
+        assertThatThrownBy { type(dairy = true, garden = true) }.hasMessageContaining("center")
+        assertThatThrownBy { type(bakeries = listOf(CroissantBakerySpec(listOf(n)))) }
+            .hasMessageContaining("exactly once")
+        assertThatThrownBy {
+            type(bakeries = listOf(CroissantBakerySpec(listOf(n))), trails = listOf(CroissantTrailSpec(listOf(n, s))))
+        }.hasMessageContaining("both a bakery and a trail")
+        // Две независимые тропы W-N и S-E и раздельные пекарни на соседних сторонах — допустимые тайлы.
+        type(trails = listOf(CroissantTrailSpec(listOf(w, n)), CroissantTrailSpec(listOf(s, e))))
+        type(
+            bakeries = listOf(CroissantBakerySpec(listOf(n)), CroissantBakerySpec(listOf(e))),
+            trails = listOf(CroissantTrailSpec(listOf(w), bakery = 0), CroissantTrailSpec(listOf(s), bakery = 1)),
+            pastures = listOf(
+                CroissantPastureSpec(listOf(CroissantHalfEdge(w, 0)), bakeries = listOf(0)),
+                CroissantPastureSpec(listOf(CroissantHalfEdge(w, 1), CroissantHalfEdge(s, 0)), bakeries = listOf(0, 1)),
+                CroissantPastureSpec(listOf(CroissantHalfEdge(s, 1)), bakeries = listOf(1)),
+            ),
+        )
+    }
+
+    @Test
+    fun `branches of a fork end at the garden and are separate trails`() {
+        // Развилка: тропы N, E и S до сада. Ворота пекарни сверху замыкают северную ветку: пекарня — с одного конца,
+        // сад — с другого.
+        val fork = tile(0, 0, CroissantCatalog.TRAIL_CROSS, 0)
+        val gate = tile(0, 1, CroissantCatalog.BAKERY_TRAIL, 0)
+        val trails = rebuild(listOf(fork, gate)).filter { it.type == CroissantSpotType.TRAIL }
+
+        assertThat(trails).hasSize(3)
+        val north = trails.single { spot -> spot.members.any { it.tileId == gate.id } }
+        assertThat(north.members).hasSize(2)
+        assertThat(north.complete).isTrue()
+        assertThat(CroissantScoring.completed(north)).isEqualTo(2)
+        assertThat(trails - north).allSatisfy {
+            assertThat(it.members).hasSize(1)
+            assertThat(it.open).isEqualTo(1)
+        }
     }
 
     @Test

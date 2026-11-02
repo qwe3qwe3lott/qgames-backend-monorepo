@@ -58,9 +58,18 @@ data class CroissantBakeryDto(
     val sign: Boolean,
 )
 
-/** Мучная тропа на тайле: стороны, на которые она выходит. */
+/**
+ * Мучная тропа на тайле: стороны, на которые она выходит, и цель. Тропа на две стороны и больше соединяет их и целей не
+ * имеет; тропа на одну сторону входит ровно в одну цель — пекарню, сыроварню или сад.
+ */
 data class CroissantTrailDto(
     val sides: List<CroissantDirection>,
+    /** Индекс пекарни тайла (`bakeries`), в которую входит тропа; null — тропа идёт не в пекарню. */
+    val bakery: Int?,
+    /** Тропа входит в сыроварню тайла. */
+    val dairy: Boolean,
+    /** Тропа заканчивается у сада тайла. */
+    val garden: Boolean,
 )
 
 /** Луг на тайле: полуребра выхода и индексы примыкающих пекарен тайла. */
@@ -80,5 +89,7 @@ data class CroissantTileDto(
     val trails: List<CroissantTrailDto>,
     /** Сыроварня при аббатстве на этом тайле. */
     val dairy: Boolean,
+    /** Сад в центре тайла: тропы заканчиваются у него, кондитера на сад не ставят. */
+    val garden: Boolean,
     val pastures: List<CroissantPastureDto>,
 )

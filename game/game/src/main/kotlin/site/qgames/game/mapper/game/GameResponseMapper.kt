@@ -61,8 +61,16 @@ class GameResponseMapper(private val roomSettingsResponseMapper: RoomSettingsRes
         bakeries = tile.bakeries.map { bakery ->
             CroissantBakeryDto(bakery.sides.map { CroissantDirection.valueOf(it.name) }, bakery.sign)
         },
-        trails = tile.trails.map { trail -> CroissantTrailDto(trail.sides.map { CroissantDirection.valueOf(it.name) }) },
+        trails = tile.trails.map { trail ->
+            CroissantTrailDto(
+                sides = trail.sides.map { CroissantDirection.valueOf(it.name) },
+                bakery = trail.bakery,
+                dairy = trail.dairy,
+                garden = trail.garden,
+            )
+        },
         dairy = tile.dairy,
+        garden = tile.garden,
         pastures = tile.pastures.map { pasture ->
             CroissantPastureDto(
                 halves = pasture.halves.map { CroissantHalfEdgeDto(CroissantDirection.valueOf(it.dir.name), it.half) },
