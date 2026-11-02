@@ -56,7 +56,7 @@ games/                         ПРАВИЛА ИГР (бизнес-логика,
   game-core                    core игр: модель игры (GameRules, SessionEngine) и общие блоки — игроки, очередь, часы, итог
   nothing-game                 «игра в ничто» — тестовая игра для проверки движка
   checkers-game                шашки (вариант правил — настройка комнаты: русские, международные, английские)
-  <игра>                       правила конкретной игры (например, games/carcassonne)
+  <игра>                       правила конкретной игры (например, games/croissant)
 user-auth/, admin-auth/, game/ МОДУЛИ ПРИЛОЖЕНИЯ: <m>/<m> (реализация) и <m>/<m>-api (публичный контракт)
 app/                           приложение: собирает модули; Security, OpenAPI, конфигурация, миграции, все интеграционные тесты
 docker/                        Dockerfile приложения, dev-ключи
@@ -164,7 +164,7 @@ auth/controller/AuthController.kt      ❌ (domain-sliced — не исполь�
     Чистый `oneOf` + `discriminator` без цикла `allOf` от swagger-core даёт `DiscriminatedUnionCustomizer` из `libs/common-web`. Форму схемы проверяет `PortalOpenApiContractScenariosTest`. `jackson-annotations` (версия из BOM) подключается в `<m>-api`.
 
     Дискриминатор настроек игры (`gameSettings`, `gameSettingsLimits`) — поле `gameCode`, значения — коды игр (`nothing`), константы из `GameCodes`.
-- **Код игры — единственный идентификатор игры.** Enum `GameCode` в контрактах сериализуется строчным кодом (`@get:JsonValue val code`), поэтому в JSON и в OpenAPI значения — `nothing`, `carcassonne`, `checkers`, а не имена констант. Отдельного «типа игры» нет.
+- **Код игры — единственный идентификатор игры.** Enum `GameCode` в контрактах сериализуется строчным кодом (`@get:JsonValue val code`), поэтому в JSON и в OpenAPI значения — `nothing`, `croissant`, `checkers`, а не имена констант. Отдельного «типа игры» нет.
 - **Код игры — в пути.** Ручка, которой нужна игра, живёт под `/api/games/{gameCode}/...`, сначала `games`, потом `rooms`:
   - каталог игр — `GET /api/games`, игра с параметрами правил — `GET /api/games/{gameCode}`;
   - создание комнаты — `POST /api/games/{gameCode}/rooms`;
@@ -214,7 +214,7 @@ app/src/main/resources/db/changelog/
 - Таблица `databasechangelog` одна на приложение. Пути changelog'ов модулей не пересекаются (папка модуля), поэтому одноимённые файлы разных модулей не конфликтуют.
 - **Имя миграции:** `<yyyy-MM-dd>-<ДЕЙСТВИЕ>-<таблица>` без префикса модуля (файл лежит в папке модуля), например `2026-10-17-CREATE-user_identity`, `2026-11-02-ALTER-user`, `2026-11-02-INSERT-game`. Действие капсом: `CREATE`, `ALTER`, `DROP` (DDL), `INSERT`, `UPDATE`, `DELETE` (DML). Имя одновременно служит `id` changeSet'а. Если в один день над одной таблицей нужно два одинаковых действия — добавить уточнение в конец (`2026-11-02-ALTER-user-add_nickname`).
 - **Одна таблица — одна миграция.** Индексы и ограничения таблицы входят в её CREATE-миграцию.
-- **Новая или изменённая CREATE-миграция обновляет ERD модуля** `adr/erd/<модуль>.md` (таблицы, колонки, ограничения, связи) в той же задаче.
+- **Новая DDL-миграция (CREATE, ALTER, DROP) обновляет ERD модуля** `adr/erd/<модуль>.md` (таблицы, колонки, ограничения, связи) в той же задаче.
 - **DDL** (структура) и **DML** (данные) лежат в разных папках. Порядок выполнения задаёт только master: файлы перечисляются явно, `includeAll` не используем.
 
 - **Изменения — только абстрактные** (`createTable` с колонками и ограничениями, `createIndex`, `insert`, `update`, `delete`…), без `sqlFile` и `sql`. Ограничения задаются в колонках `createTable`: `primaryKey` + `primaryKeyName` (составной ключ — тем же именем у нескольких колонок), `unique` + `uniqueConstraintName`, внешний ключ — `foreignKeyName`, `referencedTableName`, `referencedColumnNames`, `deleteCascade`. Составная уникальность — `createIndex` с `unique: true`. CHECK и частичных индексов среди абстрактных изменений нет.
@@ -239,8 +239,7 @@ app/src/main/resources/db/changelog/
                       primaryKeyName: user_pk
   ```
 - **Rollback:** у `createTable`/`createIndex` Liquibase выводит его сам; явный `rollback` обязателен там, где не выводит (DML: `insert` → `delete` с условием).
-- **Пока проект нигде не используется** (нет прода и общих стендов с данными), ALTER-миграции не заводим: правится исходная CREATE-миграция таблицы, даже закоммиченная, а локальная БД пересоздаётся (`docker compose down -v`).
-- С появлением прода или общего стенда закоммиченные миграции не редактируются, изменения идут только новыми миграциями.
+- **Существующие миграции не редактируются** (прод уже запущен): любое изменение схемы или данных — новая миграция (`ALTER`, `DROP`, `INSERT`, `UPDATE`, `DELETE`). ERD модуля при этом отражает итоговую схему.
 
 ## 5. Аутентификация и безопасность
 

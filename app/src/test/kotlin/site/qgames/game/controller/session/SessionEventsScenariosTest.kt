@@ -2,15 +2,12 @@ package site.qgames.game.controller.session
 
 import io.mockk.every
 import io.mockk.verify
-import java.time.Instant
 import java.util.UUID
 import java.util.stream.Stream
 import kotlin.concurrent.thread
 import org.assertj.core.api.Assertions.assertThat
 import org.jetbrains.exposed.v1.core.and
-import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.update
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.params.ParameterizedTest
 import org.junit.jupiter.params.provider.Arguments
@@ -39,7 +36,6 @@ import site.qgames.game.support.TestData.ALICE
 import site.qgames.game.support.TestData.BOB
 import site.qgames.game.support.TestData.CAROL
 import site.qgames.game.support.TestData.EVE
-import site.qgames.game.table.session.RoomSessionTable
 import site.qgames.common.docpatch.DocumentPatch
 import site.qgames.games.core.ViewerKey
 import tools.jackson.databind.JsonNode
@@ -228,7 +224,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
         pause(ALICE, roomId)
         resume(ALICE, roomId)
         pass(BOB, roomId)
-        db { RoomSessionTable.update({ RoomSessionTable.id eq sessionId }) { it[moveDeadline] = Instant.now().minusSeconds(1) } }
+        expireMove(roomId)
         assertThat(moveTimeoutJob.run()).isEqualTo(1)
         pass(BOB, roomId)
 
@@ -370,7 +366,7 @@ class SessionEventsScenariosTest : GameIntegrationTest() {
             arguments("unknown room", ALICE, { _: UUID, s: UUID -> PATH.format("nothing", UUID.randomUUID(), s) }, HttpStatus.NOT_FOUND, "ROOM_NOT_FOUND"),
             arguments("unknown session", ALICE, { r: UUID, _: UUID -> PATH.format("nothing", r, UUID.randomUUID()) }, HttpStatus.NOT_FOUND, "SESSION_NOT_FOUND"),
             arguments("unknown game", ALICE, { r: UUID, s: UUID -> PATH.format("chess", r, s) }, HttpStatus.NOT_FOUND, "GAME_NOT_FOUND"),
-            arguments("another game", ALICE, { r: UUID, s: UUID -> PATH.format("carcassonne", r, s) }, HttpStatus.CONFLICT, "GAME_TYPE_MISMATCH"),
+            arguments("another game", ALICE, { r: UUID, s: UUID -> PATH.format("croissant", r, s) }, HttpStatus.CONFLICT, "GAME_TYPE_MISMATCH"),
         )
     }
 }

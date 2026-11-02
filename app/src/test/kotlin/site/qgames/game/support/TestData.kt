@@ -2,6 +2,7 @@ package site.qgames.game.support
 
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.CheckersAdvancedSettingsDto
+import site.qgames.game.api.dto.room.CheckersColorAssignment
 import site.qgames.game.api.dto.room.CheckersEndgameRule
 import site.qgames.game.api.dto.room.CheckersSimpleSettingsDto
 import site.qgames.game.api.dto.room.CheckersTime
@@ -34,15 +35,17 @@ object TestData {
     val NICKNAMES = mapOf(ALICE to "Alice", BOB to "Bob", CAROL to "Carol", DAVE to "Dave", EVE to "Eve")
 
     /**
-     * Каталог игр (таблица game), как в DML-миграциях. «Игра в ничто» и шашки — PUBLISHED, Каркассон —
-     * NOT_PUBLISHED без правил.
+     * Каталог игр (таблица game), как в DML-миграциях. «Игра в ничто» — HIDDEN (не в каталоге, доступна по ссылке),
+     * шашки — PUBLISHED, Круассан — HIDDEN (по ссылке, в каталог пока не входит).
      */
     const val NOTHING_TITLE = "Игра в ничто"
     const val NOTHING_DESCRIPTION = "Тестовая игра: игроки по очереди завершают ход, партия длится заданное число раундов."
     const val CHECKERS_TITLE = "Шашки"
     const val CHECKERS_DESCRIPTION = "Шашки на двоих: русские, международные или английские — вариант правил выбирается в настройках комнаты."
-    const val CARCASSONNE_TITLE = "Каркассон"
-    const val CARCASSONNE_DESCRIPTION = "Строим города, дороги и монастыри. Игра в разработке."
+    const val CROISSANT_TITLE = "Круассан"
+    const val CROISSANT_DESCRIPTION =
+        "Сеть пекарен: выкладывайте тайлы кварталов, тяните мучные тропы, растите пекарни с вывесками и открывайте " +
+            "сыроварни, собирая Золотые крошки."
 
     /** Максимум игроков «игры в ничто». */
     const val NOTHING_MAX_PLAYERS = 4
@@ -57,20 +60,20 @@ object TestData {
     /** Настройки шашек по умолчанию (из их правил): русские, быстрые 8 мин + 4 с. */
     val CHECKERS_DEFAULT_SETTINGS = RoomSettingsDto(
         room = RoomOptionsDto(8),
-        simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.RAPID),
+        simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.RAPID, CheckersColorAssignment.RANDOM),
         advanced = checkersAdvanced(CheckersVariant.RUSSIAN, TimeControlDto(true, 480, TimeBonusType.INCREMENT, 4)),
     )
 
     /** Advanced-настройки шашек с правилами пресета варианта [variant]. */
     fun checkersAdvanced(variant: CheckersVariant, timeControl: TimeControlDto = TimeControlDto(false, 480, TimeBonusType.INCREMENT, 4)) = when (variant) {
         CheckersVariant.RUSSIAN -> CheckersAdvancedSettingsDto(
-            GameCode.CHECKERS, 8, CheckersColor.WHITE, CheckersEndgameRule.RUSSIAN, 30, timeControl, false, true, true, true, false, true, true,
+            GameCode.CHECKERS, 8, CheckersColor.WHITE, CheckersEndgameRule.RUSSIAN, 30, timeControl, false, true, true, true, false, true, true, CheckersColorAssignment.RANDOM,
         )
         CheckersVariant.INTERNATIONAL -> CheckersAdvancedSettingsDto(
-            GameCode.CHECKERS, 10, CheckersColor.WHITE, CheckersEndgameRule.INTERNATIONAL, 50, timeControl, false, true, true, true, true, false, true,
+            GameCode.CHECKERS, 10, CheckersColor.WHITE, CheckersEndgameRule.INTERNATIONAL, 50, timeControl, false, true, true, true, true, false, true, CheckersColorAssignment.RANDOM,
         )
         CheckersVariant.ENGLISH -> CheckersAdvancedSettingsDto(
-            GameCode.CHECKERS, 8, CheckersColor.BLACK, CheckersEndgameRule.NONE, 80, timeControl, false, false, false, true, false, false, true,
+            GameCode.CHECKERS, 8, CheckersColor.BLACK, CheckersEndgameRule.NONE, 80, timeControl, false, false, false, true, false, false, true, CheckersColorAssignment.RANDOM,
         )
     }
 }

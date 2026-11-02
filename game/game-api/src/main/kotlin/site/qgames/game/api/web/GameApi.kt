@@ -46,7 +46,9 @@ interface GameApi {
         description = "Название, описание и статус публикации игры, а также параметры правил (rules): число игроков, " +
             "границы лимита наблюдателей, " +
             "границы часов, границы настроек игры и пресеты времени, настройки по умолчанию. По ним строятся " +
-            "карточка игры и форма настроек комнаты. Скрытая игра доступна по прямой ссылке. " +
+            "карточка игры и форма настроек комнаты. В assets — статичные данные игры для отрисовки партии (у " +
+            "«Круассана» — каталог тайлов): состояние партии ссылается на них по кодам. Скрытая игра доступна по " +
+            "прямой ссылке. " +
             "Доступна без аутентификации.",
     )
     @ApiResponses(
@@ -59,7 +61,7 @@ interface GameApi {
     )
     @GetExchange("/{gameCode}")
     fun getGame(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CROISSANT, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
     ): GameDetailsResponse
 
@@ -84,7 +86,7 @@ interface GameApi {
     )
     @PostExchange("/{gameCode}/advanced-settings")
     fun toAdvancedSettings(
-        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CARCASSONNE, GameCodes.CHECKERS]))
+        @Parameter(description = "Код игры", schema = Schema(allowableValues = [GameCodes.NOTHING, GameCodes.CROISSANT, GameCodes.CHECKERS]))
         @PathVariable gameCode: String,
         @Valid @RequestBody request: GameSimpleSettingsDto,
     ): GameAdvancedSettingsDto

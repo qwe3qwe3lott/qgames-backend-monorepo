@@ -12,7 +12,15 @@ import site.qgames.game.api.dto.game.GameCodes
 import site.qgames.game.api.dto.game.GameDetailsResponse
 import site.qgames.game.api.dto.game.GameListResponse
 import site.qgames.game.api.dto.game.TimeControlLimitsDto
+import org.springframework.beans.factory.annotation.Autowired
 import site.qgames.game.api.dto.room.CheckersAdvancedSettingsDto
+import site.qgames.game.api.dto.room.CheckersColorAssignment
+import site.qgames.game.api.dto.room.TimeBonusType
+import site.qgames.game.api.dto.room.TimeControlDto
+import site.qgames.game.api.dto.session.CheckersColorPickStateDto
+import site.qgames.game.api.dto.session.SessionTimerKind
+import site.qgames.game.job.session.MoveTimeoutJob
+import site.qgames.games.core.TimerKind
 import site.qgames.game.api.dto.room.CheckersRulePresetDto
 import site.qgames.game.api.dto.room.CheckersSettingsLimitsDto
 import site.qgames.game.api.dto.room.CheckersTime
@@ -41,6 +49,9 @@ import tools.jackson.databind.JsonNode
  * партии — снапшот разбирается в схему шашек, итог приходит событием result-set.
  */
 class CheckersGameScenariosTest : GameIntegrationTest() {
+
+    @Autowired
+    private lateinit var moveTimeoutJob: MoveTimeoutJob
 
     @Test
     fun `checkers are in the catalog and their rules are available by code`() {
@@ -163,6 +174,53 @@ class CheckersGameScenariosTest : GameIntegrationTest() {
         call(HttpMethod.POST, "/api/games/checkers/rooms/$roomId/moves", black, MoveRequest("ACCEPT_DRAW")).andExpect { status { isNoContent() } }
 
         assertThat(fullState(roomId).state.result).isEqualTo(ResultState(ResultOutcome.DRAW, emptyList(), "DRAW_AGREED"))
+    }
+
+    @Test
+    fun `first pick - the color pick stage, the first pick wins, a late pick is rejected, the game starts`() {
+        val settings = checkersAdvanced(CheckersVariant.RUSSIAN, TimeControlDto(true, 480, TimeBonusType.INCREMENT, 4))
+            .copy(colorAssignment = CheckersColorAssignment.FIRST_PICK)
+        val roomId = roomWith(ALICE, BOB, started = true, settings = settings)
+        val stream = openSessionStream(BOB, roomId, gameCode = GameCodes.CHECKERS)
+
+        val pick = jsonMapper.treeToValue(snapshot(stream).path("state"), CheckersColorPickStateDto::class.java)
+        assertThat(pick.stage).isEqualTo("color-pick")
+        assertThat(pick.turns.currentPlayerId).isNull()
+        val timer = pick.timer!!
+        assertThat(timer.kind).isEqualTo(SessionTimerKind.STAGE)
+        assertThat(timer.clocks).isEmpty()
+        assertThat(pick.players.single { it.id == BOB }.moveOptions).containsExactly(MoveOptionDto("PICK_COLOR"))
+
+        call(HttpMethod.POST, "/api/games/checkers/rooms/$roomId/moves", BOB, MoveRequest("PICK_COLOR", mapOf("color" to "BLACK")))
+            .andExpect { status { isNoContent() } }
+        rejectedRequest(ALICE, roomId, MoveRequest("PICK_COLOR", mapOf("color" to "BLACK")), "COLOR_ALREADY_PICKED")
+
+        val events = awaitEvents(stream, 6).drop(1).map { jsonMapper.readTree(it.second) }
+        assertThat(events.map { it.path("code").asString() })
+            .containsExactly("color-picked", "stage-changed", "move-options-changed", "move-options-changed", "timer-started")
+        // Новый снапшот — уже стадия игры: сервер строго разбирает его в схему шашек.
+        val play = jsonMapper.treeToValue(snapshot(openSessionStream(ALICE, roomId, gameCode = GameCodes.CHECKERS)).path("state"), CheckersSessionStateDto::class.java)
+        assertThat(play.stage).isEqualTo("play")
+        assertThat(play.players.single { it.id == BOB }.color).isEqualTo(CheckersColor.BLACK)
+        assertThat(play.players.single { it.id == ALICE }.color).isEqualTo(CheckersColor.WHITE)
+        assertThat(play.turns.currentPlayerId).isEqualTo(ALICE)
+        assertThat(play.timer!!.kind).isEqualTo(SessionTimerKind.PLAYERS)
+    }
+
+    @Test
+    fun `first pick - the countdown runs out and the timeout job assigns random colors`() {
+        val settings = checkersAdvanced(CheckersVariant.RUSSIAN).copy(colorAssignment = CheckersColorAssignment.FIRST_PICK)
+        val roomId = roomWith(ALICE, BOB, started = true, settings = settings)
+        assertThat(fullState(roomId).state.timer!!.kind).isEqualTo(TimerKind.STAGE)
+
+        expireMove(roomId)
+        assertThat(moveTimeoutJob.run()).isEqualTo(1)
+
+        val state = fullState(roomId).state
+        assertThat(state.stage).isEqualTo("play")
+        assertThat(state.players.map { (it.game as site.qgames.games.checkers.CheckersPlayer).color.name }).containsExactlyInAnyOrder("WHITE", "BLACK")
+        // Часы партии выключены: после выбора таймера нет.
+        assertThat(state.timer).isNull()
     }
 
     private fun rejectedRequest(user: UUID, roomId: UUID, move: MoveRequest, reason: String) {

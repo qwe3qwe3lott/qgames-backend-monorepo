@@ -89,16 +89,27 @@ enum class SessionTimerStatus {
     STOPPED,
 }
 
-/** Шахматные часы партии. Пауза — состояние таймера. */
+/** Вид часов стадии партии. */
+enum class SessionTimerKind {
+    /** Шахматные часы игроков: запас у каждого (clocks), deadline — у ходящего. */
+    PLAYERS,
+
+    /** Общий отсчёт стадии, где ходят сразу несколько игроков: один deadline на всех, clocks пуст. */
+    STAGE,
+}
+
+/** Часы текущей стадии партии. Пауза — состояние таймера. */
 data class SessionTimerDto(
+    val kind: SessionTimerKind,
     val status: SessionTimerStatus,
     /**
-     * Когда кончится запас того, чей ход; null — ход ничей. На паузе не меняется: остаток — deadline − pausedAt.
+     * Когда кончится время: у часов игроков (PLAYERS) — запас того, чей ход (null — ход ничей), у отсчёта стадии
+     * (STAGE) — время стадии. На паузе не меняется: остаток — deadline − pausedAt.
      */
     val deadline: Instant?,
     /** С какого момента таймер на паузе; null — идёт. */
     val pausedAt: Instant?,
-    /** Запас каждого игрока на момент последней смены хода; у ходящего текущий остаток — по deadline. */
+    /** Запас каждого игрока на момент последней смены хода; у ходящего текущий остаток — по deadline. У STAGE пуст. */
     val clocks: List<PlayerClockDto>,
 )
 
@@ -110,18 +121,28 @@ data class PlayerClockDto(
 )
 
 /**
- * Состояние партии конкретной игры: блоки core (players, timer, turns, result) и поля игры. Игра — meta.game.code
- * снапшота; клиент сужает тип по нему и проверяет этой схемой состояние после применения каждого события.
+ * Состояние текущей стадии партии конкретной игры: блоки core (stage, players, timer, turns, result) и поля игры. Игра —
+ * meta.game.code снапшота, стадия — state.stage; клиент сужает тип по ним и проверяет этой схемой состояние после
+ * применения каждого события.
  */
 @Schema(
-    description = "Состояние партии конкретной игры: блоки core (players, timer, turns, result) и поля игры. " +
-        "Игра — meta.game.code снапшота; этой схемой клиент проверяет состояние после каждого события",
-    oneOf = [NothingSessionStateDto::class, CheckersSessionStateDto::class],
+    description = "Состояние текущей стадии партии конкретной игры: блоки core (stage, players, timer, turns, result) и " +
+        "поля игры. Игра — meta.game.code снапшота, стадия — state.stage; этой схемой клиент проверяет состояние после " +
+        "каждого события. Смена стадии (stage-changed) заменяет состояние целиком",
+    oneOf = [
+        NothingSessionStateDto::class,
+        CheckersSessionStateDto::class,
+        CheckersColorPickStateDto::class,
+        CroissantSessionStateDto::class,
+    ],
 )
 sealed interface SessionStateDto
 
 /** Состояние партии «игры в ничто». */
 data class NothingSessionStateDto(
+    /** Стадия: у «игры в ничто» одна — play. */
+    @field:Schema(type = "string", allowableValues = [STAGE_PLAY])
+    val stage: String,
     /** Игроки в порядке мест. */
     val players: List<SessionPlayerDto>,
     /** null — партия без таймера. */
@@ -198,8 +219,24 @@ data class CheckersLastMoveDto(
     val captured: List<List<Int>>,
 )
 
-/** Состояние партии шашек. */
+/** Состояние стадии выбора цвета шашек (FIRST_PICK): обоим игрокам доступен PICK_COLOR, очереди нет. */
+data class CheckersColorPickStateDto(
+    @field:Schema(type = "string", allowableValues = [CHECKERS_STAGE_COLOR_PICK])
+    val stage: String,
+    /** Игроки в порядке мест, цвета ещё нет. */
+    val players: List<SessionPlayerDto>,
+    /** Общий отсчёт стадии (kind = STAGE). */
+    val timer: SessionTimerDto?,
+    /** Очередь ничья: currentPlayerId = null. */
+    val turns: SessionTurnsDto,
+    /** Итога нет: null. */
+    val result: SessionResultDto?,
+) : SessionStateDto
+
+/** Состояние стадии игры шашек. */
 data class CheckersSessionStateDto(
+    @field:Schema(type = "string", allowableValues = [STAGE_PLAY])
+    val stage: String,
     /** Игроки в порядке мест, с цветом. */
     val players: List<CheckersPlayerDto>,
     /** null — партия без таймера. */
@@ -227,7 +264,8 @@ data class CheckersSessionStateDto(
 
 /**
  * Параметры хода MOVE в шашках (`data` тела хода MoveRequest): полный путь шашки, включая начальную клетку. Принять
- * ничью — `{type: "ACCEPT_DRAW"}`, сдача — `{type: "RESIGN"}`, оба без data.
+ * ничью — `{type: "ACCEPT_DRAW"}`, сдача — `{type: "RESIGN"}`, оба без data. Выбор цвета — PICK_COLOR
+ * (CheckersPickColorDataDto).
  */
 data class CheckersMoveDataDto(
     /** Клетки пути [x, y] с начальной, например [[3, 3], [5, 5], [7, 3]]. */
@@ -236,7 +274,139 @@ data class CheckersMoveDataDto(
     val offerDraw: Boolean?,
 )
 
+/**
+ * Параметры хода PICK_COLOR в шашках (стадия выбора цвета): свой цвет. Кто выбрал первым, получает его, соперник —
+ * противоположный; опоздавший выбор — 422 MOVE_REJECTED с reason COLOR_ALREADY_PICKED.
+ */
+data class CheckersPickColorDataDto(
+    val color: CheckersColor,
+)
+
 /** Схемы параметров ходов игр (`data` тела хода MoveRequest): публикуются в components OpenAPI. */
 object MoveDataSchemas {
-    val CLASSES: List<Class<*>> = listOf(CheckersMoveDataDto::class.java)
+    val CLASSES: List<Class<*>> = listOf(
+        CheckersMoveDataDto::class.java,
+        CheckersPickColorDataDto::class.java,
+        CroissantMoveDataDto::class.java,
+    )
 }
+
+/** Основная стадия партии (у игр из одной стадии — единственная). */
+const val STAGE_PLAY = "play"
+
+/** Стадия выбора цвета шашек. */
+const val CHECKERS_STAGE_COLOR_PICK = "color-pick"
+
+/** Тип участка сети. */
+enum class CroissantSpotType {
+    /** Пекарня: квартал с вывеской. */
+    BAKERY,
+
+    /** Мучная тропа: путь доставки. */
+    TRAIL,
+
+    /** Сыроварня при аббатстве. */
+    DAIRY,
+
+    /** Луг: стада пасутся, итоговый подсчёт только в конце. */
+    PASTURE,
+}
+
+/** Выложенный тайл: id — `x:y`, поворот — в градусах. */
+data class CroissantPlacedTileDto(
+    val id: String,
+    val x: Int,
+    val y: Int,
+    /** Код типа тайла в каталоге игры (CroissantAssetsDto.tiles). */
+    val tile: String,
+    val rotation: Int,
+)
+
+/** Участок тайла в составе связного участка сети. */
+data class CroissantSpotMemberDto(
+    val tileId: String,
+    val index: Int,
+)
+
+/** Кондитер на участке: чей и на каком тайле стоит. */
+data class CroissantConfectionerDto(
+    val playerId: UUID,
+    val tileId: String,
+)
+
+/**
+ * Связный участок сети: пекарни и тропы, объединённые через границы клеток, сыроварня (один тайл) и луга.
+ * [open] — сколько выходов ещё смотрит в пустые клетки; [bakeries] — у луга: id примыкающих пекарен.
+ */
+data class CroissantSpotDto(
+    val id: String,
+    val type: CroissantSpotType,
+    val members: List<CroissantSpotMemberDto>,
+    /** Сколько выходов участка смотрит в пустые клетки; у завершённого 0. */
+    val open: Int,
+    /** Вывески в пекарне. */
+    val signs: Int,
+    val confectioners: List<CroissantConfectionerDto>,
+    val complete: Boolean,
+    /** У луга — id примыкающих пекарен, у остальных участков пусто. */
+    val bakeries: List<String>,
+)
+
+/**
+ * Выложенный тайл, ждущий кондитера: [spots] — куда его можно поставить (и на завершённый этим тайлом свободный участок),
+ * [completed] — что завершилось этим тайлом; крошки за них — в конце хода, после шага кондитера.
+ */
+data class CroissantPendingDto(
+    val tileId: String,
+    val spots: List<String>,
+    val completed: List<String>,
+)
+
+/** Игрок «Круассана»: поля core и «Золотые крошки» с остатком кондитеров. */
+data class CroissantPlayerDto(
+    val id: UUID,
+    /** Что игрок может сделать сейчас (PLACE_TILE или PLACE_CONFECTIONER, SKIP_CONFECTIONER). */
+    val moveOptions: List<MoveOptionDto>,
+    /** Накопленные «Золотые крошки». */
+    val crumbs: Int,
+    /** Непоставленные кондитеры. */
+    val confectioners: Int,
+)
+
+/**
+ * Состояние партии «Круассана»: блоки core и поля игры — поле сети, связные участки и текущий тайл. Тайлы указаны
+ * кодами типов, геометрия — в каталоге игры (GameDetailsResponse.assets). Порядка колоды в состоянии нет: он выводится
+ * из seed партии на сервере.
+ */
+data class CroissantSessionStateDto(
+    @field:Schema(type = "string", allowableValues = [STAGE_PLAY])
+    val stage: String,
+    val players: List<CroissantPlayerDto>,
+    val timer: SessionTimerDto?,
+    val turns: SessionTurnsDto,
+    val result: SessionResultDto?,
+    /** Выложенные тайлы; адресуются по id `x:y`. */
+    val board: List<CroissantPlacedTileDto>,
+    /** Связные участки сети. */
+    val spots: List<CroissantSpotDto>,
+    /** Выложенный тайл, ждущий кондитера; null — шаг кондитера не сейчас. */
+    val pending: CroissantPendingDto?,
+    /** Тайл, который выкладывает ходящий; null — колода кончилась. */
+    val currentTile: String?,
+    /** Сколько тайлов колоды уже открыто. */
+    val deckPos: Int,
+    /** Размер колоды партии без стартового тайла. */
+    val deckSize: Int,
+) : SessionStateDto
+
+/** Параметры хода «Круассана» (`data` тела хода): клетка и поворот либо участок для кондитера. */
+data class CroissantMoveDataDto(
+    /** Клетка выкладки по x; у PLACE_CONFECTIONER не нужна. */
+    val x: Int? = null,
+    /** Клетка выкладки по y. */
+    val y: Int? = null,
+    /** Поворот тайла в градусах: 0, 90, 180, 270. */
+    val rotation: Int? = null,
+    /** Участок сети для PLACE_CONFECTIONER (id из state.spots). */
+    val spotId: String? = null,
+)

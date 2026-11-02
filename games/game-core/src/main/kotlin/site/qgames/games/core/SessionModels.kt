@@ -35,10 +35,13 @@ data class SessionDocument(
 )
 
 /**
- * Состояние партии: блоки core и игровая часть [game] (формат задаёт игра). В документе поля игры лежат в `state`
- * рядом с блоками core (`players`, `timer`, `turns`, `result`), а не отдельным объектом.
+ * Состояние партии — состояние её текущей стадии: блоки core и игровая часть [game] (формат задаёт игра). В документе
+ * поля игры лежат в `state` рядом с блоками core (`stage`, `players`, `timer`, `turns`, `result`), а не отдельным
+ * объектом.
  */
 data class SessionState<G : Any>(
+    /** Текущая стадия партии ([Stages]). */
+    val stage: String,
     /** Игроки в порядке мест. */
     val players: List<PlayerState>,
     /** Часы: null — партия без таймера. */

@@ -14,6 +14,7 @@ dependencies {
     // Правила игр. Новая игра — новый модуль games/* здесь и его бин в GamesConfig.
     implementation(project(":games:nothing-game"))
     implementation(project(":games:checkers-game"))
+    implementation(project(":games:croissant-game"))
 
     // PGConnection: LISTEN шины событий комнат и партий (RoomEventListener).
     implementation("org.postgresql:postgresql")

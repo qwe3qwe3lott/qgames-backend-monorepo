@@ -13,13 +13,11 @@ import site.qgames.game.support.TestData.CAROL
 import org.jetbrains.exposed.v1.core.eq
 import org.jetbrains.exposed.v1.core.and
 import org.jetbrains.exposed.v1.jdbc.selectAll
-import org.jetbrains.exposed.v1.jdbc.update
 import site.qgames.game.table.room.RoomTable
 import site.qgames.game.table.room.RoomMemberTable
 import site.qgames.game.table.session.RoomSessionTable
 import site.qgames.game.table.session.RoomSessionPlayerTable
 import site.qgames.game.table.session.RoomSessionEventTable
-import java.time.Instant
 
 /**
  * Снятие игры с публикации (NOT_PUBLISHED): NotPublishedGameCleanupJob отменяет партии и удаляет комнаты игры, а
@@ -65,7 +63,7 @@ class NotPublishedGameCleanupJobScenariosTest : GameIntegrationTest() {
     @Test
     fun `move timeout skips games of a not published game`() {
         val roomId = roomWith(ALICE, BOB, started = true, settings = nothingSettings(clockSeconds = 30))
-        db { RoomSessionTable.update({ RoomSessionTable.roomId eq roomId }) { it[moveDeadline] = Instant.now().minusSeconds(5) } }
+        expireMove(roomId)
         setPublishStatus("nothing", "NOT_PUBLISHED")
 
         assertThat(moveTimeoutJob.run()).isZero()

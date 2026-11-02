@@ -30,6 +30,7 @@ import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControl
 import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.TimerOutcome
+import site.qgames.games.core.TimerKind
 import site.qgames.games.core.TimerState
 import site.qgames.games.core.TimerStatus
 import site.qgames.games.core.TurnsState
@@ -68,8 +69,10 @@ class NothingSessionScenariosTest {
                     "advancedRules" to null,
                 ),
                 "state" to mapOf(
+                    "stage" to "play",
                     "players" to listOf(player(ALICE, listOf(PASS)), player(BOB, emptyList())),
                     "timer" to mapOf(
+                        "kind" to "PLAYERS",
                         "status" to "RUNNING",
                         "deadline" to "2026-10-21T10:00:30Z",
                         "pausedAt" to null,
@@ -103,6 +106,7 @@ class NothingSessionScenariosTest {
             listOf(PASS),
             // Алиса потратила 1 с из 30 и получила инкремент 5 с; у Боба полный запас.
             mapOf(
+                "kind" to "PLAYERS",
                 "status" to "RUNNING",
                 "deadline" to "2026-10-21T10:00:31Z",
                 "pausedAt" to null,
@@ -122,6 +126,7 @@ class NothingSessionScenariosTest {
 
         assertThat(fold(journal + events).session.state.timer).isEqualTo(
             TimerState(
+                TimerKind.PLAYERS,
                 TimerStatus.RUNNING,
                 NOW.plusSeconds(moveAfterSeconds + 35),
                 null,
@@ -154,10 +159,10 @@ class NothingSessionScenariosTest {
         val nothing = NothingGameRules()
         @Suppress("UNCHECKED_CAST")
         val setsResult = object : GameRules<NothingGameState, NothingMove, NothingSimpleSettings, NothingAdvancedSettings> by nothing {
-            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove) = Decision.Accepted(events)
+            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, seed: Long, playerId: UUID, move: NothingMove) = Decision.Accepted(events)
         } as GameRules<Any, Any, Any, Any>
 
-        assertThatThrownBy { engine.move(setsResult, fold(journal()), ALICE, NothingMove("PASS"), NOW) }
+        assertThatThrownBy { engine.move(setsResult, fold(journal()), ALICE, NothingMove("PASS"), SEED, NOW) }
             .isInstanceOf(IllegalStateException::class.java)
             .hasMessageContaining("result-set")
     }
@@ -167,12 +172,12 @@ class NothingSessionScenariosTest {
         val nothing = NothingGameRules()
         @Suppress("UNCHECKED_CAST")
         val drawn = object : GameRules<NothingGameState, NothingMove, NothingSimpleSettings, NothingAdvancedSettings> by nothing {
-            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove) =
+            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, seed: Long, playerId: UUID, move: NothingMove) =
                 Decision.Accepted(listOf(Result.draw("AGREED"), SessionEvents.finished()))
         } as GameRules<Any, Any, Any, Any>
         val journal = journal()
 
-        val events = (engine.move(drawn, fold(journal), ALICE, NothingMove("PASS"), NOW) as MoveOutcome.Accepted).events
+        val events = (engine.move(drawn, fold(journal), ALICE, NothingMove("PASS"), SEED, NOW) as MoveOutcome.Accepted).events
 
         assertThat(events.map { it.code }).containsExactly("result-set", "move-options-changed", "session-finished")
         assertThat(events.first().path).isEqualTo(listOf(key("state"), key("result")))
@@ -196,9 +201,9 @@ class NothingSessionScenariosTest {
         assertThat(cancelled.last().value).isEqualTo(mapOf("status" to "CANCELLED"))
         // Остановленные часы хранят итоговые остатки: у ходившего — без инкремента.
         assertThat(fold(finishing + finished).session.state.timer)
-            .isEqualTo(TimerState(TimerStatus.STOPPED, null, null, listOf(PlayerClock(ALICE, 26_000))))
+            .isEqualTo(TimerState(TimerKind.PLAYERS, TimerStatus.STOPPED, null, null, listOf(PlayerClock(ALICE, 26_000))))
         assertThat(fold(journal(timed) + cancelled).session.state.timer)
-            .isEqualTo(TimerState(TimerStatus.STOPPED, null, null, listOf(PlayerClock(ALICE, 20_000), PlayerClock(BOB, 30_000))))
+            .isEqualTo(TimerState(TimerKind.PLAYERS, TimerStatus.STOPPED, null, null, listOf(PlayerClock(ALICE, 20_000), PlayerClock(BOB, 30_000))))
         assertThat(fold(journal(timed) + cancelled).session.status).isEqualTo(SessionStatus.CANCELLED)
         assertThat(engine.cancel(fold(journal()), NOW).map { it.code }).containsExactly("move-options-changed", "session-cancelled")
     }
@@ -220,7 +225,7 @@ class NothingSessionScenariosTest {
     @ParameterizedTest(name = "{0}")
     @MethodSource("rejections")
     fun `rules reject moves`(case: String, player: UUID, type: String, code: String) {
-        val outcome = engine.move(rules, fold(journal()), player, NothingMove(type), NOW)
+        val outcome = engine.move(rules, fold(journal()), player, NothingMove(type), SEED, NOW)
 
         assertThat(outcome).isInstanceOf(MoveOutcome.Rejected::class.java)
         assertThat((outcome as MoveOutcome.Rejected).code).isEqualTo(code)
@@ -230,7 +235,7 @@ class NothingSessionScenariosTest {
     fun `timeout passes the move of the current player as INFO, the move counter is not changed`() {
         val journal = journal(TimeControl(10, TimeBonusType.INCREMENT, 0))
 
-        val events = engine.timeout(rules, fold(journal), NOW.plusSeconds(10))
+        val events = engine.timeout(rules, fold(journal), SEED, NOW.plusSeconds(10))
 
         val passed = events.first()
         assertThat(passed.code).isEqualTo("player-passed")
@@ -241,7 +246,7 @@ class NothingSessionScenariosTest {
         val after = fold(journal + events).session
         // У Алисы запас кончился, часы перешли к Бобу с его полным запасом.
         assertThat(after.state.timer)
-            .isEqualTo(TimerState(TimerStatus.RUNNING, NOW.plusSeconds(20), null, listOf(PlayerClock(ALICE, 0), PlayerClock(BOB, 10_000))))
+            .isEqualTo(TimerState(TimerKind.PLAYERS, TimerStatus.RUNNING, NOW.plusSeconds(20), null, listOf(PlayerClock(ALICE, 0), PlayerClock(BOB, 10_000))))
         assertThat(after.state.turns.currentPlayerId).isEqualTo(BOB)
         assertThat(after.state.game).isEqualTo(NothingGameState(moves = 0))
     }
@@ -256,16 +261,16 @@ class NothingSessionScenariosTest {
             .containsExactly(Triple("game-paused", PatchMethod.PATCH, listOf(key("state"), key("timer"))))
         assertThat(paused.single().value).isEqualTo(mapOf("status" to "PAUSED", "pausedAt" to "2026-10-21T10:00:05Z"))
         journal += paused
-        assertThat(fold(journal).session.state.timer).isEqualTo(TimerState(TimerStatus.PAUSED, NOW.plusSeconds(30), NOW.plusSeconds(5), clocks))
+        assertThat(fold(journal).session.state.timer).isEqualTo(TimerState(TimerKind.PLAYERS, TimerStatus.PAUSED, NOW.plusSeconds(30), NOW.plusSeconds(5), clocks))
         assertThat(engine.pause(fold(journal), NOW.plusSeconds(6))).isEqualTo(TimerOutcome.Unchanged)
-        assertThat(engine.move(rules, fold(journal), ALICE, NothingMove("PASS"), NOW)).isEqualTo(MoveOutcome.Paused)
-        assertThat(engine.timeout(rules, fold(journal), NOW.plusSeconds(60))).isEmpty()
+        assertThat(engine.move(rules, fold(journal), ALICE, NothingMove("PASS"), SEED, NOW)).isEqualTo(MoveOutcome.Paused)
+        assertThat(engine.timeout(rules, fold(journal), SEED, NOW.plusSeconds(60))).isEmpty()
 
         val resumed = (engine.resume(fold(journal), NOW.plusSeconds(65)) as TimerOutcome.Changed).events
         assertThat(resumed.single().code).isEqualTo("game-resumed")
         assertThat(resumed.single().method).isEqualTo(PatchMethod.PATCH)
         journal += resumed
-        assertThat(fold(journal).session.state.timer).isEqualTo(TimerState(TimerStatus.RUNNING, NOW.plusSeconds(90), null, clocks))
+        assertThat(fold(journal).session.state.timer).isEqualTo(TimerState(TimerKind.PLAYERS, TimerStatus.RUNNING, NOW.plusSeconds(90), null, clocks))
         assertThat(engine.resume(fold(journal), NOW.plusSeconds(66))).isEqualTo(TimerOutcome.Unchanged)
     }
 
@@ -297,15 +302,39 @@ class NothingSessionScenariosTest {
         val nothing = NothingGameRules()
         @Suppress("UNCHECKED_CAST")
         val keepsTurn = object : GameRules<NothingGameState, NothingMove, NothingSimpleSettings, NothingAdvancedSettings> by nothing {
-            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove) =
+            override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, seed: Long, playerId: UUID, move: NothingMove) =
                 Decision.Accepted(listOf(SessionEvents.info("noted", emptyMap<String, Any>())))
         } as GameRules<Any, Any, Any, Any>
         val journal = journal(TimeControl(30, TimeBonusType.INCREMENT, 5))
 
-        val events = (engine.move(keepsTurn, fold(journal), ALICE, NothingMove("PASS"), NOW.plusSeconds(7)) as MoveOutcome.Accepted).events
+        val events = (engine.move(keepsTurn, fold(journal), ALICE, NothingMove("PASS"), SEED, NOW.plusSeconds(7)) as MoveOutcome.Accepted).events
 
         assertThat(events.map { it.code }).containsExactly("noted")
         assertThat(fold(journal + events).session.state.timer).isEqualTo(fold(journal).session.state.timer)
+    }
+
+    /** В одиночной партии очередь меняется раундом: каждый ход снова даёт задержку или инкремент. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("soloBonuses")
+    fun `solo move switches the clock to the same player`(bonusType: TimeBonusType, aliceMs: Long, deadline: Instant) {
+        val journal = journal(TimeControl(30, bonusType, 5), players = listOf(ALICE))
+
+        val events = accepted(fold(journal), ALICE, NOW.plusSeconds(12))
+
+        assertThat(events.last().code).isEqualTo("clock-switched")
+        assertThat(fold(journal + events).session.state.timer)
+            .isEqualTo(TimerState(TimerKind.PLAYERS, TimerStatus.RUNNING, deadline, null, listOf(PlayerClock(ALICE, aliceMs))))
+    }
+
+    @Test
+    fun `solo timeout gives a new deadline with the delay`() {
+        val journal = journal(TimeControl(30, TimeBonusType.DELAY, 5), players = listOf(ALICE))
+
+        val events = engine.timeout(rules, fold(journal), SEED, NOW.plusSeconds(35))
+
+        // Запас кончился, но новый ход снова начинается с задержки, а дедлайн — в будущем.
+        assertThat(fold(journal + events).session.state.timer)
+            .isEqualTo(TimerState(TimerKind.PLAYERS, TimerStatus.RUNNING, NOW.plusSeconds(40), null, listOf(PlayerClock(ALICE, 0))))
     }
 
     @Test
@@ -338,7 +367,7 @@ class NothingSessionScenariosTest {
         journal += (engine.pause(fold(journal), NOW) as TimerOutcome.Changed).events
         journal += (engine.resume(fold(journal), NOW.plusSeconds(3)) as TimerOutcome.Changed).events
         journal += accepted(fold(journal), BOB, NOW)
-        journal += engine.timeout(rules, fold(journal), NOW)
+        journal += engine.timeout(rules, fold(journal), SEED, NOW)
 
         val ofMasked = SessionEngine.fold(null, journal.map { engine.mask(rules, it, viewer) })
         val full = fold(journal).tree
@@ -362,13 +391,13 @@ class NothingSessionScenariosTest {
             timeControl?.bonusType ?: TimeBonusType.INCREMENT,
             timeControl?.bonusSeconds ?: 5,
         )
-        return engine.start(rules, players, seed = 1, NothingAdvancedSettings(rounds, clock), NOW)
+        return engine.start(rules, players, seed = SEED, NothingAdvancedSettings(rounds, clock), NOW)
     }
 
     private fun fold(events: List<SessionEvent>): SessionDocument = engine.read(rules, SessionEngine.fold(null, events)!!)
 
     private fun accepted(document: SessionDocument, player: UUID, now: Instant): List<SessionEvent> =
-        (engine.move(rules, document, player, NothingMove("PASS"), now) as MoveOutcome.Accepted).events
+        (engine.move(rules, document, player, NothingMove("PASS"), SEED, now) as MoveOutcome.Accepted).events
 
     // В JSON-дереве число — Int, как его читает кодек.
     private fun clock(player: UUID, remainingMs: Int) = mapOf("playerId" to player.toString(), "remainingMs" to remainingMs)
@@ -378,6 +407,8 @@ class NothingSessionScenariosTest {
         private val BOB = UUID.fromString("01990000-0000-7000-8000-00000000000b")
         private val NOW = Instant.parse("2026-10-21T10:00:00Z")
         private val PASS = mapOf("type" to "PASS", "data" to null)
+
+        private const val SEED = 1L
 
         private fun key(name: String) = PathSegment.Key(name)
 
@@ -399,6 +430,14 @@ class NothingSessionScenariosTest {
             arguments("move within the delay keeps the base time", 1L, 30_000L),
             arguments("move at the end of the delay keeps the base time", 5L, 30_000L),
             arguments("longer move spends the base time beyond the delay", 12L, 23_000L),
+        )
+
+        @JvmStatic
+        fun soloBonuses(): Stream<Arguments> = Stream.of(
+            // 12 с хода: 5 с задержки, 7 с из запаса; новый дедлайн — запас 23 с + задержка 5 с.
+            arguments(TimeBonusType.DELAY, 23_000L, NOW.plusSeconds(40)),
+            // 12 с из запаса, +5 с инкремента.
+            arguments(TimeBonusType.INCREMENT, 23_000L, NOW.plusSeconds(35)),
         )
 
         @JvmStatic

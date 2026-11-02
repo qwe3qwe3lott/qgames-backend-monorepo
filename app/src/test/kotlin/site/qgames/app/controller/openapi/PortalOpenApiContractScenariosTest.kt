@@ -28,7 +28,7 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         val schemas = apiDocs().path("components").path("schemas")
 
         val unionSchema = schemas.path(union)
-        assertThat(strings(unionSchema.path("oneOf")) { it.path("\$ref") }).hasSize(2).contains("#/components/schemas/$variant")
+        assertThat(strings(unionSchema.path("oneOf")) { it.path("\$ref") }).hasSize(3).contains("#/components/schemas/$variant")
         assertThat(unionSchema.path("discriminator").path("propertyName").asString()).isEqualTo("gameCode")
         assertThat(unionSchema.path("discriminator").path("mapping").path(gameCode).asString())
             .isEqualTo("#/components/schemas/$variant")
@@ -66,9 +66,9 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
     /** Код игры — строчные коды (`@JsonValue`), а не имена значений enum. */
     @ParameterizedTest(name = "{0}.{1}")
     @CsvSource(
-        "RoomResponse, gameCode, nothing|carcassonne|checkers",
-        "GameSummaryDto, code, nothing|carcassonne|checkers",
-        "GameDetailsResponse, code, nothing|carcassonne|checkers",
+        "RoomResponse, gameCode, nothing|croissant|checkers",
+        "GameSummaryDto, code, nothing|croissant|checkers",
+        "GameDetailsResponse, code, nothing|croissant|checkers",
         "TimeControlDto, bonusType, INCREMENT|DELAY",
     )
     fun `game enums expose their public values`(schema: String, property: String, values: String) {
@@ -82,7 +82,9 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         val docs = apiDocs()
 
         val details = docs.path("components").path("schemas").path("GameDetailsResponse")
-        assertThat(strings(details.path("required"))).contains("code", "title", "description", "rules")
+        assertThat(strings(details.path("required"))).containsExactlyInAnyOrder("code", "title", "description", "rules")
+        // Статичные данные игры — nullable: у игр без них null.
+        assertThat(details.path("properties").has("assets")).isTrue()
         // Статус публикации наружу не выходит: в каталоге и по ссылке — только доступные игры.
         assertThat(details.path("properties").has("publishStatus")).isFalse()
         assertThat(docs.path("components").path("schemas").path("GameSummaryDto").path("properties").has("publishStatus")).isFalse()
@@ -96,8 +98,26 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         ).forEach { (path, method) ->
             val parameters = docs.path("paths").path(path).path(method).path("parameters")
             val parameter = (0 until parameters.size()).map(parameters::get).single { it.path("name").asString() == "gameCode" }
-            assertThat(strings(parameter.path("schema").path("enum"))).describedAs(path).containsExactly("nothing", "carcassonne", "checkers")
+            assertThat(strings(parameter.path("schema").path("enum"))).describedAs(path).containsExactly("nothing", "croissant", "checkers")
         }
+    }
+
+    /** Статичные данные игры — union по gameCode в карточке игры; каталога тайлов в состоянии партии «Круассана» нет. */
+    @Test
+    fun `game assets are a discriminated union and the croissant state refers to tiles by code`() {
+        val schemas = apiDocs().path("components").path("schemas")
+
+        val union = schemas.path("GameAssetsDto")
+        assertThat(strings(union.path("oneOf")) { it.path("\$ref") }).containsExactly("#/components/schemas/CroissantAssetsDto")
+        assertThat(union.path("discriminator").path("propertyName").asString()).isEqualTo("gameCode")
+        assertThat(union.path("discriminator").path("mapping").path("croissant").asString())
+            .isEqualTo("#/components/schemas/CroissantAssetsDto")
+        val croissant = schemas.path("CroissantAssetsDto")
+        assertThat(strings(croissant.path("properties").path("gameCode").path("enum"))).containsExactly("croissant")
+        assertThat(strings(croissant.path("required"))).containsExactlyInAnyOrder("gameCode", "tiles")
+        assertThat(strings(schemas.path("CroissantTileDto").path("required")))
+            .containsExactlyInAnyOrder("code", "title", "edges", "bakeries", "trails", "dairy", "pastures")
+        assertThat(schemas.path("CroissantSessionStateDto").path("properties").has("tiles")).isFalse()
     }
 
     /** Поток событий комнаты: text/event-stream со схемой-union событий, конверты {type, data} в components. */
@@ -185,7 +205,8 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         }
         assertThat(strings(schemas.path("SessionSnapshotDto").path("required")))
             .containsExactlyInAnyOrder("seq", "status", "serverTime", "meta", "state")
-        assertThat(strings(schemas.path("SessionTimerDto").path("required"))).containsExactlyInAnyOrder("status", "clocks")
+        assertThat(strings(schemas.path("SessionTimerDto").path("required"))).containsExactlyInAnyOrder("kind", "status", "clocks")
+        assertThat(strings(schemas.path("SessionTimerDto").path("properties").path("kind").path("enum"))).containsExactly("PLAYERS", "STAGE")
         assertThat(strings(schemas.path("SessionTimerDto").path("properties").path("status").path("enum")))
             .containsExactly("RUNNING", "PAUSED", "STOPPED")
         assertThat(strings(schemas.path("SessionPlayerDto").path("required"))).containsExactlyInAnyOrder("id", "moveOptions")
@@ -251,10 +272,11 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
     /** Состояние — union схем конкретных игр (игра — meta.game.code), без обратных ссылок. */
     @ParameterizedTest(name = "{1}")
     @CsvSource(
-        "SessionStateDto, NothingSessionStateDto, players|timer|turns|result|moves, players|turns|moves",
+        "SessionStateDto, NothingSessionStateDto, stage|players|timer|turns|result|moves, stage|players|turns|moves",
         "SessionStateDto, CheckersSessionStateDto, " +
-            "players|timer|turns|result|pieces|lastMove|quietMoves|materialMoves|positionHistory|drawOfferedBy, " +
-            "players|turns|pieces|quietMoves|materialMoves|positionHistory",
+            "stage|players|timer|turns|result|pieces|lastMove|quietMoves|materialMoves|positionHistory|drawOfferedBy, " +
+            "stage|players|turns|pieces|quietMoves|materialMoves|positionHistory",
+        "SessionStateDto, CheckersColorPickStateDto, stage|players|timer|turns|result, stage|players|turns",
         "SessionAdvancedRulesDto, CheckersAdvancedRulesDto, " +
             "boardSize|firstColor|menMoveBackward|menCaptureBackward|flyingKings|captureRequired|maxCaptureRequired|" +
             "promoteMidCapture|removeCapturedAfterMove, " +
@@ -293,6 +315,13 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
         assertThat(strings(schemas.path("CheckersMoveDataDto").path("required"))).containsExactly("path")
         assertThat(schemas.path("CheckersMoveDataDto").path("properties").path("path").path("items").path("items").path("type").asString())
             .isEqualTo("integer")
+        assertThat(strings(schemas.path("CheckersPickColorDataDto").path("required"))).containsExactly("color")
+        // Стадия — строка-литерал схемы стадии: по ней клиент выбирает схему состояния.
+        assertThat(strings(schemas.path("CheckersColorPickStateDto").path("properties").path("stage").path("enum"))).containsExactly("color-pick")
+        assertThat(strings(schemas.path("CheckersSessionStateDto").path("properties").path("stage").path("enum"))).containsExactly("play")
+        assertThat(strings(schemas.path("CheckersSimpleSettingsDto").path("properties").path("colorAssignment").path("enum")))
+            .containsExactly("RANDOM", "FIRST_PICK")
+        assertThat(strings(schemas.path("CheckersAdvancedSettingsDto").path("required"))).contains("colorAssignment")
         val data = schemas.path("MoveRequest").path("properties").path("data")
         assertThat(strings(data.path("type"))).containsExactlyInAnyOrder("object", "null")
         assertThat(data.has("\$ref")).isFalse()

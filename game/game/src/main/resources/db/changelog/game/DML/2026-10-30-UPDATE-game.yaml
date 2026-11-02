@@ -1,0 +1,19 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-10-30-UPDATE-game
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        «Игра в ничто» — тестовая: убирается из каталога (HIDDEN), по ссылке остаётся доступна для проверок.
+      changes:
+        - update:
+            tableName: game
+            columns:
+              - column: { name: publish_status, value: HIDDEN }
+            where: code = 'nothing'
+      rollback:
+        - update:
+            tableName: game
+            columns:
+              - column: { name: publish_status, value: PUBLISHED }
+            where: code = 'nothing'

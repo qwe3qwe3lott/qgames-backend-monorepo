@@ -10,8 +10,8 @@ enum class GameCode(@get:JsonValue val code: String) {
     /** «Игра в ничто»: тестовая игра, игроки по очереди делают ход PASS. */
     NOTHING(GameCodes.NOTHING),
 
-    /** Каркассон. */
-    CARCASSONNE(GameCodes.CARCASSONNE),
+    /** Круассан: игра на выкладывание тайлов, в разработке. */
+    CROISSANT(GameCodes.CROISSANT),
 
     /** Шашки: вариант правил — настройка комнаты. */
     CHECKERS(GameCodes.CHECKERS),
@@ -25,7 +25,7 @@ enum class GameCode(@get:JsonValue val code: String) {
 /** Коды игр строками: нужны в аннотациях Jackson и OpenAPI (путь, дискриминатор gameCode). */
 object GameCodes {
     const val NOTHING = "nothing"
-    const val CARCASSONNE = "carcassonne"
+    const val CROISSANT = "croissant"
     const val CHECKERS = "checkers"
 }
 
@@ -47,6 +47,8 @@ data class GameDetailsResponse(
     val title: String,
     val description: String,
     val rules: GameRulesDto,
+    /** Статичные данные игры для отрисовки партии (схема — по gameCode); null — игре они не нужны. */
+    val assets: GameAssetsDto?,
 )
 
 /** Параметры правил игры: по ним строится форма настроек комнаты. */

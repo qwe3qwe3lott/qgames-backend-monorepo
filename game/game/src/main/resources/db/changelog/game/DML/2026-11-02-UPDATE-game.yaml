@@ -1,0 +1,27 @@
+databaseChangeLog:
+  - changeSet:
+      id: 2026-11-02-UPDATE-game
+      author: A Kozlov
+      runInTransaction: true
+      comment: >-
+        «Круассан» получает модуль правил и становится доступен по прямой ссылке (HIDDEN): комнаты и партии работают, в
+        каталоге игры ещё нет. Описание сменено с «в разработке» на настоящее. Перевод в PUBLISHED — после приёмки партии
+        на стенде.
+      changes:
+        - update:
+            tableName: game
+            columns:
+              - column: { name: publish_status, value: HIDDEN }
+              - column:
+                  name: description
+                  value: "Сеть пекарен: выкладывайте тайлы кварталов, тяните мучные тропы, растите пекарни с вывесками и открывайте сыроварни, собирая Золотые крошки."
+            where: code = 'croissant'
+      rollback:
+        - update:
+            tableName: game
+            columns:
+              - column: { name: publish_status, value: NOT_PUBLISHED }
+              - column:
+                  name: description
+                  value: "Игра на выкладывание тайлов. Игра в разработке."
+            where: code = 'croissant'

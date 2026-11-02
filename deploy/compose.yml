@@ -2,7 +2,7 @@
 # файл на нужном коммите в /opt/qgames/backend/ и выполняет docker compose -p qgames-backend up -d --wait.
 # Значения — из /opt/qgames/backend/.env на сервере (не в репозитории); IMAGE_TAG пишет deploy.sh.
 # web (nginx) — отдельный compose-проект фронтенда, ходит в app по общей сети qgames (алиас app).
-# Наружу порты не публикуются: Docker публикует их в обход ufw.
+# Наружу порты не публикуются: Docker публикует их в обход ufw. postgres — только на 127.0.0.1 для SSH-туннеля.
 
 services:
   # Настройки — под малую память, как в docker-compose.yml (adr/system/memory-budget.md).
@@ -44,6 +44,9 @@ services:
       - autovacuum_max_workers=1
     mem_limit: 128m
     memswap_limit: 128m
+    # Только loopback VPS: доступ к БД (DBeaver) — через SSH-туннель на localhost:5432. Снаружи недоступно.
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql
     networks:

@@ -17,6 +17,7 @@ include(":libs:doc-patch")
 include(":games:game-core")
 include(":games:nothing-game")
 include(":games:checkers-game")
+include(":games:croissant-game")
 
 // Модули приложения (Spring Modulith): реализация модуля и его публичный контракт <m>-api.
 include(":user-auth:user-auth")

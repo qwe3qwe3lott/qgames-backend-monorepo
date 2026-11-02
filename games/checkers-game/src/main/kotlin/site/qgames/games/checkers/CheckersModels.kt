@@ -53,15 +53,25 @@ enum class CheckersTime {
     BLITZ,
 }
 
-/** Simple-настройки: вариант правил и пресет времени. */
+/** Как распределяются цвета между игроками перед игрой. */
+enum class CheckersColorAssignment {
+    /** Случайно по seed партии: партия сразу начинается со стадии игры. */
+    RANDOM,
+
+    /** Кто первым выберет свой цвет: партия начинается со стадии выбора цвета. */
+    FIRST_PICK,
+}
+
+/** Simple-настройки: вариант правил, пресет времени и распределение цветов. */
 data class CheckersSimpleSettings(
     val variant: CheckersVariant,
     val time: CheckersTime,
+    val colorAssignment: CheckersColorAssignment,
 )
 
 /**
- * Advanced-настройки партии, которые задаёт владелец комнаты: доска, первый ход, правила ничьих, часы и флаги правил
- * хода. Итоговые правила хода — [CheckersAdvancedRules.of].
+ * Advanced-настройки партии, которые задаёт владелец комнаты: доска, первый ход, правила ничьих, часы, флаги правил
+ * хода и распределение цветов. Итоговые правила хода — [CheckersAdvancedRules.of].
  */
 data class CheckersAdvancedSettings(
     /** Размер доски: один из [CheckersSettingsLimits.boardSizes]. */
@@ -78,6 +88,7 @@ data class CheckersAdvancedSettings(
     val maxCaptureRequired: Boolean,
     val promoteMidCapture: Boolean,
     val removeCapturedAfterMove: Boolean,
+    val colorAssignment: CheckersColorAssignment,
 )
 
 /**
@@ -196,8 +207,11 @@ data class CheckersAdvancedRules(
     }
 }
 
+/** Игровая часть состояния стадии партии: [CheckersGameState] (игра) или [CheckersColorPickState] (выбор цвета). */
+sealed interface CheckersState
+
 /**
- * Игровая часть состояния (в документе — поля `state.pieces`, `state.lastMove`, `state.quietMoves`,
+ * Игровая часть состояния стадии игры (в документе — поля `state.pieces`, `state.lastMove`, `state.quietMoves`,
  * `state.materialMoves`, `state.positionHistory`, `state.drawOfferedBy`).
  */
 data class CheckersGameState(
@@ -213,7 +227,19 @@ data class CheckersGameState(
     val positionHistory: List<String>,
     /** Кто предложил ничью вместе со своим ходом; null — предложения нет. */
     val drawOfferedBy: UUID?,
-)
+) : CheckersState
+
+/**
+ * Игровая часть состояния стадии выбора цвета: своих полей нет — оба игрока могут выбрать цвет (`PICK_COLOR`), общий
+ * отсчёт стадии — в `state.timer`.
+ */
+class CheckersColorPickState : CheckersState {
+    override fun equals(other: Any?) = other is CheckersColorPickState
+
+    override fun hashCode() = 0
+
+    override fun toString() = "CheckersColorPickState"
+}
 
 /** Шашка: элемент массива `state.pieces`, адресуется по [id] (`w1…`, `b1…`). */
 data class CheckersPiece(
@@ -231,22 +257,27 @@ data class CheckersLastMove(
     val captured: List<List<Int>>,
 )
 
-/** Поля игры у игрока (`state.players[]`): цвет. */
+/** Поля игры у игрока (`state.players[]`) в стадии игры: цвет. */
 data class CheckersPlayer(
     val color: CheckersColor,
 )
 
-/** Ход: `{type: "MOVE", data: {path, offerDraw?}}`, `{type: "ACCEPT_DRAW"}` или `{type: "RESIGN"}`. */
+/**
+ * Ход: в стадии игры — `{type: "MOVE", data: {path, offerDraw?}}`, `{type: "ACCEPT_DRAW"}` или `{type: "RESIGN"}`; в
+ * стадии выбора цвета — `{type: "PICK_COLOR", data: {color}}`. Класс один на обе стадии: опоздавший выбор цвета
+ * доходит до правил и получает свою причину отказа.
+ */
 data class CheckersMove(
     val type: String,
     val data: CheckersMoveData? = null,
 )
 
 /**
- * Параметры хода MOVE: полный путь шашки, включая начальную клетку, клетки — `[x, y]`; [offerDraw] — предложить ничью
- * вместе с этим ходом.
+ * Параметры хода. MOVE: [path] — полный путь шашки, включая начальную клетку, клетки — `[x, y]`; [offerDraw] —
+ * предложить ничью вместе с этим ходом. PICK_COLOR: [color] — выбранный цвет.
  */
 data class CheckersMoveData(
-    val path: List<List<Int>>,
+    val path: List<List<Int>>? = null,
     val offerDraw: Boolean = false,
+    val color: CheckersColor? = null,
 )

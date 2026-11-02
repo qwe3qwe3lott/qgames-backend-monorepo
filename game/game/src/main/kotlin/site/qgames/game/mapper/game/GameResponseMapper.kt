@@ -1,6 +1,15 @@
 package site.qgames.game.mapper.game
 
 import org.springframework.stereotype.Component
+import site.qgames.game.api.dto.game.CroissantAssetsDto
+import site.qgames.game.api.dto.game.CroissantBakeryDto
+import site.qgames.game.api.dto.game.CroissantDirection
+import site.qgames.game.api.dto.game.CroissantEdge
+import site.qgames.game.api.dto.game.CroissantHalfEdgeDto
+import site.qgames.game.api.dto.game.CroissantPastureDto
+import site.qgames.game.api.dto.game.CroissantTileDto
+import site.qgames.game.api.dto.game.CroissantTrailDto
+import site.qgames.game.api.dto.game.GameAssetsDto
 import site.qgames.game.api.dto.game.GameDetailsResponse
 import site.qgames.game.api.dto.game.GameListResponse
 import site.qgames.game.api.dto.game.GameRulesDto
@@ -11,6 +20,8 @@ import site.qgames.game.model.game.GameCode
 import site.qgames.game.model.game.GameDetailsModel
 import site.qgames.game.model.game.GameModel
 import site.qgames.game.model.game.GameRulesModel
+import site.qgames.games.croissant.CroissantAssets
+import site.qgames.games.croissant.CroissantTileType
 import site.qgames.game.api.dto.game.GameCode as GameCodeDto
 
 /** Каталог игр → DTO контракта. */
@@ -32,9 +43,33 @@ class GameResponseMapper(private val roomSettingsResponseMapper: RoomSettingsRes
         title = details.game.title,
         description = details.game.description,
         rules = toDto(details.rules),
+        assets = details.rules.assets?.let(::toAssetsResponse),
     )
 
     fun toDto(code: GameCode): GameCodeDto = GameCodeDto.valueOf(code.name)
+
+    /** Статичные данные игры (GameRules.assets) → DTO контракта; новая игра со своими данными добавляет ветку. */
+    private fun toAssetsResponse(assets: Any): GameAssetsDto = when (assets) {
+        is CroissantAssets -> CroissantAssetsDto(gameCode = GameCodeDto.CROISSANT, tiles = assets.tiles.map(::toDto))
+        else -> error("No DTO for game assets ${assets::class.qualifiedName}")
+    }
+
+    private fun toDto(tile: CroissantTileType) = CroissantTileDto(
+        code = tile.code,
+        title = tile.title,
+        edges = tile.edges.map { CroissantEdge.valueOf(it.name) },
+        bakeries = tile.bakeries.map { bakery ->
+            CroissantBakeryDto(bakery.sides.map { CroissantDirection.valueOf(it.name) }, bakery.sign)
+        },
+        trails = tile.trails.map { trail -> CroissantTrailDto(trail.sides.map { CroissantDirection.valueOf(it.name) }) },
+        dairy = tile.dairy,
+        pastures = tile.pastures.map { pasture ->
+            CroissantPastureDto(
+                halves = pasture.halves.map { CroissantHalfEdgeDto(CroissantDirection.valueOf(it.dir.name), it.half) },
+                bakeries = pasture.bakeries,
+            )
+        },
+    )
 
     private fun toDto(rules: GameRulesModel) = GameRulesDto(
         minPlayers = rules.minPlayers,

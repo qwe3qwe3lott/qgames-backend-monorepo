@@ -9,6 +9,7 @@ import site.qgames.games.core.SessionEvent
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SettingsViolation
+import site.qgames.games.core.Stages
 import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControlRules
 import site.qgames.games.core.TimeControlSettings
@@ -31,8 +32,8 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSimpleS
     override val code = CODE
     override val minPlayers = 1
     override val maxPlayers = 4
-    override val gameStateClass = NothingGameState::class.java
-    override val moveClass = NothingMove::class.java
+    override fun gameStateClass(stage: String) = NothingGameState::class.java
+    override fun moveClass(stage: String) = NothingMove::class.java
     override val simpleClass = NothingSimpleSettings::class.java
     override val advancedClass = NothingAdvancedSettings::class.java
 
@@ -58,9 +59,9 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSimpleS
     override fun clock(settings: NothingAdvancedSettings) = settings.timeControl
 
     override fun start(players: List<UUID>, seed: Long, settings: NothingAdvancedSettings) =
-        GameStart(NothingGameState(moves = 0), Turns.initial(players, settings.rounds, first = players.first()))
+        GameStart(Stages.PLAY, NothingGameState(moves = 0), Turns.initial(players, settings.rounds, first = players.first()))
 
-    override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, playerId: UUID, move: NothingMove): Decision {
+    override fun decide(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, seed: Long, playerId: UUID, move: NothingMove): Decision {
         val current = state.turns.currentPlayerId
         return when {
             current == null -> Decision.Rejected("GAME_FINISHED", "The game is already finished")
@@ -76,7 +77,7 @@ class NothingGameRules : GameRules<NothingGameState, NothingMove, NothingSimpleS
      * Время вышло — ход пропускается: очередь переходит дальше, счётчик ходов не меняется. У игрока без запаса (и без
      * добавочного времени) следующие ходы тоже пропускаются по таймауту.
      */
-    override fun onTimeout(state: SessionState<NothingGameState>): List<SessionEvent> {
+    override fun onTimeout(state: SessionState<NothingGameState>, settings: NothingAdvancedSettings, seed: Long): List<SessionEvent> {
         val current = state.turns.currentPlayerId ?: return emptyList()
         return pass(state, SessionEvents.info(PLAYER_PASSED, mapOf("playerId" to current, "timeout" to true)))
     }

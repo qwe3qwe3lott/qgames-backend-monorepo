@@ -15,6 +15,7 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.game.GameCode
+import site.qgames.game.api.dto.room.CheckersColorAssignment
 import site.qgames.game.api.dto.room.CheckersSimpleSettingsDto
 import site.qgames.game.api.dto.room.CheckersTime
 import site.qgames.game.api.dto.room.CheckersVariant
@@ -178,7 +179,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
 
     @Test
     fun `simple settings are translated into the advanced ones`() {
-        val simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.INTERNATIONAL, CheckersTime.BLITZ)
+        val simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.INTERNATIONAL, CheckersTime.BLITZ, CheckersColorAssignment.RANDOM)
 
         call(HttpMethod.POST, "/api/games/checkers/advanced-settings", ALICE, simple).andExpect {
             status { isOk() }
@@ -189,6 +190,8 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
     @ParameterizedTest(name = "{0}")
     @MethodSource("rejectedTranslations")
     fun `translation of simple settings is rejected`(case: String, user: UUID?, gameCode: String, body: Any, status: HttpStatus, code: String, field: String?) {
+        // Круассан в каталоге скрыт (HIDDEN): неопубликованным его делает сам сценарий.
+        setPublishStatus("croissant", "NOT_PUBLISHED")
         call(HttpMethod.POST, "/api/games/$gameCode/advanced-settings", user, body).andExpect {
             status { isEqualTo(status.value()) }
             jsonPath("$.code") { value(code) }
@@ -266,7 +269,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             ),
             arguments(
                 "settings of another game",
-                UpdateRoomSettingsRequest(simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.NONE)),
+                UpdateRoomSettingsRequest(simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.NONE, CheckersColorAssignment.RANDOM)),
                 "simple.gameCode",
             ),
         )
@@ -330,7 +333,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
         fun rejectedTranslations(): Stream<Arguments> = Stream.of(
             arguments("guest", null, "nothing", simple(), HttpStatus.UNAUTHORIZED, "UNAUTHENTICATED", null),
             arguments("unknown game", ALICE, "chess", simple(), HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null),
-            arguments("not published game", ALICE, "carcassonne", simple(), HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null),
+            arguments("not published game", ALICE, "croissant", simple(), HttpStatus.NOT_FOUND, "GAME_NOT_FOUND", null),
             arguments("rounds out of limits", ALICE, "nothing", simple(rounds = 0), HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "rounds"),
             arguments("settings of another game", ALICE, "checkers", simple(), HttpStatus.BAD_REQUEST, "VALIDATION_ERROR", "gameCode"),
         )

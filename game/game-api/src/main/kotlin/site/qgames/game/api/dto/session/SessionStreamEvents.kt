@@ -183,6 +183,9 @@ object SessionEventCodes {
         "- move-options-changed — PUT [\"state\", \"players\", {id}, \"moveOptions\"]: варианты ходов игрока " +
         "(чужим зрителям — пустой список);\n" +
         "- turn-changed — PUT [\"state\", \"turns\"]: сменился текущий игрок или раунд;\n" +
+        "- stage-changed — PUT [\"state\"]: партия перешла к другой стадии, состояние заменено целиком (часов нет, " +
+        "варианты ходов пусты — их ставят следующие события);\n" +
+        "- timer-started — PUT [\"state\", \"timer\"]: часы новой стадии (после stage-changed);\n" +
         "- clock-switched — PUT [\"state\", \"timer\"]: часы после смены очереди (запас ходившего с инкрементом, если он есть, " +
         "дедлайн следующего);\n" +
         "- game-paused — PATCH [\"state\", \"timer\"] {status: PAUSED, pausedAt}: пауза;\n" +
@@ -204,5 +207,22 @@ object SessionEventCodes {
         "соперника;\n" +
         "- draw-accepted (шашки) — INFO {playerId}: игрок принял ничью;\n" +
         "- player-resigned (шашки) — INFO {playerId}: игрок сдался;\n" +
-        "- move-timed-out (шашки) — INFO {playerId}: время хода игрока вышло (поражение)."
+        "- move-timed-out (шашки) — INFO {playerId}: время хода игрока вышло (поражение);\n" +
+        "- color-picked (шашки) — INFO {playerId, color}: игрок первым выбрал цвет, следом stage-changed к игре;\n" +
+        "- color-pick-timed-out (шашки) — INFO {}: отсчёт выбора цвета истёк, цвета случайно, следом stage-changed.\n" +
+        "- tile-placed (Круассан) — PUT [\"state\", \"board\", {id}] {id, x, y, tile, rotation}: тайл выложен;\n" +
+        "- spot-updated (Круассан) — PUT [\"state\", \"spots\", {id}]: участок сети создан или изменился (слияние, завершение);\n" +
+        "- spot-removed (Круассан) — DELETE [\"state\", \"spots\", {id}]: участок вошёл в другой при слиянии;\n" +
+        "- spot-completed (Круассан) — INFO {spotId, type, crumbs}: пекарня, тропа или сыроварня завершены;\n" +
+        "- tile-pending (Круассан) — PUT [\"state\", \"pending\"]: тайл ждёт кондитера;\n" +
+        "- tile-pending-cleared (Круассан) — DELETE [\"state\", \"pending\"]: шаг кондитера закончен;\n" +
+        "- confectioner-placed (Круассан) — PUT [\"state\", \"spots\", {id}] и PATCH [\"state\", \"players\", {id}]: кондитер поставлен;\n" +
+        "- confectioner-skipped (Круассан) — INFO {playerId}: шаг кондитера пропущен;\n" +
+        "- confectioners-returned (Круассан) — PATCH [\"state\", \"players\", {id}] {confectioners}: кондитеры вернулись с завершённого участка;\n" +
+        "- crumbs-changed (Круассан) — PATCH [\"state\", \"players\", {id}] {crumbs}: изменились «Золотые крошки»;\n" +
+        "- tile-drawn (Круассан) — PATCH [\"state\"] {currentTile, deckPos}: открыт следующий тайл;\n" +
+        "- tile-exhausted (Круассан) — PATCH [\"state\"] {currentTile: null, deckPos}: колода кончилась;\n" +
+        "- tile-discarded (Круассан) — INFO {tile, playerId}: тайл некуда положить, ушёл в сброс;\n" +
+        "- game-scored (Круассан) — INFO {crumbs}: итоговый подсчёт;\n" +
+        "- move-timed-out (Круассан) — INFO {playerId, x, y, rotation}: время вышло, тайл выложен автоматически."
 }

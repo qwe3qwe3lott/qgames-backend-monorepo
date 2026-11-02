@@ -7,6 +7,10 @@ import site.qgames.game.api.dto.room.CheckersRulePresetDto
 import site.qgames.game.api.dto.room.CheckersSettingsLimitsDto
 import site.qgames.game.api.dto.room.CheckersSimpleSettingsDto
 import site.qgames.game.api.dto.room.CheckersTimePresetDto
+import site.qgames.game.api.dto.room.CroissantAdvancedSettingsDto
+import site.qgames.game.api.dto.room.CroissantSettingsLimitsDto
+import site.qgames.game.api.dto.room.CroissantSimpleSettingsDto
+import site.qgames.game.api.dto.room.CroissantTimePresetDto
 import site.qgames.game.api.dto.room.GameAdvancedSettingsDto
 import site.qgames.game.api.dto.room.GameSettingsLimitsDto
 import site.qgames.game.api.dto.room.GameSimpleSettingsDto
@@ -24,6 +28,7 @@ import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.model.room.RoomSettingsUpdateModel
 import site.qgames.games.checkers.CheckersAdvancedSettings
 import site.qgames.games.checkers.CheckersColor
+import site.qgames.games.checkers.CheckersColorAssignment
 import site.qgames.games.checkers.CheckersEndgameRule
 import site.qgames.games.checkers.CheckersRulePreset
 import site.qgames.games.checkers.CheckersSettingsLimits
@@ -32,12 +37,18 @@ import site.qgames.games.checkers.CheckersTime
 import site.qgames.games.checkers.CheckersVariant
 import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControlSettings
+import site.qgames.games.croissant.CroissantAdvancedSettings
+import site.qgames.games.croissant.CroissantSettingsLimits
+import site.qgames.games.croissant.CroissantSimpleSettings
+import site.qgames.games.croissant.CroissantTime
 import site.qgames.games.nothing.NothingAdvancedSettings
 import site.qgames.games.nothing.NothingSettingsLimits
 import site.qgames.games.nothing.NothingSimpleSettings
 import site.qgames.games.nothing.NothingTime
+import site.qgames.game.api.dto.room.CheckersColorAssignment as CheckersColorAssignmentDto
 import site.qgames.game.api.dto.room.CheckersEndgameRule as CheckersEndgameRuleDto
 import site.qgames.game.api.dto.room.CheckersTime as CheckersTimeDto
+import site.qgames.game.api.dto.room.CroissantTime as CroissantTimeDto
 import site.qgames.game.api.dto.room.CheckersVariant as CheckersVariantDto
 import site.qgames.game.api.dto.room.NothingTime as NothingTimeDto
 import site.qgames.game.api.dto.room.TimeBonusType as TimeBonusTypeDto
@@ -61,7 +72,9 @@ class RoomSettingsResponseMapper {
         is CheckersSimpleSettingsDto -> CheckersSimpleSettings(
             variant = CheckersVariant.valueOf(dto.variant.name),
             time = CheckersTime.valueOf(dto.time.name),
+            colorAssignment = CheckersColorAssignment.valueOf(dto.colorAssignment.name),
         )
+        is CroissantSimpleSettingsDto -> CroissantSimpleSettings(time = CroissantTime.valueOf(dto.time.name))
     }
 
     fun toModel(dto: GameAdvancedSettingsDto): Any = when (dto) {
@@ -79,6 +92,11 @@ class RoomSettingsResponseMapper {
             maxCaptureRequired = dto.maxCaptureRequired,
             promoteMidCapture = dto.promoteMidCapture,
             removeCapturedAfterMove = dto.removeCapturedAfterMove,
+            colorAssignment = CheckersColorAssignment.valueOf(dto.colorAssignment.name),
+        )
+        is CroissantAdvancedSettingsDto -> CroissantAdvancedSettings(
+            confectioners = dto.confectioners,
+            timeControl = toModel(dto.timeControl),
         )
     }
 
@@ -108,6 +126,12 @@ class RoomSettingsResponseMapper {
             maxCaptureRequired = settings.maxCaptureRequired,
             promoteMidCapture = settings.promoteMidCapture,
             removeCapturedAfterMove = settings.removeCapturedAfterMove,
+            colorAssignment = CheckersColorAssignmentDto.valueOf(settings.colorAssignment.name),
+        )
+        is CroissantAdvancedSettings -> CroissantAdvancedSettingsDto(
+            gameCode = GameCode.CROISSANT,
+            confectioners = settings.confectioners,
+            timeControl = toDto(settings.timeControl),
         )
         else -> error("No DTO for advanced settings ${settings::class.qualifiedName}")
     }
@@ -135,6 +159,13 @@ class RoomSettingsResponseMapper {
             drawQuietMoves = limits.drawQuietMoves,
             rulePresets = limits.rulePresets.map(::toDto),
         )
+        is CroissantSettingsLimits -> CroissantSettingsLimitsDto(
+            gameCode = GameCode.CROISSANT,
+            confectioners = toDto(limits.confectioners),
+            timePresets = limits.timePresets.map {
+                CroissantTimePresetDto(CroissantTimeDto.valueOf(it.time.name), it.baseSeconds, it.bonusSeconds)
+            },
+        )
         else -> error("No DTO for game settings limits ${limits::class.qualifiedName}")
     }
 
@@ -150,6 +181,11 @@ class RoomSettingsResponseMapper {
             gameCode = GameCode.CHECKERS,
             variant = CheckersVariantDto.valueOf(settings.variant.name),
             time = CheckersTimeDto.valueOf(settings.time.name),
+            colorAssignment = CheckersColorAssignmentDto.valueOf(settings.colorAssignment.name),
+        )
+        is CroissantSimpleSettings -> CroissantSimpleSettingsDto(
+            gameCode = GameCode.CROISSANT,
+            time = CroissantTimeDto.valueOf(settings.time.name),
         )
         else -> error("No DTO for simple settings ${settings::class.qualifiedName}")
     }
