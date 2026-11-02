@@ -15,6 +15,7 @@ import org.springframework.http.HttpMethod
 import org.springframework.http.HttpStatus
 import site.qgames.game.GameIntegrationTest
 import site.qgames.game.api.dto.game.GameCode
+import site.qgames.game.api.dto.room.CheckersColorAssignment
 import site.qgames.game.api.dto.room.CheckersSimpleSettingsDto
 import site.qgames.game.api.dto.room.CheckersTime
 import site.qgames.game.api.dto.room.CheckersVariant
@@ -178,7 +179,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
 
     @Test
     fun `simple settings are translated into the advanced ones`() {
-        val simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.INTERNATIONAL, CheckersTime.BLITZ)
+        val simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.INTERNATIONAL, CheckersTime.BLITZ, CheckersColorAssignment.RANDOM)
 
         call(HttpMethod.POST, "/api/games/checkers/advanced-settings", ALICE, simple).andExpect {
             status { isOk() }
@@ -266,7 +267,7 @@ class RoomSettingsScenariosTest : GameIntegrationTest() {
             ),
             arguments(
                 "settings of another game",
-                UpdateRoomSettingsRequest(simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.NONE)),
+                UpdateRoomSettingsRequest(simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.NONE, CheckersColorAssignment.RANDOM)),
                 "simple.gameCode",
             ),
         )

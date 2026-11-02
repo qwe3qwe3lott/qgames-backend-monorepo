@@ -183,6 +183,9 @@ object SessionEventCodes {
         "- move-options-changed — PUT [\"state\", \"players\", {id}, \"moveOptions\"]: варианты ходов игрока " +
         "(чужим зрителям — пустой список);\n" +
         "- turn-changed — PUT [\"state\", \"turns\"]: сменился текущий игрок или раунд;\n" +
+        "- stage-changed — PUT [\"state\"]: партия перешла к другой стадии, состояние заменено целиком (часов нет, " +
+        "варианты ходов пусты — их ставят следующие события);\n" +
+        "- timer-started — PUT [\"state\", \"timer\"]: часы новой стадии (после stage-changed);\n" +
         "- clock-switched — PUT [\"state\", \"timer\"]: часы после смены очереди (запас ходившего с инкрементом, если он есть, " +
         "дедлайн следующего);\n" +
         "- game-paused — PATCH [\"state\", \"timer\"] {status: PAUSED, pausedAt}: пауза;\n" +
@@ -204,5 +207,7 @@ object SessionEventCodes {
         "соперника;\n" +
         "- draw-accepted (шашки) — INFO {playerId}: игрок принял ничью;\n" +
         "- player-resigned (шашки) — INFO {playerId}: игрок сдался;\n" +
-        "- move-timed-out (шашки) — INFO {playerId}: время хода игрока вышло (поражение)."
+        "- move-timed-out (шашки) — INFO {playerId}: время хода игрока вышло (поражение);\n" +
+        "- color-picked (шашки) — INFO {playerId, color}: игрок первым выбрал цвет, следом stage-changed к игре;\n" +
+        "- color-pick-timed-out (шашки) — INFO {}: отсчёт выбора цвета истёк, цвета случайно, следом stage-changed."
 }

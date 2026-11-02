@@ -2,6 +2,7 @@ package site.qgames.game.support
 
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.CheckersAdvancedSettingsDto
+import site.qgames.game.api.dto.room.CheckersColorAssignment
 import site.qgames.game.api.dto.room.CheckersEndgameRule
 import site.qgames.game.api.dto.room.CheckersSimpleSettingsDto
 import site.qgames.game.api.dto.room.CheckersTime
@@ -57,20 +58,20 @@ object TestData {
     /** Настройки шашек по умолчанию (из их правил): русские, быстрые 8 мин + 4 с. */
     val CHECKERS_DEFAULT_SETTINGS = RoomSettingsDto(
         room = RoomOptionsDto(8),
-        simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.RAPID),
+        simple = CheckersSimpleSettingsDto(GameCode.CHECKERS, CheckersVariant.RUSSIAN, CheckersTime.RAPID, CheckersColorAssignment.RANDOM),
         advanced = checkersAdvanced(CheckersVariant.RUSSIAN, TimeControlDto(true, 480, TimeBonusType.INCREMENT, 4)),
     )
 
     /** Advanced-настройки шашек с правилами пресета варианта [variant]. */
     fun checkersAdvanced(variant: CheckersVariant, timeControl: TimeControlDto = TimeControlDto(false, 480, TimeBonusType.INCREMENT, 4)) = when (variant) {
         CheckersVariant.RUSSIAN -> CheckersAdvancedSettingsDto(
-            GameCode.CHECKERS, 8, CheckersColor.WHITE, CheckersEndgameRule.RUSSIAN, 30, timeControl, false, true, true, true, false, true, true,
+            GameCode.CHECKERS, 8, CheckersColor.WHITE, CheckersEndgameRule.RUSSIAN, 30, timeControl, false, true, true, true, false, true, true, CheckersColorAssignment.RANDOM,
         )
         CheckersVariant.INTERNATIONAL -> CheckersAdvancedSettingsDto(
-            GameCode.CHECKERS, 10, CheckersColor.WHITE, CheckersEndgameRule.INTERNATIONAL, 50, timeControl, false, true, true, true, true, false, true,
+            GameCode.CHECKERS, 10, CheckersColor.WHITE, CheckersEndgameRule.INTERNATIONAL, 50, timeControl, false, true, true, true, true, false, true, CheckersColorAssignment.RANDOM,
         )
         CheckersVariant.ENGLISH -> CheckersAdvancedSettingsDto(
-            GameCode.CHECKERS, 8, CheckersColor.BLACK, CheckersEndgameRule.NONE, 80, timeControl, false, false, false, true, false, false, true,
+            GameCode.CHECKERS, 8, CheckersColor.BLACK, CheckersEndgameRule.NONE, 80, timeControl, false, false, false, true, false, false, true, CheckersColorAssignment.RANDOM,
         )
     }
 }

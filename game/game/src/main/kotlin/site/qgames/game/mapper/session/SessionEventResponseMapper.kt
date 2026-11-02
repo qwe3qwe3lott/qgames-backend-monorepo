@@ -5,6 +5,7 @@ import org.springframework.stereotype.Component
 import site.qgames.game.api.dto.game.GameCode
 import site.qgames.game.api.dto.room.SessionStatus
 import site.qgames.game.api.dto.session.CheckersAdvancedRulesDto
+import site.qgames.game.api.dto.session.CheckersColorPickStateDto
 import site.qgames.game.api.dto.session.CheckersSessionStateDto
 import site.qgames.game.api.dto.patch.DeleteData
 import site.qgames.game.api.dto.session.NothingSessionStateDto
@@ -26,6 +27,8 @@ import site.qgames.game.model.session.SessionSnapshotModel
 import site.qgames.games.core.SessionEngine
 import site.qgames.games.core.SessionEvent
 import site.qgames.games.core.SessionEvents
+import site.qgames.games.core.Stages
+import site.qgames.games.checkers.CheckersGameRules
 import tools.jackson.databind.DeserializationFeature
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
@@ -35,8 +38,8 @@ import tools.jackson.databind.json.JsonMapper
  * преобразование, без обращений к данным.
  *
  * Снапшот — документ партии `{status, meta, state}` зрителя, разобранный строго (лишние поля — ошибка) в схему
- * конкретной игры: так документ, к которому клиент применяет события, всегда совпадает с контрактом. Новая игра
- * добавляет сюда ветку своего DTO состояния. Событие — патч документа: путь и значение уходят как есть.
+ * конкретной игры и её текущей стадии (`state.stage`): так документ, к которому клиент применяет события, всегда
+ * совпадает с контрактом. Новая игра (и новая стадия) добавляет сюда ветку своего DTO состояния. Событие — патч документа: путь и значение уходят как есть.
  */
 @Component
 class SessionEventResponseMapper(
@@ -47,12 +50,15 @@ class SessionEventResponseMapper(
     fun toSnapshot(snapshot: SessionSnapshotModel): SessionSnapshotDto {
         val document = snapshot.state.document
         val meta = meta(document[SessionEngine.META])
+        @Suppress("UNCHECKED_CAST")
+        val state = document[SessionEvents.STATE] as? Map<String, Any?> ?: error("Session state must be an object")
+        val stage = state[Stages.STAGE] as? String ?: error("Session state has no stage")
         return SessionSnapshotDto(
             seq = snapshot.state.seq,
             status = SessionStatus.valueOf(document[SessionEngine.STATUS] as String),
             serverTime = snapshot.serverTime,
             meta = meta,
-            state = strict(document[SessionEvents.STATE], stateClass(meta.game.code)),
+            state = strict(state, stateClass(meta.game.code, stage)),
         )
     }
 
@@ -84,10 +90,11 @@ class SessionEventResponseMapper(
         return SessionMetaDto(game, meta[ADVANCED_RULES]?.let { strict(it, advancedRulesClass(game.code)) })
     }
 
-    private fun stateClass(gameCode: GameCode): Class<out SessionStateDto> = when (gameCode) {
-        GameCode.NOTHING -> NothingSessionStateDto::class.java
-        GameCode.CHECKERS -> CheckersSessionStateDto::class.java
-        else -> error("No DTO for the state of game $gameCode")
+    private fun stateClass(gameCode: GameCode, stage: String): Class<out SessionStateDto> = when {
+        gameCode == GameCode.NOTHING && stage == Stages.PLAY -> NothingSessionStateDto::class.java
+        gameCode == GameCode.CHECKERS && stage == Stages.PLAY -> CheckersSessionStateDto::class.java
+        gameCode == GameCode.CHECKERS && stage == CheckersGameRules.COLOR_PICK -> CheckersColorPickStateDto::class.java
+        else -> error("No DTO for the state of game $gameCode in stage $stage")
     }
 
     private fun advancedRulesClass(gameCode: GameCode): Class<out SessionAdvancedRulesDto> = when (gameCode) {

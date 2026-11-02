@@ -169,6 +169,15 @@ enum class CheckersTime {
     BLITZ,
 }
 
+/** Как распределяются цвета шашек перед игрой. */
+enum class CheckersColorAssignment {
+    /** Случайно: партия сразу начинается с игры. */
+    RANDOM,
+
+    /** Кто первым выберет свой цвет: партия начинается со стадии выбора цвета (общий отсчёт 30 с, затем случайно). */
+    FIRST_PICK,
+}
+
 /** Simple-настройки шашек. */
 data class CheckersSimpleSettingsDto(
     @field:Schema(type = "string", allowableValues = [GameCodes.CHECKERS])
@@ -177,6 +186,8 @@ data class CheckersSimpleSettingsDto(
     val variant: CheckersVariant,
     /** Пресет времени; часы пресетов по вариантам — CheckersSettingsLimitsDto.timePresets. */
     val time: CheckersTime,
+    /** Распределение цветов. */
+    val colorAssignment: CheckersColorAssignment,
 ) : GameSimpleSettingsDto
 
 /** Правила окончаний шашек: при каком соотношении сил и через сколько ходов партия — ничья. */
@@ -226,6 +237,8 @@ data class CheckersAdvancedSettingsDto(
     val promoteMidCapture: Boolean,
     /** Турецкий удар: сбитые снимаются после хода, через сбитую шашку второй раз не прыгать. */
     val removeCapturedAfterMove: Boolean,
+    /** Распределение цветов. */
+    val colorAssignment: CheckersColorAssignment,
 ) : GameAdvancedSettingsDto
 
 /** Границы целочисленного параметра, включительно. */

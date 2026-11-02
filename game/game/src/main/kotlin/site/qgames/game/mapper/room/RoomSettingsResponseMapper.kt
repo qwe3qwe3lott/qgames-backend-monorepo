@@ -24,6 +24,7 @@ import site.qgames.game.model.room.RoomSettingsModel
 import site.qgames.game.model.room.RoomSettingsUpdateModel
 import site.qgames.games.checkers.CheckersAdvancedSettings
 import site.qgames.games.checkers.CheckersColor
+import site.qgames.games.checkers.CheckersColorAssignment
 import site.qgames.games.checkers.CheckersEndgameRule
 import site.qgames.games.checkers.CheckersRulePreset
 import site.qgames.games.checkers.CheckersSettingsLimits
@@ -36,6 +37,7 @@ import site.qgames.games.nothing.NothingAdvancedSettings
 import site.qgames.games.nothing.NothingSettingsLimits
 import site.qgames.games.nothing.NothingSimpleSettings
 import site.qgames.games.nothing.NothingTime
+import site.qgames.game.api.dto.room.CheckersColorAssignment as CheckersColorAssignmentDto
 import site.qgames.game.api.dto.room.CheckersEndgameRule as CheckersEndgameRuleDto
 import site.qgames.game.api.dto.room.CheckersTime as CheckersTimeDto
 import site.qgames.game.api.dto.room.CheckersVariant as CheckersVariantDto
@@ -61,6 +63,7 @@ class RoomSettingsResponseMapper {
         is CheckersSimpleSettingsDto -> CheckersSimpleSettings(
             variant = CheckersVariant.valueOf(dto.variant.name),
             time = CheckersTime.valueOf(dto.time.name),
+            colorAssignment = CheckersColorAssignment.valueOf(dto.colorAssignment.name),
         )
     }
 
@@ -79,6 +82,7 @@ class RoomSettingsResponseMapper {
             maxCaptureRequired = dto.maxCaptureRequired,
             promoteMidCapture = dto.promoteMidCapture,
             removeCapturedAfterMove = dto.removeCapturedAfterMove,
+            colorAssignment = CheckersColorAssignment.valueOf(dto.colorAssignment.name),
         )
     }
 
@@ -108,6 +112,7 @@ class RoomSettingsResponseMapper {
             maxCaptureRequired = settings.maxCaptureRequired,
             promoteMidCapture = settings.promoteMidCapture,
             removeCapturedAfterMove = settings.removeCapturedAfterMove,
+            colorAssignment = CheckersColorAssignmentDto.valueOf(settings.colorAssignment.name),
         )
         else -> error("No DTO for advanced settings ${settings::class.qualifiedName}")
     }
@@ -150,6 +155,7 @@ class RoomSettingsResponseMapper {
             gameCode = GameCode.CHECKERS,
             variant = CheckersVariantDto.valueOf(settings.variant.name),
             time = CheckersTimeDto.valueOf(settings.time.name),
+            colorAssignment = CheckersColorAssignmentDto.valueOf(settings.colorAssignment.name),
         )
         else -> error("No DTO for simple settings ${settings::class.qualifiedName}")
     }

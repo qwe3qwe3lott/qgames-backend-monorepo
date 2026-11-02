@@ -12,10 +12,13 @@ import site.qgames.games.core.SessionEvent
 import site.qgames.games.core.SessionEvents
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SettingsViolation
+import site.qgames.games.core.StageTimer
+import site.qgames.games.core.Stages
 import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControlRules
 import site.qgames.games.core.TimeControlSettings
 import site.qgames.games.core.Turns
+import site.qgames.games.core.TurnsState
 
 /**
  * Шашки. Simple-настройки — вариант правил и пресет времени ([CheckersSimpleSettings]), advanced — доска, первый ход,
@@ -37,25 +40,38 @@ import site.qgames.games.core.Turns
  * любой момент, у любого игрока: `player-resigned` (`INFO {playerId}`). Время вышло — `move-timed-out`
  * (`INFO {playerId}`) и поражение.
  *
+ * Стадии: выбор цвета ([COLOR_PICK], если [CheckersAdvancedSettings.colorAssignment] — FIRST_PICK) и игра
+ * ([Stages.PLAY]). При RANDOM цвета распределяются случайно по seed и партия сразу начинается с игры. В выборе цвета
+ * `PICK_COLOR` доступен обоим игрокам сразу, очереди нет (`currentPlayerId = null`), часы — общий отсчёт
+ * [COLOR_PICK_SECONDS] секунд; кто нажал первым, получает свой цвет (`color-picked` `INFO {playerId, color}`), второй —
+ * противоположный, и партия переходит в игру (`stage-changed`). Отсчёт истёк — `color-pick-timed-out` (`INFO`) и цвета
+ * случайно по seed. Опоздавший выбор в стадии игры отклоняется (`COLOR_ALREADY_PICKED`).
+ *
  * Окончание: у соперника нет шашек (`NO_PIECES`) или ходов (`NO_MOVES`), сдача (`RESIGN`), время (`TIMEOUT`) — победа;
  * ничья — по соглашению (`DRAW_AGREED`), троекратное повторение позиции (`REPETITION`), правило окончаний варианта
  * (`ENDGAME_RULE`, [CheckersDraws]), [CheckersAdvancedSettings.drawQuietMoves] ходов подряд только дамками без взятий
  * (`DRAW_RULE`).
  */
-class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSimpleSettings, CheckersAdvancedSettings> {
+class CheckersGameRules : GameRules<CheckersState, CheckersMove, CheckersSimpleSettings, CheckersAdvancedSettings> {
 
     override val code = CODE
     override val minPlayers = 2
     override val maxPlayers = 2
-    override val gameStateClass = CheckersGameState::class.java
-    override val moveClass = CheckersMove::class.java
+    override fun gameStateClass(stage: String): Class<out CheckersState> = when (stage) {
+        Stages.PLAY -> CheckersGameState::class.java
+        COLOR_PICK -> CheckersColorPickState::class.java
+        else -> error("Unknown checkers stage $stage")
+    }
+
+    override fun moveClass(stage: String) = CheckersMove::class.java
     override val simpleClass = CheckersSimpleSettings::class.java
     override val advancedClass = CheckersAdvancedSettings::class.java
-    override val playerClass = CheckersPlayer::class.java
+    /** Цвет у игрока есть только в стадии игры. */
+    override fun playerClass(stage: String): Class<*>? = if (stage == Stages.PLAY) CheckersPlayer::class.java else null
 
     override val timeControl = TimeControlRules(optional = true, baseSeconds = 60..10800, bonusSeconds = 0..60)
 
-    override val defaultSimple = CheckersSimpleSettings(CheckersVariant.RUSSIAN, CheckersTime.RAPID)
+    override val defaultSimple = CheckersSimpleSettings(CheckersVariant.RUSSIAN, CheckersTime.RAPID, CheckersColorAssignment.RANDOM)
 
     override val settingsLimits = CheckersSettingsLimits(VARIANTS, TIME_PRESETS, BOARD_SIZES, DRAW_QUIET_MOVES, RULE_PRESETS)
 
@@ -89,21 +105,40 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
             maxCaptureRequired = rules.maxCaptureRequired,
             promoteMidCapture = rules.promoteMidCapture,
             removeCapturedAfterMove = rules.removeCapturedAfterMove,
+            colorAssignment = settings.colorAssignment,
         )
     }
 
     override fun clock(settings: CheckersAdvancedSettings) = settings.timeControl
 
+    /** Выбор цвета — общий отсчёт [COLOR_PICK_SECONDS] даже без часов партии; игра — часы игроков из настроек. */
+    override fun timer(settings: CheckersAdvancedSettings, stage: String): StageTimer? =
+        if (stage == COLOR_PICK) StageTimer.Stage(COLOR_PICK_SECONDS) else settings.timeControl.toTimeControl()?.let(StageTimer::Players)
+
     override fun advancedRules(settings: CheckersAdvancedSettings) = CheckersAdvancedRules.of(settings)
 
-    /** Цвета — случайно по seed; расстановка — на тёмных клетках ближних к игроку рядов; первым ходит firstColor. */
-    override fun start(players: List<UUID>, seed: Long, settings: CheckersAdvancedSettings): GameStart<CheckersGameState> {
-        val moveRules = advancedRules(settings)
+    /** Выбор цвета (FIRST_PICK) или сразу игра с цветами случайно по seed (RANDOM). */
+    override fun start(players: List<UUID>, seed: Long, settings: CheckersAdvancedSettings): GameStart<CheckersState> =
+        when (settings.colorAssignment) {
+            CheckersColorAssignment.RANDOM -> playStart(randomColors(players, seed), settings)
+            CheckersColorAssignment.FIRST_PICK ->
+                GameStart(COLOR_PICK, CheckersColorPickState(), TurnsState(currentPlayerId = null, round = 1, rounds = null))
+        }
+
+    /** Цвета игроков по местам — случайно по seed. */
+    private fun randomColors(players: List<UUID>, seed: Long): Map<UUID, CheckersColor> {
         val firstSeatColor = if (Random(seed).nextBoolean()) CheckersColor.WHITE else CheckersColor.BLACK
-        val colors = mapOf(players[0] to firstSeatColor, players[1] to firstSeatColor.opponent())
+        return mapOf(players[0] to firstSeatColor, players[1] to firstSeatColor.opponent())
+    }
+
+    /** Стадия игры: расстановка — на тёмных клетках ближних к игроку рядов; первым ходит firstColor. */
+    private fun playStart(colors: Map<UUID, CheckersColor>, settings: CheckersAdvancedSettings): GameStart<CheckersState> {
+        val moveRules = advancedRules(settings)
+        val players = colors.keys.toList()
         val first = colors.entries.single { it.value == moveRules.firstColor }.key
         val pieces = initialPieces(moveRules.boardSize)
         return GameStart(
+            stage = Stages.PLAY,
             game = CheckersGameState(
                 pieces = pieces,
                 lastMove = null,
@@ -117,9 +152,29 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
         )
     }
 
-    override fun decide(state: SessionState<CheckersGameState>, settings: CheckersAdvancedSettings, playerId: UUID, move: CheckersMove): Decision {
+    override fun decide(state: SessionState<CheckersState>, settings: CheckersAdvancedSettings, seed: Long, playerId: UUID, move: CheckersMove): Decision =
+        when (state.game) {
+            is CheckersColorPickState -> pickColor(state, settings, playerId, move)
+            is CheckersGameState -> play(playState(state), settings, playerId, move)
+        }
+
+    /** Выбор цвета: первый нажавший получает свой цвет, соперник — противоположный, партия переходит в игру. */
+    private fun pickColor(state: SessionState<CheckersState>, settings: CheckersAdvancedSettings, playerId: UUID, move: CheckersMove): Decision {
+        if (move.type != PICK_COLOR) return Decision.Rejected(UNKNOWN_MOVE, "Only $PICK_COLOR is allowed while colors are being picked")
+        val color = move.data?.color ?: return illegal("The color is required")
+        val colors = state.players.associate { it.id to if (it.id == playerId) color else color.opponent() }
+        return Decision.Accepted(
+            listOf(
+                SessionEvents.info(COLOR_PICKED, mapOf(PLAYER_ID to playerId, COLOR to color)),
+                Stages.changed(playStart(colors, settings)),
+            ),
+        )
+    }
+
+    private fun play(state: SessionState<CheckersGameState>, settings: CheckersAdvancedSettings, playerId: UUID, move: CheckersMove): Decision {
         val current = state.turns.currentPlayerId
         return when {
+            move.type == PICK_COLOR -> Decision.Rejected(COLOR_ALREADY_PICKED, "Colors are already picked")
             current == null || state.result != null -> Decision.Rejected(GAME_FINISHED, "The game is already finished")
             move.type == RESIGN -> Decision.Accepted(
                 listOf(SessionEvents.info(PLAYER_RESIGNED, mapOf(PLAYER_ID to playerId))) + win(opponentOf(state, playerId), REASON_RESIGN),
@@ -143,13 +198,27 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
         )
     }
 
-    /** Время хода вышло — поражение того, чей ход. */
-    override fun onTimeout(state: SessionState<CheckersGameState>): List<SessionEvent> {
+    /** Выбор цвета не состоялся — цвета случайно по seed; время хода в игре вышло — поражение того, чей ход. */
+    override fun onTimeout(state: SessionState<CheckersState>, settings: CheckersAdvancedSettings, seed: Long): List<SessionEvent> =
+        when (state.game) {
+            is CheckersColorPickState -> listOf(
+                SessionEvents.info(COLOR_PICK_TIMED_OUT, emptyMap()),
+                Stages.changed(playStart(randomColors(state.players.map { it.id }, seed), settings)),
+            )
+            is CheckersGameState -> moveTimedOut(playState(state))
+        }
+
+    private fun moveTimedOut(state: SessionState<CheckersGameState>): List<SessionEvent> {
         val current = state.turns.currentPlayerId ?: return emptyList()
         return listOf(SessionEvents.info(MOVE_TIMED_OUT, mapOf(PLAYER_ID to current))) + win(opponentOf(state, current), REASON_TIMEOUT)
     }
 
-    override fun moveOptions(state: SessionState<CheckersGameState>, playerId: UUID): List<MoveOption> = when {
+    override fun moveOptions(state: SessionState<CheckersState>, playerId: UUID): List<MoveOption> = when (state.game) {
+        is CheckersColorPickState -> listOf(MoveOption(PICK_COLOR))
+        is CheckersGameState -> playOptions(playState(state), playerId)
+    }
+
+    private fun playOptions(state: SessionState<CheckersGameState>, playerId: UUID): List<MoveOption> = when {
         state.result != null || state.turns.currentPlayerId == null -> emptyList()
         state.turns.currentPlayerId == playerId -> listOfNotNull(
             MoveOption(MOVE),
@@ -225,6 +294,10 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
     /** Итог-ничья и конец партии. */
     private fun draw(reason: String) = listOf(Result.draw(reason), SessionEvents.finished())
 
+    // Состояние стадии игры: класс state.game уже проверен.
+    @Suppress("UNCHECKED_CAST")
+    private fun playState(state: SessionState<CheckersState>): SessionState<CheckersGameState> = state as SessionState<CheckersGameState>
+
     private fun illegal(message: String) = Decision.Rejected(ILLEGAL_MOVE, message)
 
     private fun colorOf(state: SessionState<CheckersGameState>, playerId: UUID): CheckersColor = playerFields(player(state, playerId)).color
@@ -244,6 +317,13 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
         const val MOVE = "MOVE"
         const val ACCEPT_DRAW = "ACCEPT_DRAW"
         const val RESIGN = "RESIGN"
+        const val PICK_COLOR = "PICK_COLOR"
+
+        /** Стадия выбора цвета (FIRST_PICK). */
+        const val COLOR_PICK = "color-pick"
+
+        /** Общий отсчёт стадии выбора цвета, секунды. */
+        const val COLOR_PICK_SECONDS = 30
 
         /** Варианты правил, доступные в настройках. */
         val VARIANTS = listOf(CheckersVariant.RUSSIAN, CheckersVariant.INTERNATIONAL, CheckersVariant.ENGLISH)
@@ -294,11 +374,14 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
         const val DRAW_ACCEPTED = "draw-accepted"
         const val PLAYER_RESIGNED = "player-resigned"
         const val MOVE_TIMED_OUT = "move-timed-out"
+        const val COLOR_PICKED = "color-picked"
+        const val COLOR_PICK_TIMED_OUT = "color-pick-timed-out"
 
         const val NOT_YOUR_TURN = "NOT_YOUR_TURN"
         const val UNKNOWN_MOVE = "UNKNOWN_MOVE"
         const val ILLEGAL_MOVE = "ILLEGAL_MOVE"
         const val GAME_FINISHED = "GAME_FINISHED"
+        const val COLOR_ALREADY_PICKED = "COLOR_ALREADY_PICKED"
 
         const val REASON_NO_PIECES = "NO_PIECES"
         const val REASON_NO_MOVES = "NO_MOVES"
@@ -318,6 +401,7 @@ class CheckersGameRules : GameRules<CheckersGameState, CheckersMove, CheckersSim
         private const val SQUARE = "square"
         private const val KIND = "kind"
         private const val PLAYER_ID = "playerId"
+        private const val COLOR = "color"
 
         /** Начальная расстановка: по `boardSize / 2 - 1` рядов тёмных клеток у каждой стороны. */
         fun initialPieces(boardSize: Int): List<CheckersPiece> {

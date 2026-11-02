@@ -26,6 +26,11 @@ import site.qgames.games.core.SessionStatus
 import site.qgames.games.core.TimeBonusType
 import site.qgames.games.core.TimeControl
 import site.qgames.games.core.TimeControlSettings
+import site.qgames.games.core.PlayerClock
+import site.qgames.games.core.TimerKind
+import site.qgames.games.core.TimerOutcome
+import site.qgames.games.core.TimerState
+import site.qgames.games.core.TimerStatus
 import site.qgames.games.core.TurnsState
 import site.qgames.games.core.ViewerKey
 
@@ -77,6 +82,7 @@ class CheckersSessionScenariosTest {
                         "maxCaptureRequired" to false,
                         "promoteMidCapture" to true,
                         "removeCapturedAfterMove" to true,
+                        "colorAssignment" to "RANDOM",
                     ),
                 ),
                 "advancedRules" to mapOf(
@@ -95,7 +101,7 @@ class CheckersSessionScenariosTest {
         @Suppress("UNCHECKED_CAST")
         val state = document["state"] as Map<String, Any?>
         assertThat(state.keys).containsExactlyInAnyOrder(
-            "players", "timer", "turns", "result", "pieces", "lastMove", "quietMoves", "materialMoves", "positionHistory", "drawOfferedBy",
+            "stage", "players", "timer", "turns", "result", "pieces", "lastMove", "quietMoves", "materialMoves", "positionHistory", "drawOfferedBy",
         )
         assertThat(state["players"]).isEqualTo(
             listOf(ALICE, BOB).map {
@@ -146,7 +152,7 @@ class CheckersSessionScenariosTest {
 
     @Test
     fun `all variants pass the settings check`() {
-        assertThat(CheckersVariant.entries.flatMap { checkers.validateSimple(CheckersSimpleSettings(it, CheckersTime.NONE)) }).isEmpty()
+        assertThat(CheckersVariant.entries.flatMap { checkers.validateSimple(CheckersSimpleSettings(it, CheckersTime.NONE, CheckersColorAssignment.RANDOM)) }).isEmpty()
         assertThat(checkers.settingsLimits.variants).isEqualTo(CheckersVariant.entries)
     }
 
@@ -425,7 +431,7 @@ class CheckersSessionScenariosTest {
     @ParameterizedTest(name = "{0} {1}")
     @MethodSource("simpleSettings")
     fun `simple settings give the rules of the variant and the clock of the preset`(variant: CheckersVariant, time: CheckersTime) {
-        val advanced = checkers.toAdvanced(CheckersSimpleSettings(variant, time))
+        val advanced = checkers.toAdvanced(CheckersSimpleSettings(variant, time, CheckersColorAssignment.RANDOM))
         val preset = checkers.settingsLimits.timePresets.single {
             it.variant == variant && it.time == (if (time == CheckersTime.NONE) CheckersTime.RAPID else time)
         }
@@ -536,7 +542,7 @@ class CheckersSessionScenariosTest {
     fun `either player can resign at any time`() {
         val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(30, TimeBonusType.INCREMENT, 0))
 
-        val events = (engine.move(rules, fold(journal), black, CheckersMove("RESIGN"), NOW) as MoveOutcome.Accepted).events
+        val events = (engine.move(rules, fold(journal), black, CheckersMove("RESIGN"), SEED, NOW) as MoveOutcome.Accepted).events
 
         assertThat(events.first().code).isEqualTo("player-resigned")
         assertThat(events.first().method).isEqualTo(PatchMethod.INFO)
@@ -549,7 +555,7 @@ class CheckersSessionScenariosTest {
     fun `timeout loses the game`() {
         val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)), timeControl = TimeControl(10, TimeBonusType.INCREMENT, 0))
 
-        val events = engine.timeout(rules, fold(journal), NOW.plusSeconds(10))
+        val events = engine.timeout(rules, fold(journal), SEED, NOW.plusSeconds(10))
 
         assertThat(events.first().code).isEqualTo("move-timed-out")
         assertThat(events.first().method).isEqualTo(PatchMethod.INFO)
@@ -565,7 +571,7 @@ class CheckersSessionScenariosTest {
     fun `rules reject moves`(case: String, byWhite: Boolean, move: CheckersMove, reason: String) {
         val journal = position(listOf(w("w1", 3, 3), b("b1", 8, 8)))
 
-        val outcome = engine.move(rules, fold(journal), if (byWhite) white else black, move, NOW)
+        val outcome = engine.move(rules, fold(journal), if (byWhite) white else black, move, SEED, NOW)
 
         assertThat(outcome).isInstanceOf(MoveOutcome.Rejected::class.java)
         assertThat((outcome as MoveOutcome.Rejected).code).isEqualTo(reason)
@@ -576,11 +582,117 @@ class CheckersSessionScenariosTest {
         val journal = position(listOf(w("w1", 3, 3), b("b1", 4, 4)))
         val finished = fold(journal + accepted(journal, white, 3 to 3, 5 to 5)).session
         @Suppress("UNCHECKED_CAST")
-        val state = finished.state as site.qgames.games.core.SessionState<CheckersGameState>
+        val state = finished.state as site.qgames.games.core.SessionState<CheckersState>
 
-        val decision = checkers.decide(state, RUSSIAN, white, CheckersMove("RESIGN"))
+        val decision = checkers.decide(state, RUSSIAN, SEED, white, CheckersMove("RESIGN"))
 
         assertThat(decision).isEqualTo(site.qgames.games.core.Decision.Rejected("GAME_FINISHED", "The game is already finished"))
+    }
+
+    @Test
+    fun `first pick starts with the color pick stage and a stage countdown even without a clock`() {
+        val session = fold(startOf(FIRST_PICK, NO_TIMER, SEED)).session
+
+        assertThat(session.state.stage).isEqualTo("color-pick")
+        assertThat(session.state.game).isEqualTo(CheckersColorPickState())
+        assertThat(session.state.turns).isEqualTo(TurnsState(currentPlayerId = null, round = 1, rounds = null))
+        assertThat(session.state.players.map { it.game }).containsOnlyNulls()
+        assertThat(session.state.players.map { it.moveOptions }).containsOnly(listOf(MoveOption("PICK_COLOR")))
+        assertThat(session.state.timer).isEqualTo(TimerState(TimerKind.STAGE, TimerStatus.RUNNING, NOW.plusSeconds(30), null, emptyList()))
+    }
+
+    /** Кто нажал первым, получает свой цвет; игра начинается с часами игроков с момента выбора. */
+    @ParameterizedTest(name = "{0} picks {1}")
+    @MethodSource("picks")
+    fun `the first pick gives the picked color, the opponent gets the other one and the game starts`(picker: String, color: CheckersColor) {
+        val pickerId = if (picker == "alice") ALICE else BOB
+        val journal = startOf(FIRST_PICK, TimeControl(60, TimeBonusType.INCREMENT, 0), SEED)
+
+        val events = picked(journal, pickerId, color, NOW.plusSeconds(5))
+
+        assertThat(events.map { Triple(it.code, it.method, it.path) }.take(2)).containsExactly(
+            Triple("color-picked", PatchMethod.INFO, emptyList()),
+            Triple("stage-changed", PatchMethod.PUT, listOf(key("state"))),
+        )
+        assertThat(events.first().value).isEqualTo(mapOf("playerId" to pickerId.toString(), "color" to color.name))
+        assertThat(events.map { it.code }.drop(2)).containsExactlyInAnyOrder("move-options-changed", "move-options-changed", "timer-started")
+        val session = fold(journal + events).session
+        assertThat(session.state.stage).isEqualTo("play")
+        assertThat(idOf(fold(journal + events), color)).isEqualTo(pickerId)
+        val whiteId = idOf(fold(journal + events), WHITE)
+        assertThat(session.state.turns.currentPlayerId).isEqualTo(whiteId)
+        assertThat(session.state.game).isEqualTo(game(start))
+        assertThat(session.state.timer).isEqualTo(
+            TimerState(TimerKind.PLAYERS, TimerStatus.RUNNING, NOW.plusSeconds(65), null, listOf(PlayerClock(ALICE, 60_000), PlayerClock(BOB, 60_000))),
+        )
+        assertThat(session.state.players.single { it.id == whiteId }.moveOptions).containsExactly(MoveOption("MOVE"), MoveOption("RESIGN"))
+    }
+
+    @Test
+    fun `without a clock the game after the pick has no timer`() {
+        val journal = startOf(FIRST_PICK, NO_TIMER, SEED)
+
+        val events = picked(journal, ALICE, BLACK, NOW.plusSeconds(1))
+
+        assertThat(events.map { it.code }).doesNotContain("timer-started")
+        assertThat(fold(journal + events).session.state.timer).isNull()
+        assertThat(idOf(fold(journal + events), BLACK)).isEqualTo(ALICE)
+    }
+
+    @Test
+    fun `a late pick is rejected as COLOR_ALREADY_PICKED`() {
+        val journal = startOf(FIRST_PICK, NO_TIMER, SEED)
+        val afterPick = journal + picked(journal, ALICE, WHITE, NOW)
+
+        assertThat(rejected(afterPick, BOB, pick(WHITE))).isEqualTo("COLOR_ALREADY_PICKED")
+    }
+
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("pickRejections")
+    fun `the color pick stage accepts only a pick with a color`(case: String, move: CheckersMove, code: String) {
+        assertThat(rejected(startOf(FIRST_PICK, NO_TIMER, SEED), ALICE, move)).isEqualTo(code)
+    }
+
+    @Test
+    fun `the countdown runs out - colors are random by seed`() {
+        val journal = startOf(FIRST_PICK, NO_TIMER, SEED)
+
+        val events = engine.timeout(rules, fold(journal), SEED, NOW.plusSeconds(30))
+
+        assertThat(events.map { it.code }.take(2)).containsExactly("color-pick-timed-out", "stage-changed")
+        val document = fold(journal + events)
+        assertThat(document.session.state.stage).isEqualTo("play")
+        assertThat(idOf(document, WHITE)).isEqualTo(white)
+    }
+
+    @Test
+    fun `the countdown pauses and resumes by the pause length`() {
+        val journal = startOf(FIRST_PICK, NO_TIMER, SEED).toMutableList()
+
+        journal += (engine.pause(fold(journal), NOW.plusSeconds(10)) as TimerOutcome.Changed).events
+        assertThat(rejected(journal, ALICE, pick(WHITE))).isEqualTo("PAUSED")
+        journal += (engine.resume(fold(journal), NOW.plusSeconds(25)) as TimerOutcome.Changed).events
+
+        assertThat(fold(journal).session.state.timer!!.deadline).isEqualTo(NOW.plusSeconds(45))
+    }
+
+    /** Переход стадии маскируется как начальное состояние: чужие варианты ходов скрыты. */
+    @ParameterizedTest(name = "{0}")
+    @MethodSource("viewers")
+    fun `fold of masked events equals masked full fold across the stage change`(viewer: ViewerKey) {
+        val journal = startOf(FIRST_PICK, TimeControl(30, TimeBonusType.INCREMENT, 0), SEED).toMutableList()
+        journal += picked(journal, BOB, WHITE, NOW.plusSeconds(3))
+        journal += moved(journal, BOB, 3 to 3, 4 to 4)
+
+        val ofMasked = SessionEngine.fold(null, journal.map { engine.mask(rules, it, viewer) })
+        val full = fold(journal).tree
+        @Suppress("UNCHECKED_CAST")
+        val state = full.getValue("state") as Map<String, Any?>
+        @Suppress("UNCHECKED_CAST")
+        val players = (state.getValue("players") as List<Map<String, Any?>>)
+            .map { if (viewer.sees(UUID.fromString(it["id"] as String))) it else it + ("moveOptions" to emptyList<Any>()) }
+
+        assertThat(ofMasked).isEqualTo(full + ("state" to state + ("players" to players)))
     }
 
     /** Скрытой информации нет: маскируются только чужие варианты ходов; свёртка маскированных = маска полной свёртки. */
@@ -593,7 +705,7 @@ class CheckersSessionScenariosTest {
         journal += moved(journal, whiteId, 3 to 3, 4 to 4)
         journal += moved(journal, blackId, 6 to 6, 5 to 5)
         journal += moved(journal, whiteId, 4 to 4, 6 to 6)
-        journal += engine.timeout(rules, fold(journal), NOW)
+        journal += engine.timeout(rules, fold(journal), SEED, NOW)
 
         val ofMasked = SessionEngine.fold(null, journal.map { engine.mask(rules, it, viewer) })
         val full = fold(journal).tree
@@ -641,22 +753,28 @@ class CheckersSessionScenariosTest {
         accepted(journal, player, moveOf(*path))
 
     private fun accepted(journal: List<SessionEvent>, player: UUID, move: CheckersMove): List<SessionEvent> {
-        val outcome = engine.move(rules, fold(journal), player, move, NOW)
+        val outcome = engine.move(rules, fold(journal), player, move, SEED, NOW)
         assertThat(outcome).isInstanceOf(MoveOutcome.Accepted::class.java)
         return (outcome as MoveOutcome.Accepted).events
     }
 
-    private fun rejected(journal: List<SessionEvent>, player: UUID, move: CheckersMove): String {
-        val outcome = engine.move(rules, fold(journal), player, move, NOW)
-        assertThat(outcome).isInstanceOf(MoveOutcome.Rejected::class.java)
-        return (outcome as MoveOutcome.Rejected).code
-    }
+    /** Код отказа хода; ход на паузе — `PAUSED`. */
+    private fun rejected(journal: List<SessionEvent>, player: UUID, move: CheckersMove): String =
+        when (val outcome = engine.move(rules, fold(journal), player, move, SEED, NOW)) {
+            MoveOutcome.Paused -> "PAUSED"
+            is MoveOutcome.Rejected -> outcome.code
+            else -> error("Expected a rejection, got $outcome")
+        }
+
+    /** Выбор цвета [color] игроком [player] в момент [now]. */
+    private fun picked(journal: List<SessionEvent>, player: UUID, color: CheckersColor, now: Instant): List<SessionEvent> =
+        (engine.move(rules, fold(journal), player, pick(color), SEED, now) as MoveOutcome.Accepted).events
 
     private fun moved(journal: List<SessionEvent>, player: UUID, vararg path: Pair<Int, Int>) =
-        (engine.move(rules, fold(journal), player, moveOf(*path), NOW) as MoveOutcome.Accepted).events
+        (engine.move(rules, fold(journal), player, moveOf(*path), SEED, NOW) as MoveOutcome.Accepted).events
 
     private fun rejection(journal: List<SessionEvent>, player: UUID, vararg path: Pair<Int, Int>): String {
-        val outcome = engine.move(rules, fold(journal), player, moveOf(*path), NOW)
+        val outcome = engine.move(rules, fold(journal), player, moveOf(*path), SEED, NOW)
         assertThat(outcome).isInstanceOf(MoveOutcome.Rejected::class.java)
         return (outcome as MoveOutcome.Rejected).code
     }
@@ -677,9 +795,12 @@ class CheckersSessionScenariosTest {
         private val INTERNATIONAL = advanced(CheckersVariant.INTERNATIONAL)
         private val ENGLISH = advanced(CheckersVariant.ENGLISH)
         private val NO_TIMER: TimeControl? = null
+        private val FIRST_PICK = RUSSIAN.copy(colorAssignment = CheckersColorAssignment.FIRST_PICK)
+
+        private fun pick(color: CheckersColor?) = CheckersMove("PICK_COLOR", CheckersMoveData(color = color))
 
         /** Advanced-настройки, выведенные из варианта без таймера. */
-        private fun advanced(variant: CheckersVariant) = CheckersGameRules().toAdvanced(CheckersSimpleSettings(variant, CheckersTime.NONE))
+        private fun advanced(variant: CheckersVariant) = CheckersGameRules().toAdvanced(CheckersSimpleSettings(variant, CheckersTime.NONE, CheckersColorAssignment.RANDOM))
 
         private fun w(id: String, x: Int, y: Int) = CheckersPiece(id, WHITE, CheckersPieceKind.MAN, listOf(x, y))
         private fun wk(id: String, x: Int, y: Int) = CheckersPiece(id, WHITE, CheckersPieceKind.KING, listOf(x, y))
@@ -700,6 +821,16 @@ class CheckersSessionScenariosTest {
         private fun piecePath(id: String) = listOf(key("state"), key("pieces"), PathSegment.Id(id))
 
         private fun playerOptions(id: UUID) = listOf(key("state"), key("players"), PathSegment.Id(id.toString()), key("moveOptions"))
+
+        @JvmStatic
+        fun picks(): Stream<Arguments> = Stream.of(arguments("alice", WHITE), arguments("alice", BLACK), arguments("bob", WHITE), arguments("bob", BLACK))
+
+        @JvmStatic
+        fun pickRejections(): Stream<Arguments> = Stream.of(
+            arguments("a piece move", moveOf(3 to 3, 4 to 4), "UNKNOWN_MOVE"),
+            arguments("a resignation", CheckersMove("RESIGN"), "UNKNOWN_MOVE"),
+            arguments("a pick without a color", pick(null), "ILLEGAL_MOVE"),
+        )
 
         @JvmStatic
         fun viewers(): Stream<ViewerKey> = Stream.of(ViewerKey.Full, ViewerKey.Public, ViewerKey.Player(ALICE), ViewerKey.Player(BOB))

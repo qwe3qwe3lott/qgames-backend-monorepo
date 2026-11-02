@@ -122,8 +122,9 @@ class RoomSessionService(
     }
 
     /**
-     * Ход — конверт `{type, data}`: вид действия и его параметры. Модуль игры получает его как свой класс хода
-     * (GameRules.moveClass) и проверяет по текущему полному состоянию.
+     * Ход — конверт `{type, data}`: вид действия и его параметры. Модуль игры получает его как свой класс хода текущей
+     * стадии (GameRules.moveClass) и проверяет по текущему полному состоянию; seed партии нужен игре для случайности
+     * при переходе стадии.
      */
     @Transactional
     fun move(userId: UUID, gameCode: GameCode, roomId: UUID, type: String, data: Map<String, Any?>?) {
@@ -143,14 +144,14 @@ class RoomSessionService(
             put("type", type)
             data?.let { put("data", it) }
         }
+        val full = sessionJournalService.full(session)
         val move = try {
-            jsonMapper.convertValue(rawMove, rules.moveClass)
+            jsonMapper.convertValue(rawMove, rules.moveClass(full.session.state.stage))
         } catch (_: RuntimeException) {
             throw RoomErrors.invalidMove()
         }
         val now = clock.instant()
-        val full = sessionJournalService.full(session)
-        when (val outcome = sessionEngine.move(rules, full, userId, move, now)) {
+        when (val outcome = sessionEngine.move(rules, full, userId, move, session.seed, now)) {
             MoveOutcome.Paused -> throw RoomErrors.sessionPaused()
             MoveOutcome.NotInProgress -> throw RoomErrors.roomNotInGame()
             is MoveOutcome.Rejected -> throw RoomErrors.moveRejected(outcome.code, outcome.message)
@@ -182,7 +183,7 @@ class RoomSessionService(
         if (deadline == null || deadline > now) {
             return false
         }
-        val events = sessionEngine.timeout(gameRegistry.rules(session.gameCode), full, now)
+        val events = sessionEngine.timeout(gameRegistry.rules(session.gameCode), full, session.seed, now)
         if (events.isEmpty()) {
             log.warn("Move deadline expired in session {}, but the game has nothing to do; timer is removed", sessionId)
             sessionJournalService.clearMoveDeadline(session)
