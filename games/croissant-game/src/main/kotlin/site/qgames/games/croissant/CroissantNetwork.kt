@@ -86,7 +86,7 @@ internal object CroissantNetwork {
             val type = layout.typeOf(placed)
             type.bakeries.indices.forEach { atoms += atom(CroissantSpotType.BAKERY, placed.id, it) }
             type.trails.indices.forEach { atoms += atom(CroissantSpotType.TRAIL, placed.id, it) }
-            if (type.dairy) atoms += atom(CroissantSpotType.DAIRY, placed.id, 0)
+            if (type.structures.dairy) atoms += atom(CroissantSpotType.DAIRY, placed.id, 0)
             type.pastures.indices.forEach { atoms += atom(CroissantSpotType.PASTURE, placed.id, it) }
         }
         val parent = atoms.associateWith { it }.toMutableMap()
@@ -171,7 +171,7 @@ internal object CroissantNetwork {
             }
             val bakeries = if (type == CroissantSpotType.PASTURE) {
                 sorted.flatMap { member ->
-                    layout.typeOf(layout.byId(member.tileId)!!).pastures[member.index].bakeries.mapNotNull { bakeryIndex ->
+                    layout.typeOf(layout.byId(member.tileId)!!).pastures[member.index].adjacentBakeries.mapNotNull { bakeryIndex ->
                         idByAtom[atom(CroissantSpotType.BAKERY, member.tileId, bakeryIndex)]
                     }
                 }.distinct()

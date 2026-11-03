@@ -79,49 +79,86 @@ class CroissantSessionScenariosTest {
     }
 
     @Test
-    fun `the catalog rejects tiles with two elements on a side or trails without a target`() {
+    fun `the catalog rejects inconsistent edges, pastures and trail targets`() {
         val n = CroissantDirection.N
         val s = CroissantDirection.S
         val e = CroissantDirection.E
         val w = CroissantDirection.W
-        val allPastures = listOf(
-            CroissantPastureSpec(CroissantDirection.entries.flatMap { listOf(CroissantHalfEdge(it, 0), CroissantHalfEdge(it, 1)) }),
-        )
+        fun bakery(index: Int) = CroissantEdgeSpec(CroissantEdge.BAKERY, index)
+        fun trail(index: Int) = CroissantEdgeSpec(CroissantEdge.TRAIL, index)
+        fun pasture(index: Int) = CroissantEdgeSpec(CroissantEdge.PASTURE, index)
+        fun halves(vararg dirs: CroissantDirection) = dirs.flatMap { listOf(CroissantHalfEdge(it, 0), CroissantHalfEdge(it, 1)) }
+        val allPastures = listOf(CroissantPastureSpec(halves(n, e, s, w)))
         fun type(
+            edges: CroissantTileEdges = CroissantTileEdges(pasture(0), pasture(0), pasture(0), pasture(0)),
             trails: List<CroissantTrailSpec> = emptyList(),
             bakeries: List<CroissantBakerySpec> = emptyList(),
             pastures: List<CroissantPastureSpec> = allPastures,
-            dairy: Boolean = false,
-            garden: Boolean = false,
-        ) = CroissantTileType("test", "Тест", List(4) { CroissantEdge.PASTURE }, bakeries, trails, dairy, garden, pastures)
+            structures: CroissantStructures = CroissantStructures(),
+        ) = CroissantTileType("test", "Тест", edges, bakeries, trails, structures, pastures)
+        val northTrail = CroissantTileEdges(trail(0), pasture(0), pasture(0), pasture(0))
 
-        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(n, s)), CroissantTrailSpec(listOf(n, e)))) }
-            .hasMessageContaining("two trails")
-        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(n)))) }
+        assertThatThrownBy { type(edges = CroissantTileEdges(trail(0), pasture(0), pasture(0), pasture(0))) }
+            .hasMessageContaining("missing TRAIL 0")
+        assertThatThrownBy { type(edges = CroissantTileEdges(pasture(1), pasture(0), pasture(0), pasture(0))) }
+            .hasMessageContaining("missing PASTURE 1")
+        assertThatThrownBy { type(bakeries = listOf(CroissantBakerySpec())) }.hasMessageContaining("bakery 0 has no sides")
+        assertThatThrownBy { type(edges = CroissantTileEdges(trail(0), pasture(0), trail(0), pasture(0)), trails = listOf(CroissantTrailSpec(), CroissantTrailSpec())) }
+            .hasMessageContaining("trail 1 has no sides")
+        assertThatThrownBy { type(edges = northTrail, trails = listOf(CroissantTrailSpec())) }
             .hasMessageContaining("exactly one target")
-        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(n), dairy = true, garden = true)), dairy = true) }
-            .hasMessageContaining("exactly one target")
-        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(n, s), garden = true)), garden = true) }
-            .hasMessageContaining("can't have a target")
-        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(w), garden = true))) }
-            .hasMessageContaining("missing garden")
-        assertThatThrownBy { type(trails = listOf(CroissantTrailSpec(listOf(w), bakery = 0))) }
-            .hasMessageContaining("missing bakery")
-        assertThatThrownBy { type(dairy = true, garden = true) }.hasMessageContaining("center")
-        assertThatThrownBy { type(bakeries = listOf(CroissantBakerySpec(listOf(n)))) }
-            .hasMessageContaining("exactly once")
         assertThatThrownBy {
-            type(bakeries = listOf(CroissantBakerySpec(listOf(n))), trails = listOf(CroissantTrailSpec(listOf(n, s))))
-        }.hasMessageContaining("both a bakery and a trail")
+            type(
+                edges = CroissantTileEdges(bakery(0), pasture(0), trail(0), pasture(0)),
+                bakeries = listOf(CroissantBakerySpec()),
+                trails = listOf(CroissantTrailSpec(bakeryIndex = 0, structure = true)),
+                pastures = listOf(CroissantPastureSpec(halves(e, s, w))),
+                structures = CroissantStructures(garden = true),
+            )
+        }.hasMessageContaining("exactly one target")
+        assertThatThrownBy {
+            type(
+                edges = CroissantTileEdges(trail(0), pasture(0), trail(0), pasture(0)),
+                trails = listOf(CroissantTrailSpec(structure = true)),
+                structures = CroissantStructures(garden = true),
+            )
+        }.hasMessageContaining("can't have a target")
+        assertThatThrownBy { type(edges = northTrail, trails = listOf(CroissantTrailSpec(structure = true))) }
+            .hasMessageContaining("missing structure")
+        assertThatThrownBy { type(edges = northTrail, trails = listOf(CroissantTrailSpec(bakeryIndex = 0))) }
+            .hasMessageContaining("missing bakery")
+        assertThatThrownBy { type(structures = CroissantStructures(garden = true, dairy = true)) }
+            .hasMessageContaining("center")
+        assertThatThrownBy {
+            type(edges = CroissantTileEdges(bakery(0), pasture(0), pasture(0), pasture(0)), bakeries = listOf(CroissantBakerySpec()))
+        }.hasMessageContaining("exactly once")
+        // Сторона-луг E указывает на луг 1, а оба её полуребра — у луга 0.
+        assertThatThrownBy {
+            type(
+                edges = CroissantTileEdges(trail(0), pasture(1), trail(0), pasture(0)),
+                trails = listOf(CroissantTrailSpec()),
+                pastures = listOf(
+                    CroissantPastureSpec(listOf(CroissantHalfEdge(n, 0), CroissantHalfEdge(s, 0)) + halves(w, e)),
+                    CroissantPastureSpec(listOf(CroissantHalfEdge(n, 1), CroissantHalfEdge(s, 1))),
+                ),
+            )
+        }.hasMessageContaining("pasture side E")
+        assertThatThrownBy {
+            type(pastures = listOf(CroissantPastureSpec(halves(n, e, s, w), adjacentBakeries = listOf(0))))
+        }.hasMessageContaining("touches a missing bakery")
         // Две независимые тропы W-N и S-E и раздельные пекарни на соседних сторонах — допустимые тайлы.
-        type(trails = listOf(CroissantTrailSpec(listOf(w, n)), CroissantTrailSpec(listOf(s, e))))
         type(
-            bakeries = listOf(CroissantBakerySpec(listOf(n)), CroissantBakerySpec(listOf(e))),
-            trails = listOf(CroissantTrailSpec(listOf(w), bakery = 0), CroissantTrailSpec(listOf(s), bakery = 1)),
+            edges = CroissantTileEdges(trail(0), trail(1), trail(1), trail(0)),
+            trails = listOf(CroissantTrailSpec(), CroissantTrailSpec()),
+        )
+        type(
+            edges = CroissantTileEdges(bakery(0), bakery(1), trail(1), trail(0)),
+            bakeries = listOf(CroissantBakerySpec(), CroissantBakerySpec()),
+            trails = listOf(CroissantTrailSpec(bakeryIndex = 0), CroissantTrailSpec(bakeryIndex = 1)),
             pastures = listOf(
-                CroissantPastureSpec(listOf(CroissantHalfEdge(w, 0)), bakeries = listOf(0)),
-                CroissantPastureSpec(listOf(CroissantHalfEdge(w, 1), CroissantHalfEdge(s, 0)), bakeries = listOf(0, 1)),
-                CroissantPastureSpec(listOf(CroissantHalfEdge(s, 1)), bakeries = listOf(1)),
+                CroissantPastureSpec(listOf(CroissantHalfEdge(w, 0)), adjacentBakeries = listOf(0)),
+                CroissantPastureSpec(listOf(CroissantHalfEdge(w, 1), CroissantHalfEdge(s, 0)), adjacentBakeries = listOf(0, 1)),
+                CroissantPastureSpec(listOf(CroissantHalfEdge(s, 1)), adjacentBakeries = listOf(1)),
             ),
         )
     }

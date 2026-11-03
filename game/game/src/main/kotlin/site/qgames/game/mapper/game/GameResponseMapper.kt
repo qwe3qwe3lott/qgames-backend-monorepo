@@ -9,7 +9,10 @@ import site.qgames.game.api.dto.game.CroissantHalfEdgeDto
 import site.qgames.game.api.dto.game.CroissantModuleDto
 import site.qgames.game.api.dto.game.CroissantModuleTileDto
 import site.qgames.game.api.dto.game.CroissantPastureDto
+import site.qgames.game.api.dto.game.CroissantStructuresDto
 import site.qgames.game.api.dto.game.CroissantTileDto
+import site.qgames.game.api.dto.game.CroissantTileEdgeDto
+import site.qgames.game.api.dto.game.CroissantTileEdgesDto
 import site.qgames.game.api.dto.game.CroissantTrailDto
 import site.qgames.game.api.dto.game.GameAssetsDto
 import site.qgames.game.api.dto.game.GameDetailsResponse
@@ -23,6 +26,7 @@ import site.qgames.game.model.game.GameDetailsModel
 import site.qgames.game.model.game.GameModel
 import site.qgames.game.model.game.GameRulesModel
 import site.qgames.games.croissant.CroissantAssets
+import site.qgames.games.croissant.CroissantEdgeSpec
 import site.qgames.games.croissant.CroissantTileType
 import site.qgames.game.api.dto.game.GameCode as GameCodeDto
 
@@ -68,27 +72,24 @@ class GameResponseMapper(private val roomSettingsResponseMapper: RoomSettingsRes
     private fun toDto(tile: CroissantTileType) = CroissantTileDto(
         code = tile.code,
         title = tile.title,
-        edges = tile.edges.map { CroissantEdge.valueOf(it.name) },
-        bakeries = tile.bakeries.map { bakery ->
-            CroissantBakeryDto(bakery.sides.map { CroissantDirection.valueOf(it.name) }, bakery.sign)
-        },
-        trails = tile.trails.map { trail ->
-            CroissantTrailDto(
-                sides = trail.sides.map { CroissantDirection.valueOf(it.name) },
-                bakery = trail.bakery,
-                dairy = trail.dairy,
-                garden = trail.garden,
-            )
-        },
-        dairy = tile.dairy,
-        garden = tile.garden,
+        edges = CroissantTileEdgesDto(
+            N = toDto(tile.edges.n),
+            E = toDto(tile.edges.e),
+            S = toDto(tile.edges.s),
+            W = toDto(tile.edges.w),
+        ),
+        bakeries = tile.bakeries.map { CroissantBakeryDto(it.sign) },
+        trails = tile.trails.map { CroissantTrailDto(bakeryIndex = it.bakeryIndex, structure = it.structure) },
+        structures = CroissantStructuresDto(garden = tile.structures.garden, dairy = tile.structures.dairy),
         pastures = tile.pastures.map { pasture ->
             CroissantPastureDto(
                 halves = pasture.halves.map { CroissantHalfEdgeDto(CroissantDirection.valueOf(it.dir.name), it.half) },
-                bakeries = pasture.bakeries,
+                adjacentBakeries = pasture.adjacentBakeries,
             )
         },
     )
+
+    private fun toDto(edge: CroissantEdgeSpec) = CroissantTileEdgeDto(CroissantEdge.valueOf(edge.type.name), edge.index)
 
     private fun toDto(rules: GameRulesModel) = GameRulesDto(
         minPlayers = rules.minPlayers,
