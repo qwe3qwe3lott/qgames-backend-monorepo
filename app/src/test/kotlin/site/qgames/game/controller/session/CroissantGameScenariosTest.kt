@@ -59,6 +59,10 @@ class CroissantGameScenariosTest : GameIntegrationTest() {
         assertThat(simple.time).isEqualTo(CroissantTime.NONE)
         val assets = details.assets as CroissantAssetsDto
         assertThat(assets.tiles.map { it.code }).hasSize(14).doesNotHaveDuplicates().contains(CroissantCatalog.START_TILE)
+        val base = assets.modules.single()
+        assertThat(base.code).isEqualTo("base")
+        assertThat(base.tiles.map { it.code }).containsExactlyElementsOf(CroissantCatalog.COUNTS.keys)
+        assertThat(base.tiles.sumOf { it.count }).isEqualTo(72)
     }
 
     @Test

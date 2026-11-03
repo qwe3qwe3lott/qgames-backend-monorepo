@@ -48,8 +48,11 @@ class CroissantGameRules :
 
     override val settingsLimits = CroissantSettingsLimits(CroissantConfectionersRange, CroissantTimePresets)
 
-    /** Каталог тайлов: клиент получает его с карточкой игры, состояние ссылается на тип тайла по коду. */
-    override val assets = CroissantAssets(CroissantCatalog.TYPES)
+    /**
+     * Каталог тайлов и состав колоды по модулям: клиент получает их с карточкой игры, состояние ссылается на тип тайла по
+     * коду.
+     */
+    override val assets = CroissantAssets(CroissantCatalog.TYPES, listOf(CroissantCatalog.BASE_MODULE))
 
     override fun playerClass(stage: String) = CroissantPlayer::class.java
 

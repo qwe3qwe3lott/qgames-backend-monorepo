@@ -455,6 +455,9 @@ object CroissantCatalog {
         BAKERY_FOUR.code to 1,
     )
 
+    /** Базовая игра: состав коробки — [COUNTS]. Дополнения добавят свои модули. */
+    val BASE_MODULE: CroissantModule = CroissantModule("base", COUNTS)
+
     /** Стартовый тайл партии: пекарня с тропой от ворот. */
     val START_TILE: String = BAKERY_TRAIL.code
 

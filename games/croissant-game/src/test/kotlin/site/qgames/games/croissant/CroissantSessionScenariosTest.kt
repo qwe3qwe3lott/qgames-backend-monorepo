@@ -46,6 +46,9 @@ class CroissantSessionScenariosTest {
         val deck = CroissantCatalog.deck(seed = 7L)
         assertThat(deck).hasSize(71)
         assertThat(CroissantCatalog.TYPES.map { it.code }).containsExactlyInAnyOrderElementsOf(CroissantCatalog.COUNTS.keys)
+        // Клиент видит состав коробки через модуль base: он совпадает с колодой партии.
+        assertThat(CroissantCatalog.BASE_MODULE.code).isEqualTo("base")
+        assertThat(CroissantCatalog.BASE_MODULE.counts).isEqualTo(CroissantCatalog.COUNTS)
     }
 
     @Test

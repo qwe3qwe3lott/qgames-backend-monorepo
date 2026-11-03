@@ -23,13 +23,31 @@ import io.swagger.v3.oas.annotations.media.Schema
 )
 sealed interface GameAssetsDto
 
-/** Статичные данные «Круассана»: каталог типов тайлов. */
+/** Статичные данные «Круассана»: каталог типов тайлов и состав колоды по модулям. */
 data class CroissantAssetsDto(
     @field:Schema(type = "string", allowableValues = [GameCodes.CROISSANT])
     val gameCode: GameCode,
     /** Каталог типов тайлов: по нему клиент рисует доску; состояние партии ссылается на тип по его code. */
     val tiles: List<CroissantTileDto>,
+    /** Модули игры (базовая игра `base`, дополнения): сколько тайлов каждого типа кладёт модуль. */
+    val modules: List<CroissantModuleDto>,
 ) : GameAssetsDto
+
+/** Модуль «Круассана»: базовая игра (`base`) или дополнение, с составом тайлов. */
+data class CroissantModuleDto(
+    /** Код модуля: `base` — базовая игра. */
+    val code: String,
+    /** Тайлы модуля по типам. */
+    val tiles: List<CroissantModuleTileDto>,
+)
+
+/** Сколько тайлов одного типа кладёт модуль. */
+data class CroissantModuleTileDto(
+    /** Код типа тайла из `CroissantAssetsDto.tiles`. */
+    val code: String,
+    @field:Schema(minimum = "1")
+    val count: Int,
+)
 
 /** Сторона тайла «Круассана»; в JSON — имя значения. */
 enum class CroissantDirection {

@@ -6,6 +6,8 @@ import site.qgames.game.api.dto.game.CroissantBakeryDto
 import site.qgames.game.api.dto.game.CroissantDirection
 import site.qgames.game.api.dto.game.CroissantEdge
 import site.qgames.game.api.dto.game.CroissantHalfEdgeDto
+import site.qgames.game.api.dto.game.CroissantModuleDto
+import site.qgames.game.api.dto.game.CroissantModuleTileDto
 import site.qgames.game.api.dto.game.CroissantPastureDto
 import site.qgames.game.api.dto.game.CroissantTileDto
 import site.qgames.game.api.dto.game.CroissantTrailDto
@@ -50,7 +52,16 @@ class GameResponseMapper(private val roomSettingsResponseMapper: RoomSettingsRes
 
     /** Статичные данные игры (GameRules.assets) → DTO контракта; новая игра со своими данными добавляет ветку. */
     private fun toAssetsResponse(assets: Any): GameAssetsDto = when (assets) {
-        is CroissantAssets -> CroissantAssetsDto(gameCode = GameCodeDto.CROISSANT, tiles = assets.tiles.map(::toDto))
+        is CroissantAssets -> CroissantAssetsDto(
+            gameCode = GameCodeDto.CROISSANT,
+            tiles = assets.tiles.map(::toDto),
+            modules = assets.modules.map { module ->
+                CroissantModuleDto(
+                    code = module.code,
+                    tiles = module.counts.map { (code, count) -> CroissantModuleTileDto(code, count) },
+                )
+            },
+        )
         else -> error("No DTO for game assets ${assets::class.qualifiedName}")
     }
 

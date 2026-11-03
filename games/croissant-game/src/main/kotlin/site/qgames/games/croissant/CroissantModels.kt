@@ -29,8 +29,14 @@ data class CroissantTimePreset(
     val bonusSeconds: Int,
 )
 
-/** Статичные данные игры для клиента: каталог типов тайлов ([GameRules.assets][site.qgames.games.core.GameRules.assets]). */
-data class CroissantAssets(val tiles: List<CroissantTileType>)
+/**
+ * Статичные данные игры для клиента ([GameRules.assets][site.qgames.games.core.GameRules.assets]): каталог типов тайлов
+ * и состав колоды по модулям (базовая игра, дополнения).
+ */
+data class CroissantAssets(val tiles: List<CroissantTileType>, val modules: List<CroissantModule>)
+
+/** Модуль игры (базовая игра или дополнение): сколько тайлов каждого типа он кладёт в коробку, по коду типа. */
+data class CroissantModule(val code: String, val counts: Map<String, Int>)
 
 /** Границы настроек для формы комнаты. */
 data class CroissantSettingsLimits(
