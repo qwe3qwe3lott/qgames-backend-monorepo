@@ -56,13 +56,17 @@ data class CroissantGameState(
     val deckReturns: List<Int>,
 )
 
-/** Выложенный тайл: адресуется по id (`x:y`), [rotation] — в градусах, 0/90/180/270. */
+/**
+ * Выложенный тайл: адресуется по id (`x:y`), [rotation] — в градусах, 0/90/180/270. [playerId] — кто выложил;
+ * null у стартового тайла.
+ */
 data class CroissantPlacedTile(
     val id: String,
     val x: Int,
     val y: Int,
     val tile: String,
     val rotation: Int,
+    val playerId: java.util.UUID?,
 )
 
 /**
@@ -76,8 +80,18 @@ data class CroissantPending(
     val completed: List<String>,
 )
 
-/** Поля игры у игрока: накопленные «Золотые крошки» и непоставленные кондитеры. */
+/** Цвет кондитеров игрока: назначается в начале партии из seed, без повторов (игроков не больше, чем цветов). */
+enum class CroissantColor {
+    RED,
+    YELLOW,
+    GREEN,
+    BLUE,
+    BLACK,
+}
+
+/** Поля игры у игрока: цвет, накопленные «Золотые крошки» и непоставленные кондитеры. */
 data class CroissantPlayer(
+    val color: CroissantColor,
     val crumbs: Int,
     val confectioners: Int,
     /** Выбыл: вышло время. Больше не ходит и не может победить, крошки ему считаются как всем. */

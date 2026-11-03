@@ -84,13 +84,22 @@ class CroissantGameRules :
     override fun clock(settings: CroissantAdvancedSettings): TimeControlSettings = settings.timeControl
 
     override fun start(players: List<UUID>, seed: Long, settings: CroissantAdvancedSettings): GameStart<CroissantGameState> {
-        val startTile = CroissantPlacedTile(id = CELL_ORIGIN, x = 0, y = 0, tile = CroissantCatalog.START_TILE, rotation = 0)
+        val startTile = CroissantPlacedTile(
+            id = CELL_ORIGIN,
+            x = 0,
+            y = 0,
+            tile = CroissantCatalog.START_TILE,
+            rotation = 0,
+            playerId = null,
+        )
         val board = listOf(startTile)
         val layout = CroissantLayout(board)
         val spots = CroissantNetwork.rebuild(layout, board, emptyList())
         val deck = CroissantCatalog.deck(seed)
         val drawn = draw(board, deck, from = 0)
         val first = players[Math.floorMod(Random(seed).nextInt(), players.size)]
+        // Свой поток случайности из seed: цвета не зависят от того, сколько чисел взял выбор первого игрока.
+        val colors = CroissantColor.entries.shuffled(Random(seed xor COLOR_SALT))
         return GameStart(
             stage = Stages.PLAY,
             game = CroissantGameState(
@@ -103,7 +112,14 @@ class CroissantGameRules :
                 deckReturns = emptyList(),
             ),
             turns = Turns.initial(players, rounds = null, first = first),
-            players = players.associateWith { CroissantPlayer(crumbs = 0, confectioners = settings.confectioners, out = false) },
+            players = players.withIndex().associate { (index, id) ->
+                id to CroissantPlayer(
+                    color = colors[index],
+                    crumbs = 0,
+                    confectioners = settings.confectioners,
+                    out = false,
+                )
+            },
         )
     }
 
@@ -139,17 +155,13 @@ class CroissantGameRules :
 
     override fun moveOptions(state: SessionState<CroissantGameState>, playerId: UUID): List<MoveOption> {
         if (state.turns.currentPlayerId != playerId) return emptyList()
-        val me = state.players.firstOrNull { it.id == playerId }?.game as? CroissantPlayer ?: return emptyList()
         val pending = state.game.pending
+        // Шаг кондитера бывает, только когда есть свободный участок и фишка: иначе `place` сам передаёт ход.
         if (pending != null) {
-            return if (me.confectioners > 0 && pending.spots.isNotEmpty()) {
-                listOf(
-                    MoveOption(PLACE_CONFECTIONER, mapOf(SPOTS to pending.spots)),
-                    MoveOption(SKIP_CONFECTIONER),
-                )
-            } else {
-                listOf(MoveOption(SKIP_CONFECTIONER))
-            }
+            return listOf(
+                MoveOption(PLACE_CONFECTIONER, mapOf(SPOTS to pending.spots)),
+                MoveOption(SKIP_CONFECTIONER),
+            )
         }
         val tile = state.game.currentTile ?: return emptyList()
         val placements = CroissantLayout(state.game.board).placements(tile)
@@ -222,7 +234,7 @@ class CroissantGameRules :
             val layout = CroissantLayout(game.board)
             if (!layout.accepts(tileCode, x, y, rotation)) return ERR_ILLEGAL_PLACEMENT
 
-            val placed = CroissantPlacedTile(layout.cellId(x, y), x, y, tileCode, rotation)
+            val placed = CroissantPlacedTile(layout.cellId(x, y), x, y, tileCode, rotation, playerId)
             val board = game.board + placed
             val rebuilt = CroissantNetwork.rebuild(CroissantLayout(board), board, game.spots)
             val before = game.spots.associateBy { it.id }
@@ -237,6 +249,7 @@ class CroissantGameRules :
             val free = rebuilt.filter { spot ->
                 spot.members.any { it.tileId == placed.id } && spot.confectioners.isEmpty()
             }
+            // Ставить кондитера некуда или нечем — шага кондитера нет, ход сразу переходит.
             val me = fields.getValue(playerId)
             if (free.isEmpty() || me.confectioners == 0) {
                 advance(playerId)
@@ -432,6 +445,9 @@ class CroissantGameRules :
 
         /** Стартовая клетка партии. */
         const val CELL_ORIGIN = "0:0"
+
+        /** Соль seed для раздачи цветов: поток случайности, отдельный от выбора первого игрока. */
+        private const val COLOR_SALT = 0x5EED_C010L
 
         const val PLACE_TILE = "PLACE_TILE"
         const val PLACE_CONFECTIONER = "PLACE_CONFECTIONER"

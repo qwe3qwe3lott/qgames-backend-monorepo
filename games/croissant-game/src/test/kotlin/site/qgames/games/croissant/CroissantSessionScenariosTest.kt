@@ -152,6 +152,7 @@ class CroissantSessionScenariosTest {
         assertThat(session.state.stage).isEqualTo(Stages.PLAY)
         assertThat(game.board).hasSize(1)
         assertThat(game.board.single().id).isEqualTo(CroissantGameRules.CELL_ORIGIN)
+        assertThat(game.board.single().playerId).isNull()
         assertThat(game.currentTile).isNotNull()
         assertThat(game.deckSize).isEqualTo(71)
         assertThat(game.deckPos).isEqualTo(1)
@@ -160,6 +161,54 @@ class CroissantSessionScenariosTest {
             CroissantSpotType.TRAIL,
             CroissantSpotType.PASTURE,
         )
+    }
+
+    @Test
+    fun `players get distinct colors drawn from the seed`() {
+        val players = List(5) { UUID.fromString("00000000-0000-4000-8000-00000000010$it") }
+        fun colors(seed: Long) = engine.read(rules, SessionEngine.fold(null, engine.start(rules, players, seed, settings, now))!!)
+            .session.state.players.map { (it.game as CroissantPlayer).color }
+
+        assertThat(colors(11L)).containsExactlyInAnyOrder(*CroissantColor.entries.toTypedArray())
+        assertThat(colors(11L)).isEqualTo(colors(11L))
+        // Порядок цветов зависит от seed, а не от места игрока.
+        assertThat((1L..20L).map { colors(it) }.distinct().size).isGreaterThan(1)
+    }
+
+    @Test
+    fun `the confectioner step is skipped when every spot of the tile is taken`() {
+        val first = tile(0, 0, CroissantCatalog.BAKERY_FOUR, 0)
+        val board = listOf(first)
+        val spots = rebuild(board).map { it.copy(confectioners = listOf(CroissantConfectioner(BOB, first.id))) }
+        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY_FOUR.code, spots = spots)
+
+        val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 0)) as Decision.Accepted
+
+        assertSkippedStep(placed)
+    }
+
+    @Test
+    fun `the confectioner step is skipped when the player has no confectioners left`() {
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_ONE, 0))
+        val state = sessionState(
+            board = board,
+            currentTile = CroissantCatalog.BAKERY_ONE.code,
+            spots = rebuild(board),
+            alice = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 0),
+        )
+
+        val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
+
+        assertSkippedStep(placed)
+    }
+
+    /** Выкладка сразу передала ход: шага кондитера нет, тайл записан за ходившим. */
+    private fun assertSkippedStep(placed: Decision.Accepted) {
+        val codes = placed.events.map { it.code }
+        assertThat(codes).contains(CroissantGameRules.TILE_DRAWN, "turn-changed").doesNotContain(CroissantGameRules.TILE_PENDING)
+        assertThat((placed.events.single { it.code == CroissantGameRules.TILE_PLACED }.value as CroissantPlacedTile).playerId)
+            .isEqualTo(ALICE)
+        assertThat((placed.events.single { it.code == "turn-changed" }.value as TurnsState).currentPlayerId).isEqualTo(BOB)
     }
 
     @Test
@@ -175,7 +224,7 @@ class CroissantSessionScenariosTest {
             board = board,
             currentTile = CroissantCatalog.BAKERY_ONE.code,
             spots = spots,
-            alice = CroissantPlayer(crumbs = 0, confectioners = 6),
+            alice = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 6),
         )
 
         val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
@@ -345,7 +394,7 @@ class CroissantSessionScenariosTest {
             board = board,
             currentTile = CroissantCatalog.DAIRY.code,
             spots = rebuild(board),
-            alice = CroissantPlayer(crumbs = 10, confectioners = 7),
+            alice = CroissantPlayer(color = CroissantColor.RED, crumbs = 10, confectioners = 7),
         )
 
         val events = rules.onTimeout(state, settings, seed = 5L)
@@ -371,7 +420,7 @@ class CroissantSessionScenariosTest {
             board = board,
             currentTile = CroissantCatalog.DAIRY.code,
             spots = rebuild(board),
-            carol = CroissantPlayer(crumbs = 0, confectioners = 7),
+            carol = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 7),
         )
 
         val events = rules.onTimeout(state, settings, seed = 5L)
@@ -420,8 +469,8 @@ class CroissantSessionScenariosTest {
             board = board,
             currentTile = CroissantCatalog.DAIRY.code,
             spots = rebuild(board),
-            alice = CroissantPlayer(crumbs = 0, confectioners = 7, out = true),
-            carol = CroissantPlayer(crumbs = 0, confectioners = 0),
+            alice = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 7, out = true),
+            carol = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 0),
             current = CAROL,
         )
 
@@ -445,8 +494,8 @@ class CroissantSessionScenariosTest {
             board = board,
             currentTile = CroissantCatalog.BAKERY_ONE.code,
             spots = spots,
-            alice = CroissantPlayer(crumbs = 0, confectioners = 6),
-            carol = CroissantPlayer(crumbs = 0, confectioners = 7),
+            alice = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 6),
+            carol = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 7),
         )
         val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
 
@@ -532,7 +581,7 @@ class CroissantSessionScenariosTest {
         CroissantMove(CroissantGameRules.PLACE_TILE, CroissantMoveData(x = x, y = y, rotation = rotation))
 
     private fun tile(x: Int, y: Int, type: CroissantTileType, rotation: Int) =
-        CroissantPlacedTile("$x:$y", x, y, type.code, rotation)
+        CroissantPlacedTile("$x:$y", x, y, type.code, rotation, playerId = null)
 
     /**
      * Состояние на шаге кондитера после выкладки [placed] в [state]: тайл на поле, участки пересобраны так же, как в
@@ -555,8 +604,8 @@ class CroissantSessionScenariosTest {
         currentTile: String?,
         spots: List<CroissantSpot>,
         pending: CroissantPending? = null,
-        alice: CroissantPlayer = CroissantPlayer(crumbs = 0, confectioners = 7),
-        bob: CroissantPlayer = CroissantPlayer(crumbs = 0, confectioners = 7),
+        alice: CroissantPlayer = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 7),
+        bob: CroissantPlayer = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 7),
         carol: CroissantPlayer? = null,
         current: UUID = ALICE,
     ): SessionState<Any> = SessionState(

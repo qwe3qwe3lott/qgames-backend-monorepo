@@ -121,6 +121,12 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
             .containsExactlyInAnyOrder("sides", "dairy", "garden")
         assertThat(schemas.path("CroissantTrailDto").path("properties").has("bakery")).isTrue()
         assertThat(schemas.path("CroissantSessionStateDto").path("properties").has("tiles")).isFalse()
+        // Цвет игрока и автор тайла — в состоянии: фронт не выводит их из id и не знает seed.
+        assertThat(strings(schemas.path("CroissantPlayerDto").path("required"))).contains("color")
+        assertThat(strings(schemas.path("CroissantPlayerDto").path("properties").path("color").path("enum")))
+            .containsExactly("RED", "YELLOW", "GREEN", "BLUE", "BLACK")
+        // У стартового тайла автора нет: поле nullable, поэтому не в required.
+        assertThat(schemas.path("CroissantPlacedTileDto").path("properties").has("playerId")).isTrue()
     }
 
     /** Поток событий комнаты: text/event-stream со схемой-union событий, конверты {type, data} в components. */
