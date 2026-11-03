@@ -48,8 +48,11 @@ class CroissantGameRules :
 
     override val settingsLimits = CroissantSettingsLimits(CroissantConfectionersRange, CroissantTimePresets)
 
-    /** Каталог тайлов: клиент получает его с карточкой игры, состояние ссылается на тип тайла по коду. */
-    override val assets = CroissantAssets(CroissantCatalog.TYPES)
+    /**
+     * Каталог тайлов и состав колоды по модулям: клиент получает их с карточкой игры, состояние ссылается на тип тайла по
+     * коду.
+     */
+    override val assets = CroissantAssets(CroissantCatalog.TYPES, listOf(CroissantCatalog.BASE_MODULE))
 
     override fun playerClass(stage: String) = CroissantPlayer::class.java
 
@@ -84,13 +87,22 @@ class CroissantGameRules :
     override fun clock(settings: CroissantAdvancedSettings): TimeControlSettings = settings.timeControl
 
     override fun start(players: List<UUID>, seed: Long, settings: CroissantAdvancedSettings): GameStart<CroissantGameState> {
-        val startTile = CroissantPlacedTile(id = CELL_ORIGIN, x = 0, y = 0, tile = CroissantCatalog.START_TILE, rotation = 0)
+        val startTile = CroissantPlacedTile(
+            id = CELL_ORIGIN,
+            x = 0,
+            y = 0,
+            tile = CroissantCatalog.START_TILE,
+            rotation = 0,
+            playerId = null,
+        )
         val board = listOf(startTile)
         val layout = CroissantLayout(board)
         val spots = CroissantNetwork.rebuild(layout, board, emptyList())
         val deck = CroissantCatalog.deck(seed)
         val drawn = draw(board, deck, from = 0)
         val first = players[Math.floorMod(Random(seed).nextInt(), players.size)]
+        // Свой поток случайности из seed: цвета не зависят от того, сколько чисел взял выбор первого игрока.
+        val colors = CroissantColor.entries.shuffled(Random(seed xor COLOR_SALT))
         return GameStart(
             stage = Stages.PLAY,
             game = CroissantGameState(
@@ -100,9 +112,17 @@ class CroissantGameRules :
                 currentTile = drawn.tile,
                 deckPos = drawn.pos,
                 deckSize = deck.size,
+                deckReturns = emptyList(),
             ),
             turns = Turns.initial(players, rounds = null, first = first),
-            players = players.associateWith { CroissantPlayer(crumbs = 0, confectioners = settings.confectioners) },
+            players = players.withIndex().associate { (index, id) ->
+                id to CroissantPlayer(
+                    color = colors[index],
+                    crumbs = 0,
+                    confectioners = settings.confectioners,
+                    out = false,
+                )
+            },
         )
     }
 
@@ -121,8 +141,8 @@ class CroissantGameRules :
     }
 
     /**
-     * Время игрока вышло: тайл кладётся в случайный законный вариант по seed, кондитер не ставится — партия не стоит.
-     * На шаге кондитера ход просто завершается.
+     * Время игрока вышло: он выбывает — больше не ходит и не может победить, но крошки ему считаются. Невыложенный тайл
+     * возвращается в колоду (место — из seed), шаг кондитера закрывается. Остался один невыбывший — партия заканчивается итоговым подсчётом.
      */
     override fun onTimeout(
         state: SessionState<CroissantGameState>,
@@ -131,42 +151,20 @@ class CroissantGameRules :
     ): List<SessionEvent> {
         val current = state.turns.currentPlayerId ?: return emptyList()
         val turn = turn(state, seed)
-        if (state.game.pending != null) {
-            turn.events += SessionEvents.info(CONFECTIONER_SKIPPED, mapOf("playerId" to current, "timeout" to true))
-            turn.advance(current)
-            return turn.events
-        }
-        val tile = state.game.currentTile ?: return emptyList()
-        val placements = CroissantLayout(state.game.board).placements(tile)
-        if (placements.isEmpty()) return emptyList()
-        val random = Random(seed * ODD + state.game.board.size)
-        val placement = placements[random.nextInt(placements.size)]
-        val rotation = placement.rotations[random.nextInt(placement.rotations.size)]
-        turn.events += SessionEvents.info(
-            MOVE_TIMED_OUT,
-            mapOf("playerId" to current, "x" to placement.x, "y" to placement.y, "rotation" to rotation),
-        )
-        turn.place(current, CroissantMove(PLACE_TILE, CroissantMoveData(placement.x, placement.y, rotation)))
-        if (turn.game.pending != null) {
-            turn.events += SessionEvents.info(CONFECTIONER_SKIPPED, mapOf("playerId" to current, "timeout" to true))
-            turn.advance(current)
-        }
+        turn.events += SessionEvents.info(MOVE_TIMED_OUT, mapOf("playerId" to current))
+        turn.eliminate(current)
         return turn.events
     }
 
     override fun moveOptions(state: SessionState<CroissantGameState>, playerId: UUID): List<MoveOption> {
         if (state.turns.currentPlayerId != playerId) return emptyList()
-        val me = state.players.firstOrNull { it.id == playerId }?.game as? CroissantPlayer ?: return emptyList()
         val pending = state.game.pending
+        // Шаг кондитера бывает, только когда есть свободный участок и фишка: иначе `place` сам передаёт ход.
         if (pending != null) {
-            return if (me.confectioners > 0 && pending.spots.isNotEmpty()) {
-                listOf(
-                    MoveOption(PLACE_CONFECTIONER, mapOf(SPOTS to pending.spots)),
-                    MoveOption(SKIP_CONFECTIONER),
-                )
-            } else {
-                listOf(MoveOption(SKIP_CONFECTIONER))
-            }
+            return listOf(
+                MoveOption(PLACE_CONFECTIONER, mapOf(SPOTS to pending.spots)),
+                MoveOption(SKIP_CONFECTIONER),
+            )
         }
         val tile = state.game.currentTile ?: return emptyList()
         val placements = CroissantLayout(state.game.board).placements(tile)
@@ -212,7 +210,7 @@ class CroissantGameRules :
         turns: TurnsState,
         private val players: List<UUID>,
         private val fields: MutableMap<UUID, CroissantPlayer>,
-        seed: Long,
+        private val seed: Long,
     ) {
         var game = game
             private set
@@ -220,7 +218,7 @@ class CroissantGameRules :
             private set
         val events = mutableListOf<SessionEvent>()
 
-        private val deck = CroissantCatalog.deck(seed)
+        private var deck = CroissantCatalog.deck(seed, game.deckReturns)
 
         /**
          * Участки, завершённые тайлом этого хода: считаются в конце хода ([settle]), после шага кондитера, — так на
@@ -239,7 +237,7 @@ class CroissantGameRules :
             val layout = CroissantLayout(game.board)
             if (!layout.accepts(tileCode, x, y, rotation)) return ERR_ILLEGAL_PLACEMENT
 
-            val placed = CroissantPlacedTile(layout.cellId(x, y), x, y, tileCode, rotation)
+            val placed = CroissantPlacedTile(layout.cellId(x, y), x, y, tileCode, rotation, playerId)
             val board = game.board + placed
             val rebuilt = CroissantNetwork.rebuild(CroissantLayout(board), board, game.spots)
             val before = game.spots.associateBy { it.id }
@@ -254,6 +252,7 @@ class CroissantGameRules :
             val free = rebuilt.filter { spot ->
                 spot.members.any { it.tileId == placed.id } && spot.confectioners.isEmpty()
             }
+            // Ставить кондитера некуда или нечем — шага кондитера нет, ход сразу переходит.
             val me = fields.getValue(playerId)
             if (free.isEmpty() || me.confectioners == 0) {
                 advance(playerId)
@@ -293,6 +292,33 @@ class CroissantGameRules :
             return null
         }
 
+        /** Игрок выбывает по времени: закрыть его ход и передать очередь; остался один невыбывший — конец партии. */
+        fun eliminate(playerId: UUID) {
+            fields[playerId] = fields.getValue(playerId).copy(out = true)
+            events += SessionEvents.patch(PLAYER_OUT, playerPath(playerId), mapOf(OUT to true))
+            if (game.pending != null) {
+                events += SessionEvents.info(CONFECTIONER_SKIPPED, mapOf("playerId" to playerId, "timeout" to true))
+            } else if (game.currentTile != null) {
+                returnTile()
+            }
+            if (players.count { !fields.getValue(it).out } > 1) {
+                advance(playerId)
+                return
+            }
+            settle()
+            if (game.pending != null) events += SessionEvents.delete(TILE_PENDING_CLEARED, statePath(PENDING))
+            game = game.copy(pending = null)
+            finish(RESULT_TIMEOUT)
+        }
+
+        /** Невыложенный тайл возвращается в колоду: место выводится из seed ([CroissantCatalog.deck]). */
+        private fun returnTile() {
+            val returns = game.deckReturns + game.deckPos
+            deck = CroissantCatalog.deck(seed, returns)
+            game = game.copy(deckReturns = returns, deckSize = deck.size)
+            events += SessionEvents.patch(TILE_RETURNED, statePath(), mapOf(DECK_RETURNS to returns, DECK_SIZE to deck.size))
+        }
+
         /**
          * Ход завершён: подсчитать завершённые участки, снять ожидание, взять следующий тайл и передать очередь; колода
          * кончилась — итоговый подсчёт.
@@ -315,11 +341,13 @@ class CroissantGameRules :
             if (next == null) {
                 events += SessionEvents.patch(TILE_EXHAUSTED, statePath(), mapOf(CURRENT_TILE to null, DECK_POS to pos))
                 game = game.copy(currentTile = null, deckPos = pos)
-                finish()
+                finish(RESULT_SCORED)
                 return
             }
             events += SessionEvents.patch(TILE_DRAWN, statePath(), mapOf(CURRENT_TILE to next, DECK_POS to pos))
-            val moved = Turns.next(turns, players)
+            // Очередь идёт по местам и пропускает выбывших; в игре всегда хотя бы двое (см. `eliminate`).
+            var moved = Turns.next(turns, players)
+            while (moved.currentPlayerId?.let { fields.getValue(it).out } == true) moved = Turns.next(moved, players)
             turns = moved
             events += Turns.changed(moved)
             game = game.copy(currentTile = next, deckPos = pos)
@@ -355,8 +383,11 @@ class CroissantGameRules :
             toSettle = emptyList()
         }
 
-        /** Итоговый подсчёт: незавершённые пекарни, тропы, сыроварни и луга; победители — по большинству кондитеров. */
-        fun finish() {
+        /**
+         * Итоговый подсчёт: незавершённые пекарни, тропы, сыроварни и луга — по большинству кондитеров, в том числе
+         * выбывших. Победители — больше всех крошек среди невыбывших; [reason] — почему партия кончилась.
+         */
+        fun finish(reason: String) {
             val layout = CroissantLayout(game.board)
             val gained = mutableMapOf<UUID, Int>()
             game.spots.filter { !it.complete }.forEach { spot ->
@@ -368,12 +399,13 @@ class CroissantGameRules :
             award(gained, emptyMap())
             val totals = fields.mapValues { it.value.crumbs }
             events += SessionEvents.info(GAME_SCORED, mapOf("crumbs" to totals.mapKeys { it.key.toString() }))
-            val best = totals.values.maxOrNull() ?: 0
-            val winners = totals.filterValues { it == best }.keys.sortedBy { it.toString() }
+            val contenders = totals.filterKeys { !fields.getValue(it).out }
+            val best = contenders.values.maxOrNull() ?: 0
+            val winners = contenders.filterValues { it == best }.keys.sortedBy { it.toString() }
             val result = if (winners.size == 1) {
-                ResultState(ResultOutcome.WIN, winners, RESULT_SCORED)
+                ResultState(ResultOutcome.WIN, winners, reason)
             } else {
-                ResultState(ResultOutcome.DRAW, emptyList(), RESULT_SCORED)
+                ResultState(ResultOutcome.DRAW, emptyList(), reason)
             }
             events += Result.set(result)
             events += SessionEvents.finished()
@@ -417,6 +449,9 @@ class CroissantGameRules :
         /** Стартовая клетка партии. */
         const val CELL_ORIGIN = "0:0"
 
+        /** Соль seed для раздачи цветов: поток случайности, отдельный от выбора первого игрока. */
+        private const val COLOR_SALT = 0x5EED_C010L
+
         const val PLACE_TILE = "PLACE_TILE"
         const val PLACE_CONFECTIONER = "PLACE_CONFECTIONER"
         const val SKIP_CONFECTIONER = "SKIP_CONFECTIONER"
@@ -438,6 +473,15 @@ class CroissantGameRules :
         const val MOVE_TIMED_OUT = "move-timed-out"
 
         const val RESULT_SCORED = "SCORED"
+
+        /** Партия кончилась: остался один невыбывший игрок, у остальных вышло время. */
+        const val RESULT_TIMEOUT = "TIMEOUT"
+
+        /** PATCH состояния `{deckReturns, deckSize}`: невыложенный тайл выбывшего вернулся в колоду. */
+        const val TILE_RETURNED = "tile-returned"
+
+        /** PATCH игрока `{out: true}`: у игрока вышло время, он выбыл. */
+        const val PLAYER_OUT = "player-out"
 
         const val ERR_FINISHED = "GAME_FINISHED"
         const val ERR_NOT_YOUR_TURN = "NOT_YOUR_TURN"
@@ -465,10 +509,10 @@ class CroissantGameRules :
         private const val PENDING = "pending"
         private const val CURRENT_TILE = "currentTile"
         private const val DECK_POS = "deckPos"
+        private const val DECK_SIZE = "deckSize"
+        private const val DECK_RETURNS = "deckReturns"
         private const val CRUMBS = "crumbs"
         private const val CONFECTIONERS = "confectioners"
-
-        /** Нечётный множитель для вывода случайности таймаута из seed. */
-        private const val ODD = 31L
+        private const val OUT = "out"
     }
 }

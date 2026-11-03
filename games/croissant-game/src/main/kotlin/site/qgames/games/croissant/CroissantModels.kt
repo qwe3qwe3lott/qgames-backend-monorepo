@@ -29,8 +29,14 @@ data class CroissantTimePreset(
     val bonusSeconds: Int,
 )
 
-/** Статичные данные игры для клиента: каталог типов тайлов ([GameRules.assets][site.qgames.games.core.GameRules.assets]). */
-data class CroissantAssets(val tiles: List<CroissantTileType>)
+/**
+ * Статичные данные игры для клиента ([GameRules.assets][site.qgames.games.core.GameRules.assets]): каталог типов тайлов
+ * и состав колоды по модулям (базовая игра, дополнения).
+ */
+data class CroissantAssets(val tiles: List<CroissantTileType>, val modules: List<CroissantModule>)
+
+/** Модуль игры (базовая игра или дополнение): сколько тайлов каждого типа он кладёт в коробку, по коду типа. */
+data class CroissantModule(val code: String, val counts: Map<String, Int>)
 
 /** Границы настроек для формы комнаты. */
 data class CroissantSettingsLimits(
@@ -52,15 +58,21 @@ data class CroissantGameState(
     val currentTile: String?,
     val deckPos: Int,
     val deckSize: Int,
+    /** Моменты возврата невыложенного тайла в колоду: `deckPos` на тот момент ([CroissantCatalog.deck]). */
+    val deckReturns: List<Int>,
 )
 
-/** Выложенный тайл: адресуется по id (`x:y`), [rotation] — в градусах, 0/90/180/270. */
+/**
+ * Выложенный тайл: адресуется по id (`x:y`), [rotation] — в градусах, 0/90/180/270. [playerId] — кто выложил;
+ * null у стартового тайла.
+ */
 data class CroissantPlacedTile(
     val id: String,
     val x: Int,
     val y: Int,
     val tile: String,
     val rotation: Int,
+    val playerId: java.util.UUID?,
 )
 
 /**
@@ -74,10 +86,22 @@ data class CroissantPending(
     val completed: List<String>,
 )
 
-/** Поля игры у игрока: накопленные «Золотые крошки» и непоставленные кондитеры. */
+/** Цвет кондитеров игрока: назначается в начале партии из seed, без повторов (игроков не больше, чем цветов). */
+enum class CroissantColor {
+    RED,
+    YELLOW,
+    GREEN,
+    BLUE,
+    BLACK,
+}
+
+/** Поля игры у игрока: цвет, накопленные «Золотые крошки» и непоставленные кондитеры. */
 data class CroissantPlayer(
+    val color: CroissantColor,
     val crumbs: Int,
     val confectioners: Int,
+    /** Выбыл: вышло время. Больше не ходит и не может победить, крошки ему считаются как всем. */
+    val out: Boolean = false,
 )
 
 /** Ход — конверт платформы: `{type, data}`. Типы: `PLACE_TILE`, `PLACE_CONFECTIONER`, `SKIP_CONFECTIONER`. */

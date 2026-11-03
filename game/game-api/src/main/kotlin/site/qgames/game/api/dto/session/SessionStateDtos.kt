@@ -320,7 +320,18 @@ data class CroissantPlacedTileDto(
     /** Код типа тайла в каталоге игры (CroissantAssetsDto.tiles). */
     val tile: String,
     val rotation: Int,
+    /** Кто выложил тайл; null у стартового тайла. */
+    val playerId: UUID?,
 )
+
+/** Цвет кондитеров игрока: назначается в начале партии случайно, без повторов. */
+enum class CroissantColor {
+    RED,
+    YELLOW,
+    GREEN,
+    BLUE,
+    BLACK,
+}
 
 /** Участок тайла в составе связного участка сети. */
 data class CroissantSpotMemberDto(
@@ -362,15 +373,19 @@ data class CroissantPendingDto(
     val completed: List<String>,
 )
 
-/** Игрок «Круассана»: поля core и «Золотые крошки» с остатком кондитеров. */
+/** Игрок «Круассана»: поля core, цвет, «Золотые крошки» и остаток кондитеров. */
 data class CroissantPlayerDto(
     val id: UUID,
     /** Что игрок может сделать сейчас (PLACE_TILE или PLACE_CONFECTIONER, SKIP_CONFECTIONER). */
     val moveOptions: List<MoveOptionDto>,
+    /** Цвет кондитеров игрока. */
+    val color: CroissantColor,
     /** Накопленные «Золотые крошки». */
     val crumbs: Int,
     /** Непоставленные кондитеры. */
     val confectioners: Int,
+    /** Выбыл: вышло время. Не ходит и не может победить, крошки ему считаются как всем. */
+    val out: Boolean,
 )
 
 /**
@@ -395,8 +410,13 @@ data class CroissantSessionStateDto(
     val currentTile: String?,
     /** Сколько тайлов колоды уже открыто. */
     val deckPos: Int,
-    /** Размер колоды партии без стартового тайла. */
+    /** Размер колоды партии без стартового тайла; растёт на 1 при каждом возврате тайла. */
     val deckSize: Int,
+    /**
+     * Моменты возврата невыложенного тайла выбывшего в колоду: `deckPos` на тот момент. Место вставки сервер выводит
+     * из seed, порядок колоды не раскрывается.
+     */
+    val deckReturns: List<Int>,
 ) : SessionStateDto
 
 /** Параметры хода «Круассана» (`data` тела хода): клетка и поворот либо участок для кондитера. */

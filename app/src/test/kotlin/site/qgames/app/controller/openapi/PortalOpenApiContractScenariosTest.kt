@@ -114,10 +114,29 @@ class PortalOpenApiContractScenariosTest : BaseIntegrationTest() {
             .isEqualTo("#/components/schemas/CroissantAssetsDto")
         val croissant = schemas.path("CroissantAssetsDto")
         assertThat(strings(croissant.path("properties").path("gameCode").path("enum"))).containsExactly("croissant")
-        assertThat(strings(croissant.path("required"))).containsExactlyInAnyOrder("gameCode", "tiles")
+        assertThat(strings(croissant.path("required"))).containsExactlyInAnyOrder("gameCode", "tiles", "modules")
+        assertThat(strings(schemas.path("CroissantModuleDto").path("required"))).containsExactlyInAnyOrder("code", "tiles")
+        val moduleTile = schemas.path("CroissantModuleTileDto")
+        assertThat(strings(moduleTile.path("required"))).containsExactlyInAnyOrder("code", "count")
+        assertThat(moduleTile.path("properties").path("count").path("minimum").asInt()).isEqualTo(1)
         assertThat(strings(schemas.path("CroissantTileDto").path("required")))
-            .containsExactlyInAnyOrder("code", "title", "edges", "bakeries", "trails", "dairy", "pastures")
+            .containsExactlyInAnyOrder("code", "title", "edges", "bakeries", "trails", "structures", "pastures")
+        // Стороны — объект с заглавными ключами N/E/S/W, все обязательны.
+        assertThat(strings(schemas.path("CroissantTileEdgesDto").path("required")))
+            .containsExactlyInAnyOrder("N", "E", "S", "W")
+        assertThat(strings(schemas.path("CroissantTileEdgeDto").path("required"))).containsExactlyInAnyOrder("type", "index")
+        assertThat(strings(schemas.path("CroissantStructuresDto").path("required"))).containsExactlyInAnyOrder("garden", "dairy")
+        assertThat(strings(schemas.path("CroissantTrailDto").path("required"))).containsExactly("structure")
+        assertThat(schemas.path("CroissantTrailDto").path("properties").has("bakeryIndex")).isTrue()
+        assertThat(strings(schemas.path("CroissantPastureDto").path("required")))
+            .containsExactlyInAnyOrder("halves", "adjacentBakeries")
         assertThat(schemas.path("CroissantSessionStateDto").path("properties").has("tiles")).isFalse()
+        // Цвет игрока и автор тайла — в состоянии: фронт не выводит их из id и не знает seed.
+        assertThat(strings(schemas.path("CroissantPlayerDto").path("required"))).contains("color")
+        assertThat(strings(schemas.path("CroissantPlayerDto").path("properties").path("color").path("enum")))
+            .containsExactly("RED", "YELLOW", "GREEN", "BLUE", "BLACK")
+        // У стартового тайла автора нет: поле nullable, поэтому не в required.
+        assertThat(schemas.path("CroissantPlacedTileDto").path("properties").has("playerId")).isTrue()
     }
 
     /** Поток событий комнаты: text/event-stream со схемой-union событий, конверты {type, data} в components. */
