@@ -14,7 +14,6 @@ import site.qgames.games.core.Result
 import site.qgames.games.core.ResultOutcome
 import site.qgames.games.core.ResultState
 import site.qgames.games.core.SessionEvents
-import site.qgames.games.core.SessionDocument
 import site.qgames.games.core.SessionEngine
 import site.qgames.games.core.SessionState
 import site.qgames.games.core.SessionStatus
@@ -59,7 +58,7 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `rotation turns the sides of a tile`() {
-        val tile = CroissantCatalog.BAKERY_ONE
+        val tile = CroissantCatalog.BAKERY
         assertThat(CroissantShape(tile, 0).edge(CroissantDirection.N)).isEqualTo(CroissantEdge.BAKERY)
         assertThat(CroissantShape(tile, 90).edge(CroissantDirection.E)).isEqualTo(CroissantEdge.BAKERY)
         assertThat(CroissantShape(tile, 180).edge(CroissantDirection.S)).isEqualTo(CroissantEdge.BAKERY)
@@ -70,8 +69,8 @@ class CroissantSessionScenariosTest {
     @Test
     fun `pasture half-edges meet across the cell border`() {
         // Прямая тропа: полуребра нижнего тайла через границу совпадают с полуребрами верхнего.
-        val lower = CroissantShape(CroissantCatalog.TRAIL_STRAIGHT, 0).pastureHalves(0)
-        val upperShape = CroissantShape(CroissantCatalog.TRAIL_STRAIGHT, 0)
+        val lower = CroissantShape(CroissantCatalog.TRAIL, 0).pastureHalves(0)
+        val upperShape = CroissantShape(CroissantCatalog.TRAIL, 0)
         val upper = (0 until upperShape.pastureCount()).flatMap { upperShape.pastureHalves(it) }
         val facing = lower.map { CroissantHalfEdge(it.dir.opposite, it.half) }
 
@@ -165,10 +164,10 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `branches of a fork end at the garden and are separate trails`() {
-        // Развилка: тропы N, E и S до сада. Ворота пекарни сверху замыкают северную ветку: пекарня — с одного конца,
+        // Развилка: тропы N, E и S до сада. Тропа в пекарню сверху замыкает северную ветку: пекарня — с одного конца,
         // сад — с другого.
-        val fork = tile(0, 0, CroissantCatalog.TRAIL_CROSS, 0)
-        val gate = tile(0, 1, CroissantCatalog.BAKERY_TRAIL, 0)
+        val fork = tile(0, 0, CroissantCatalog.TRAIL_FORK_WITH_GARDEN, 270)
+        val gate = tile(0, 1, CroissantCatalog.HUGE_BAKERY_WITH_TRAIL, 0)
         val trails = rebuild(listOf(fork, gate)).filter { it.type == CroissantSpotType.TRAIL }
 
         assertThat(trails).hasSize(3)
@@ -217,10 +216,10 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `the confectioner step is skipped when every spot of the tile is taken`() {
-        val first = tile(0, 0, CroissantCatalog.BAKERY_FOUR, 0)
+        val first = tile(0, 0, CroissantCatalog.BAKERY_CENTER_WITH_SIGN, 0)
         val board = listOf(first)
         val spots = rebuild(board).map { it.copy(confectioners = listOf(CroissantConfectioner(BOB, first.id))) }
-        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY_FOUR.code, spots = spots)
+        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY_CENTER_WITH_SIGN.code, spots = spots)
 
         val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 0)) as Decision.Accepted
 
@@ -229,10 +228,10 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `the confectioner step is skipped when the player has no confectioners left`() {
-        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_ONE, 0))
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY, 0))
         val state = sessionState(
             board = board,
-            currentTile = CroissantCatalog.BAKERY_ONE.code,
+            currentTile = CroissantCatalog.BAKERY.code,
             spots = rebuild(board),
             alice = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 0),
         )
@@ -253,7 +252,7 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `a tile closing a bakery pays crumbs to the confectioner owner`() {
-        val first = tile(0, 0, CroissantCatalog.BAKERY_ONE, 0)
+        val first = tile(0, 0, CroissantCatalog.BAKERY, 0)
         val board = listOf(first)
         val base = rebuild(board)
         val bakery = base.single { it.type == CroissantSpotType.BAKERY }
@@ -262,7 +261,7 @@ class CroissantSessionScenariosTest {
         }
         val state = sessionState(
             board = board,
-            currentTile = CroissantCatalog.BAKERY_ONE.code,
+            currentTile = CroissantCatalog.BAKERY.code,
             spots = spots,
             alice = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 6),
         )
@@ -312,8 +311,8 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `a confectioner on a bakery the tile has just closed scores at once and returns`() {
-        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_ONE, 0))
-        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY_ONE.code, spots = rebuild(board))
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY, 0))
+        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY.code, spots = rebuild(board))
 
         val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
         val pending = placed.events.single { it.code == CroissantGameRules.TILE_PENDING }.value as CroissantPending
@@ -344,8 +343,8 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `a closed bakery without confectioners scores nobody after the step is skipped`() {
-        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_ONE, 0))
-        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY_ONE.code, spots = rebuild(board))
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY, 0))
+        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY.code, spots = rebuild(board))
 
         val placed = rules.decide(state, settings, 1L, ALICE, place(0, 1, 180)) as Decision.Accepted
         val skipped = rules.decide(
@@ -363,8 +362,8 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `a tile that does not match the border is rejected`() {
-        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_ONE, 0))
-        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY_ONE.code, spots = rebuild(board))
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY, 0))
+        val state = sessionState(board = board, currentTile = CroissantCatalog.BAKERY.code, spots = rebuild(board))
 
         val decision = rules.decide(state, settings, 1L, ALICE, place(0, 1, 0))
 
@@ -378,7 +377,7 @@ class CroissantSessionScenariosTest {
         val board = listOf(tile(0, 0, CroissantCatalog.DAIRY, 0))
         val state = sessionState(
             board = board,
-            currentTile = CroissantCatalog.BAKERY_ONE.code,
+            currentTile = CroissantCatalog.BAKERY.code,
             spots = rebuild(board),
         )
 
@@ -388,7 +387,7 @@ class CroissantSessionScenariosTest {
         assertThat(pending.spots).isNotEmpty()
 
         val waiting = sessionState(
-            board = board + tile(0, 1, CroissantCatalog.BAKERY_ONE, 0),
+            board = board + tile(0, 1, CroissantCatalog.BAKERY, 0),
             currentTile = null,
             spots = pending.spots.map { id ->
                 placed.events.filter { it.code == CroissantGameRules.SPOT_UPDATED }
@@ -418,7 +417,7 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `another players move is rejected`() {
-        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_TRAIL, 0))
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_AND_TRAIL_NEAR_BY, 0))
         val state = sessionState(board = board, currentTile = CroissantCatalog.DAIRY.code, spots = rebuild(board))
 
         val decision = rules.decide(state, settings, 3L, BOB, place(0, 1, 0))
@@ -429,7 +428,7 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `a timed out player of two drops out and the other wins even with fewer crumbs`() {
-        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_TRAIL, 0))
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_AND_TRAIL_NEAR_BY, 0))
         val state = sessionState(
             board = board,
             currentTile = CroissantCatalog.DAIRY.code,
@@ -455,7 +454,7 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `a timed out player of three drops out and the turn goes on`() {
-        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_TRAIL, 0))
+        val board = listOf(tile(0, 0, CroissantCatalog.BAKERY_AND_TRAIL_NEAR_BY, 0))
         val state = sessionState(
             board = board,
             currentTile = CroissantCatalog.DAIRY.code,
@@ -523,7 +522,7 @@ class CroissantSessionScenariosTest {
 
     @Test
     fun `a timeout on the confectioner step settles what the tile has closed`() {
-        val first = tile(0, 0, CroissantCatalog.BAKERY_ONE, 0)
+        val first = tile(0, 0, CroissantCatalog.BAKERY, 0)
         val board = listOf(first)
         val base = rebuild(board)
         val bakery = base.single { it.type == CroissantSpotType.BAKERY }
@@ -532,7 +531,7 @@ class CroissantSessionScenariosTest {
         }
         val state = sessionState(
             board = board,
-            currentTile = CroissantCatalog.BAKERY_ONE.code,
+            currentTile = CroissantCatalog.BAKERY.code,
             spots = spots,
             alice = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 6),
             carol = CroissantPlayer(color = CroissantColor.RED, crumbs = 0, confectioners = 7),

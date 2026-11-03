@@ -110,7 +110,7 @@ data class CroissantStructures(val garden: Boolean = false, val dairy: Boolean =
 data class CroissantPastureSpec(val halves: List<CroissantHalfEdge>, val adjacentBakeries: List<Int> = emptyList())
 
 /**
- * Тип тайла (их 14, а тайлов в колоде 72). Тайл — перечень элементов: пекарни, тропы, постройка в центре
+ * Тип тайла (их 24, а тайлов в колоде 72). Тайл — перечень элементов: пекарни, тропы, постройка в центре
  * ([structures]) и луга. [edges] — что выходит на каждую сторону: на одной стороне строго один элемент — пекарня,
  * тропа или луг, и стороны пекарен и троп задаются только здесь.
  *
@@ -275,7 +275,7 @@ object CroissantGeometry {
     }
 }
 
-/** Каталог тайлов: 14 типов, колода 72 тайла вместе со стартовым. */
+/** Каталог тайлов: 24 типа, колода 72 тайла вместе со стартовым. */
 object CroissantCatalog {
 
     private val N0 = CroissantHalfEdge(CroissantDirection.N, 0)
@@ -300,7 +300,15 @@ object CroissantCatalog {
     private fun edges(n: CroissantEdgeSpec, e: CroissantEdgeSpec, s: CroissantEdgeSpec, w: CroissantEdgeSpec) =
         CroissantTileEdges(n, e, s, w)
 
-    /** Сыроварня в открытом поле. */
+    val TRAIL_TO_DAIRY = CroissantTileType(
+        code = "trail-to-dairy",
+        title = "Сыроварня у тропы",
+        edges = edges(pastureEdge(0), pastureEdge(0), trailEdge(0), pastureEdge(0)),
+        trails = listOf(CroissantTrailSpec(structure = true)),
+        structures = CroissantStructures(dairy = true),
+        pastures = listOf(pasture(*ALL_HALVES.toTypedArray())),
+    )
+
     val DAIRY = CroissantTileType(
         code = "dairy",
         title = "Сыроварня",
@@ -309,153 +317,278 @@ object CroissantCatalog {
         pastures = listOf(pasture(*ALL_HALVES.toTypedArray())),
     )
 
-    /** Сыроварня у мучной тропы: тропа входит с севера и заканчивается у ворот, луг огибает сыроварню целиком. */
-    val DAIRY_TRAIL = CroissantTileType(
-        code = "dairy-trail",
-        title = "Сыроварня у тропы",
-        edges = edges(trailEdge(0), pastureEdge(0), pastureEdge(0), pastureEdge(0)),
-        trails = listOf(CroissantTrailSpec(structure = true)),
-        structures = CroissantStructures(dairy = true),
-        pastures = listOf(pasture(*ALL_HALVES.toTypedArray())),
-    )
-
-    /** Пекарня на одной стороне. */
-    val BAKERY_ONE = CroissantTileType(
-        code = "bakery-one",
-        title = "Пекарня",
-        edges = edges(bakeryEdge(0), pastureEdge(0), pastureEdge(0), pastureEdge(0)),
-        bakeries = listOf(CroissantBakerySpec()),
-        pastures = listOf(pasture(E0, E1, S0, S1, W0, W1, adjacentBakeries = listOf(0))),
-    )
-
-    /** Пекарня на одной стороне с вывеской. */
-    val BAKERY_ONE_SIGN = CroissantTileType(
-        code = "bakery-one-sign",
-        title = "Пекарня с вывеской",
-        edges = edges(bakeryEdge(0), pastureEdge(0), pastureEdge(0), pastureEdge(0)),
-        bakeries = listOf(CroissantBakerySpec(sign = true)),
-        pastures = listOf(pasture(E0, E1, S0, S1, W0, W1, adjacentBakeries = listOf(0))),
-    )
-
-    /** Угловая пекарня на двух соседних сторонах. */
-    val BAKERY_CORNER = CroissantTileType(
-        code = "bakery-corner",
-        title = "Угловая пекарня",
-        edges = edges(bakeryEdge(0), bakeryEdge(0), pastureEdge(0), pastureEdge(0)),
-        bakeries = listOf(CroissantBakerySpec(sign = true)),
-        pastures = listOf(pasture(S0, S1, W0, W1, adjacentBakeries = listOf(0))),
-    )
-
-    /** Прямая тропа, луга по обе стороны разделены. */
-    val TRAIL_STRAIGHT = CroissantTileType(
-        code = "trail-straight",
-        title = "Прямая тропа",
-        edges = edges(trailEdge(0), pastureEdge(1), trailEdge(0), pastureEdge(0)),
-        trails = listOf(CroissantTrailSpec()),
-        pastures = listOf(pasture(N0, W0, W1, S0), pasture(N1, E0, E1, S1)),
-    )
-
-    /** Поворот тропы, внутренний и внешний луг разделены. */
-    val TRAIL_CURVE = CroissantTileType(
-        code = "trail-curve",
-        title = "Изгиб тропы",
-        edges = edges(trailEdge(0), pastureEdge(1), pastureEdge(1), trailEdge(0)),
-        trails = listOf(CroissantTrailSpec()),
-        pastures = listOf(pasture(N0, W0), pasture(N1, E0, E1, S0, S1, W1)),
-    )
-
-    /** Сад, к которому сходятся три тропы: каждая заканчивается у сада, лугов три. */
-    val TRAIL_CROSS = CroissantTileType(
-        code = "trail-cross",
-        title = "Развилка троп",
-        edges = edges(trailEdge(0), trailEdge(1), trailEdge(2), pastureEdge(2)),
-        trails = List(3) { CroissantTrailSpec(structure = true) },
-        structures = CroissantStructures(garden = true),
-        pastures = listOf(pasture(N1, E0), pasture(E1, S1), pasture(S0, W0, W1, N0)),
-    )
-
-    /** Сад, к которому сходятся четыре тропы: каждая заканчивается у сада, лугов четыре. */
-    val TRAIL_JUNCTION = CroissantTileType(
-        code = "trail-junction",
-        title = "Перекрёсток троп",
-        edges = edges(trailEdge(0), trailEdge(1), trailEdge(2), trailEdge(3)),
-        trails = List(4) { CroissantTrailSpec(structure = true) },
-        structures = CroissantStructures(garden = true),
-        pastures = listOf(pasture(N0, W0), pasture(N1, E0), pasture(E1, S1), pasture(S0, W1)),
-    )
-
-    /** Пекарня и тропа напротив неё, тропа входит в пекарню; луг разделён тропой на две части. */
-    val BAKERY_TRAIL = CroissantTileType(
-        code = "bakery-trail",
-        title = "Ворота пекарни",
-        edges = edges(bakeryEdge(0), pastureEdge(1), trailEdge(0), pastureEdge(0)),
-        bakeries = listOf(CroissantBakerySpec()),
-        trails = listOf(CroissantTrailSpec(bakeryIndex = 0)),
-        pastures = listOf(
-            pasture(W0, W1, S0, adjacentBakeries = listOf(0)),
-            pasture(E0, E1, S1, adjacentBakeries = listOf(0)),
-        ),
-    )
-
-    /** Пекарня и тропа-дуга с востока на юг мимо неё: внутренний угол луга отделён, к пекарне примыкает внешний луг. */
-    val BAKERY_TRAIL_T = CroissantTileType(
-        code = "bakery-trail-t",
-        title = "Пекарня на распутье",
-        edges = edges(bakeryEdge(0), trailEdge(0), trailEdge(0), pastureEdge(0)),
-        bakeries = listOf(CroissantBakerySpec()),
-        trails = listOf(CroissantTrailSpec()),
-        pastures = listOf(
-            pasture(E0, S0, W0, W1, adjacentBakeries = listOf(0)),
-            pasture(E1, S1),
-        ),
-    )
-
-    /** Две пекарни напротив друг друга, тропа между ними. */
-    val BAKERY_TWO = CroissantTileType(
-        code = "bakery-two",
-        title = "Две пекарни",
-        edges = edges(bakeryEdge(0), trailEdge(0), bakeryEdge(1), trailEdge(0)),
-        bakeries = listOf(CroissantBakerySpec(), CroissantBakerySpec()),
-        trails = listOf(CroissantTrailSpec()),
-        pastures = listOf(
-            pasture(E0, W0, adjacentBakeries = listOf(0)),
-            pasture(E1, W1, adjacentBakeries = listOf(1)),
-        ),
-    )
-
-    /** Пекарня на трёх сторонах. */
-    val BAKERY_THREE = CroissantTileType(
-        code = "bakery-three",
-        title = "Большая пекарня",
-        edges = edges(bakeryEdge(0), bakeryEdge(0), bakeryEdge(0), pastureEdge(0)),
-        bakeries = listOf(CroissantBakerySpec(sign = true)),
-        pastures = listOf(pasture(W0, W1, adjacentBakeries = listOf(0))),
-    )
-
-    /** Пекарня по всему периметру. */
-    val BAKERY_FOUR = CroissantTileType(
-        code = "bakery-four",
-        title = "Пекарня-крепость",
+    val BAKERY_CENTER_WITH_SIGN = CroissantTileType(
+        code = "bakery-center-with-sign",
+        title = "Центр пекарни с вывеской",
         edges = edges(bakeryEdge(0), bakeryEdge(0), bakeryEdge(0), bakeryEdge(0)),
         bakeries = listOf(CroissantBakerySpec(sign = true)),
     )
 
+    val BAKERY_AND_TRAIL_NEAR_BY = CroissantTileType(
+        code = "bakery-and-trail-near-by",
+        title = "Тропа рядом с пекарней",
+        edges = edges(bakeryEdge(0), trailEdge(0), pastureEdge(1), trailEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        trails = listOf(CroissantTrailSpec()),
+        pastures = listOf(
+            pasture(E0, W0, adjacentBakeries = listOf(0)),
+            pasture(E1, S0, S1, W1),
+        ),
+    )
+
+    val BAKERY = CroissantTileType(
+        code = "bakery",
+        title = "Пекарня",
+        edges = edges(bakeryEdge(0), pastureEdge(0), pastureEdge(0), pastureEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        pastures = listOf(
+            pasture(E0, E1, S0, S1, W0, W1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val BAKERY_BRIDGE_WITH_SIGN = CroissantTileType(
+        code = "bakery-bridge-with-sign",
+        title = "Узкая пекарня с вывеской",
+        edges = edges(pastureEdge(0), bakeryEdge(0), pastureEdge(1), bakeryEdge(0)),
+        bakeries = listOf(CroissantBakerySpec(sign = true)),
+        pastures = listOf(
+            pasture(N0, N1, adjacentBakeries = listOf(0)),
+            pasture(S0, S1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val BAKERY_BRIDGE = CroissantTileType(
+        code = "bakery-bridge",
+        title = "Узкая пекарня",
+        edges = edges(pastureEdge(0), bakeryEdge(0), pastureEdge(1), bakeryEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        pastures = listOf(
+            pasture(N0, N1, adjacentBakeries = listOf(0)),
+            pasture(S0, S1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val TWO_OPPOSITE_BAKERIES = CroissantTileType(
+        code = "two-opposite-bakeries",
+        title = "Две пекарни напротив",
+        edges = edges(bakeryEdge(0), pastureEdge(0), bakeryEdge(1), pastureEdge(0)),
+        bakeries = listOf(CroissantBakerySpec(), CroissantBakerySpec()),
+        pastures = listOf(
+            pasture(E0, E1, W0, W1, adjacentBakeries = listOf(0, 1)),
+        ),
+    )
+
+    val TWO_NEIGHBOUR_BAKERIES = CroissantTileType(
+        code = "two-neighbour-bakeries",
+        title = "Две пекарни рядом",
+        edges = edges(bakeryEdge(0), pastureEdge(0), pastureEdge(0), bakeryEdge(1)),
+        bakeries = listOf(CroissantBakerySpec(), CroissantBakerySpec()),
+        pastures = listOf(
+            pasture(S0, S1, E0, E1, adjacentBakeries = listOf(0, 1)),
+        ),
+    )
+
+    val BAKERY_AND_TRAIL_TURN_NEAR_BY = CroissantTileType(
+        code = "bakery-and-trail-turn-near-by",
+        title = "Поворот тропы рядом с пекарней",
+        edges = edges(bakeryEdge(0), trailEdge(0), trailEdge(0), pastureEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        trails = listOf(CroissantTrailSpec()),
+        pastures = listOf(
+            pasture(W0, W1, S0, E0, adjacentBakeries = listOf(0)),
+            pasture(S1, E1),
+        ),
+    )
+
+    val BAKERY_AND_TRAIL_TURN_NEAR_BY_2 = CroissantTileType(
+        code = "bakery-and-trail-turn-near-by-2",
+        title = "Поворот тропы рядом с пекарней",
+        edges = edges(bakeryEdge(0), pastureEdge(0), trailEdge(0), trailEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        trails = listOf(CroissantTrailSpec()),
+        pastures = listOf(
+            pasture(W0, S1, E0, E1, adjacentBakeries = listOf(0)),
+            pasture(S0, W1),
+        ),
+    )
+
+    val BAKERY_AND_TRAIL_FORK_INTO_GARDEN_NEAR_BY = CroissantTileType(
+        code = "bakery-and-trail-fork-into-garden-near-by",
+        title = "Развилка тропы с садом рядом с пекарней",
+        edges = edges(bakeryEdge(0), trailEdge(0), trailEdge(1), trailEdge(2)),
+        bakeries = listOf(CroissantBakerySpec()),
+        trails = List(3) { CroissantTrailSpec(structure = true) },
+        structures = CroissantStructures(garden = true),
+        pastures = listOf(
+            pasture(W0, E0, adjacentBakeries = listOf(0)),
+            pasture(W1, S0),
+            pasture(S1, E1),
+        ),
+    )
+
+    val LARGE_BAKERY_WITH_SIGN = CroissantTileType(
+        code = "large-bakery-with-sign",
+        title = "Большая пекарня с вывеской",
+        edges = edges(bakeryEdge(0), bakeryEdge(0), pastureEdge(0), pastureEdge(0)),
+        bakeries = listOf(CroissantBakerySpec(sign = true)),
+        pastures = listOf(
+            pasture(S0, S1, W0, W1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val LARGE_BAKERY = CroissantTileType(
+        code = "large-bakery",
+        title = "Большая пекарня",
+        edges = edges(bakeryEdge(0), bakeryEdge(0), pastureEdge(0), pastureEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        pastures = listOf(
+            pasture(S0, S1, W0, W1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val LARGE_BAKERY_WITH_SIGN_AND_TRAIL_TURN_NEAR_BY = CroissantTileType(
+        code = "large-bakery-with-sign-and-trail-turn-near-by",
+        title = "Поворот тропы рядом с большой пекарней с вывеской",
+        edges = edges(bakeryEdge(0), trailEdge(0), trailEdge(0), bakeryEdge(0)),
+        bakeries = listOf(CroissantBakerySpec(sign = true)),
+        trails = listOf(CroissantTrailSpec()),
+        pastures = listOf(
+            pasture(S0, E0, adjacentBakeries = listOf(0)),
+            pasture(S1, E1),
+        ),
+    )
+
+    val LARGE_BAKERY_AND_TRAIL_TURN_NEAR_BY = CroissantTileType(
+        code = "large-bakery-and-trail-turn-near-by",
+        title = "Поворот тропы рядом с большой пекарней",
+        edges = edges(bakeryEdge(0), trailEdge(0), trailEdge(0), bakeryEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        trails = listOf(CroissantTrailSpec()),
+        pastures = listOf(
+            pasture(S0, E0, adjacentBakeries = listOf(0)),
+            pasture(S1, E1),
+        ),
+    )
+
+    val HUGE_BAKERY_WITH_SIGN = CroissantTileType(
+        code = "huge-bakery-with-sign",
+        title = "Огромная пекарня с вывеской",
+        edges = edges(bakeryEdge(0), bakeryEdge(0), pastureEdge(0), bakeryEdge(0)),
+        bakeries = listOf(CroissantBakerySpec(sign = true)),
+        pastures = listOf(
+            pasture(S0, S1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val HUGE_BAKERY = CroissantTileType(
+        code = "huge-bakery",
+        title = "Огромная пекарня",
+        edges = edges(bakeryEdge(0), bakeryEdge(0), pastureEdge(0), bakeryEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        pastures = listOf(
+            pasture(S0, S1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val HUGE_BAKERY_WITH_SIGN_AND_TRAIL = CroissantTileType(
+        code = "huge-bakery-with-sign-and-trail",
+        title = "Огромная пекарня с вывеской и тропой",
+        edges = edges(bakeryEdge(0), bakeryEdge(0), trailEdge(0), bakeryEdge(0)),
+        bakeries = listOf(CroissantBakerySpec(sign = true)),
+        trails = listOf(CroissantTrailSpec(bakeryIndex = 0)),
+        pastures = listOf(
+            pasture(S0, adjacentBakeries = listOf(0)),
+            pasture(S1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val HUGE_BAKERY_WITH_TRAIL = CroissantTileType(
+        code = "huge-bakery-with-trail",
+        title = "Огромная пекарня с тропой",
+        edges = edges(bakeryEdge(0), bakeryEdge(0), trailEdge(0), bakeryEdge(0)),
+        bakeries = listOf(CroissantBakerySpec()),
+        trails = listOf(CroissantTrailSpec(bakeryIndex = 0)),
+        pastures = listOf(
+            pasture(S0, adjacentBakeries = listOf(0)),
+            pasture(S1, adjacentBakeries = listOf(0)),
+        ),
+    )
+
+    val TRAIL = CroissantTileType(
+        code = "trail",
+        title = "Тропа",
+        edges = edges(trailEdge(0), pastureEdge(1), trailEdge(0), pastureEdge(0)),
+        trails = listOf(CroissantTrailSpec()),
+        pastures = listOf(
+            pasture(N0, W0, W1, S0),
+            pasture(N1, E0, E1, S1),
+        ),
+    )
+
+    val TRAIL_TURN = CroissantTileType(
+        code = "trail-turn",
+        title = "Поворот тропы",
+        edges = edges(pastureEdge(1), pastureEdge(1), trailEdge(0), trailEdge(0)),
+        trails = listOf(CroissantTrailSpec()),
+        pastures = listOf(
+            pasture(W1, S0),
+            pasture(W0, N0, N1, E0, E1, S1),
+        ),
+    )
+
+    val TRAIL_FORK_WITH_GARDEN = CroissantTileType(
+        code = "trail-fork-with-garden",
+        title = "Развилка тропы с садом",
+        edges = edges(pastureEdge(0), trailEdge(0), trailEdge(1), trailEdge(2)),
+        trails = List(3) { CroissantTrailSpec(structure = true) },
+        structures = CroissantStructures(garden = true),
+        pastures = listOf(
+            pasture(W0, N0, N1, E0),
+            pasture(W1, S0),
+            pasture(S1, E1),
+        ),
+    )
+
+    val TRAIL_CROSS_WITH_GARDEN = CroissantTileType(
+        code = "trail-cross-with-garden",
+        title = "Перекрёсток троп с садом",
+        edges = edges(trailEdge(0), trailEdge(1), trailEdge(2), trailEdge(3)),
+        trails = List(4) { CroissantTrailSpec(structure = true) },
+        structures = CroissantStructures(garden = true),
+        pastures = listOf(
+            pasture(W0, N0),
+            pasture(N1, E0),
+            pasture(E1, S1),
+            pasture(S0, W1),
+        ),
+    )
+
     /** Все типы каталога: карточка игры отдаёт их клиенту целиком. */
     val TYPES: List<CroissantTileType> = listOf(
+        TRAIL_TO_DAIRY,
         DAIRY,
-        DAIRY_TRAIL,
-        BAKERY_ONE,
-        BAKERY_ONE_SIGN,
-        BAKERY_CORNER,
-        TRAIL_STRAIGHT,
-        TRAIL_CURVE,
-        TRAIL_CROSS,
-        TRAIL_JUNCTION,
-        BAKERY_TRAIL,
-        BAKERY_TRAIL_T,
-        BAKERY_TWO,
-        BAKERY_THREE,
-        BAKERY_FOUR,
+        BAKERY_CENTER_WITH_SIGN,
+        BAKERY_AND_TRAIL_NEAR_BY,
+        BAKERY,
+        BAKERY_BRIDGE_WITH_SIGN,
+        BAKERY_BRIDGE,
+        TWO_OPPOSITE_BAKERIES,
+        TWO_NEIGHBOUR_BAKERIES,
+        BAKERY_AND_TRAIL_TURN_NEAR_BY,
+        BAKERY_AND_TRAIL_TURN_NEAR_BY_2,
+        BAKERY_AND_TRAIL_FORK_INTO_GARDEN_NEAR_BY,
+        LARGE_BAKERY_WITH_SIGN,
+        LARGE_BAKERY,
+        LARGE_BAKERY_WITH_SIGN_AND_TRAIL_TURN_NEAR_BY,
+        LARGE_BAKERY_AND_TRAIL_TURN_NEAR_BY,
+        HUGE_BAKERY_WITH_SIGN,
+        HUGE_BAKERY,
+        HUGE_BAKERY_WITH_SIGN_AND_TRAIL,
+        HUGE_BAKERY_WITH_TRAIL,
+        TRAIL,
+        TRAIL_TURN,
+        TRAIL_FORK_WITH_GARDEN,
+        TRAIL_CROSS_WITH_GARDEN,
     )
 
     private val byCode: Map<String, CroissantTileType> = TYPES.associateBy { it.code }
@@ -468,27 +601,37 @@ object CroissantCatalog {
      * (состав коробки — вопрос баланса, а не правил). Сумма — 72 тайла вместе со стартовым.
      */
     val COUNTS: Map<String, Int> = linkedMapOf(
+        TRAIL_TO_DAIRY.code to 2,
         DAIRY.code to 4,
-        DAIRY_TRAIL.code to 2,
-        BAKERY_ONE.code to 12,
-        BAKERY_ONE_SIGN.code to 7,
-        BAKERY_CORNER.code to 10,
-        TRAIL_STRAIGHT.code to 8,
-        TRAIL_CURVE.code to 9,
-        TRAIL_CROSS.code to 4,
-        TRAIL_JUNCTION.code to 1,
-        BAKERY_TRAIL.code to 6,
-        BAKERY_TRAIL_T.code to 4,
-        BAKERY_TWO.code to 2,
-        BAKERY_THREE.code to 2,
-        BAKERY_FOUR.code to 1,
+        BAKERY_CENTER_WITH_SIGN.code to 1,
+        BAKERY_AND_TRAIL_NEAR_BY.code to 4,
+        BAKERY.code to 5,
+        BAKERY_BRIDGE_WITH_SIGN.code to 2,
+        BAKERY_BRIDGE.code to 1,
+        TWO_OPPOSITE_BAKERIES.code to 3,
+        TWO_NEIGHBOUR_BAKERIES.code to 2,
+        BAKERY_AND_TRAIL_TURN_NEAR_BY.code to 3,
+        BAKERY_AND_TRAIL_TURN_NEAR_BY_2.code to 3,
+        BAKERY_AND_TRAIL_FORK_INTO_GARDEN_NEAR_BY.code to 3,
+        LARGE_BAKERY_WITH_SIGN.code to 2,
+        LARGE_BAKERY.code to 3,
+        LARGE_BAKERY_WITH_SIGN_AND_TRAIL_TURN_NEAR_BY.code to 2,
+        LARGE_BAKERY_AND_TRAIL_TURN_NEAR_BY.code to 3,
+        HUGE_BAKERY_WITH_SIGN.code to 1,
+        HUGE_BAKERY.code to 3,
+        HUGE_BAKERY_WITH_SIGN_AND_TRAIL.code to 2,
+        HUGE_BAKERY_WITH_TRAIL.code to 1,
+        TRAIL.code to 8,
+        TRAIL_TURN.code to 9,
+        TRAIL_FORK_WITH_GARDEN.code to 4,
+        TRAIL_CROSS_WITH_GARDEN.code to 1,
     )
 
     /** Базовая игра: состав коробки — [COUNTS]. Дополнения добавят свои модули. */
     val BASE_MODULE: CroissantModule = CroissantModule("base", COUNTS)
 
-    /** Стартовый тайл партии: пекарня с тропой от ворот. */
-    val START_TILE: String = BAKERY_TRAIL.code
+    /** Стартовый тайл партии. */
+    val START_TILE: String = BAKERY_AND_TRAIL_NEAR_BY.code
 
     /**
      * Порядок тайлов партии из seed. Стартовый тайл уже на поле и в колоду не входит: в ней 71 тайл, экземпляры
